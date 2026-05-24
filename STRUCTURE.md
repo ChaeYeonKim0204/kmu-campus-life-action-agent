@@ -19,6 +19,7 @@ kmu-campus-life-action-agent/
 │
 ├── frontend/             ← 사용자가 보는 채팅 화면
 ├── tests/                ← 위 부서들이 잘 작동하는지 점검표
+├── test/                 ← Streamlit 기반 졸업 도우미 프로토타입
 │
 └── *.md                  ← 문서들 (README, 계획, 진행상황, CLAUDE.md)
 ```
@@ -104,6 +105,23 @@ kmu-campus-life-action-agent/
 | `graduation.py` | 졸업요건 간이 진단 |
 | `course_planner.py` | 수강계획 추천 |
 | `document_drafter.py` | 출석인정신청서 초안 같은 문서 작성 |
+
+## 7️⃣ `test/` — 졸업 도우미 실험실
+
+메인 FastAPI/React 서비스와 별도로 실행되는 Streamlit 프로토타입. 성적증명서와 2025 국민대학교 요람을 이용해 졸업/진로 관련 기능을 실험한다.
+
+| 파일/경로 | 담당 |
+|---|---|
+| `0_extract_structured_data.py` | 요람 별표5/별표6에서 학과별 졸업요건, 공학인증 요건, 이수구분 코드 JSON 추출 |
+| `1_build_index.py` | 2025 국민대학교 요람 PDF를 chunk로 나누고 ChromaDB에 인덱싱 |
+| `2_agents.py` | 졸업 진단, 대체 이수, 마이크로디그리, 졸업 후 체크리스트, 직무 역량 번역 로직 |
+| `3_app.py` | Streamlit UI 진입점 |
+| `graduation_requirements.json` | 학과별 졸업 최저이수학점 구조화 데이터 |
+| `engineering_cert_requirements.json` | 공학인증 심화프로그램 학점 구조화 데이터 |
+| `department_search_index.json` | 학과명 검색 인덱스 |
+| `chroma_db/` | 요람 RAG 검색용 ChromaDB |
+
+주의: 이 폴더는 성적증명서 기반 프로토타입이라 메인 서비스의 “성적표 원본/개인 성적 미수집” 정책과 다르다. 메인 서비스에 붙일 때는 비식별 학점 요약 입력 방식으로 조정해야 한다.
 
 ---
 

@@ -3,6 +3,29 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.DS_Store
+
+# Local tool settings
+.claude/
+.cursor/
+.vscode/
+
+# Generated indexes and local databases
 data/vector/
+data/graduation/chroma/
+test/chroma_db/
+test/*.pdf
+test/index_stats.json
+*.sqlite3
+
+# Frontend build artifacts
 frontend/dist/
 frontend/node_modules/
+
+# Local secrets and private test fixtures
+.env
+*.env
+test/.env
+private/
+*성적증명서*.pdf
+*성적증명서*.pdf

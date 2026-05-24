@@ -31,4 +31,19 @@ class KMUScheduleCrawler(BaseCrawler):
             issue_types=["course_registration", "schedule"],
             schedule={"start_date": "2026-08-12", "end_date": "2026-08-26", "label": "2026학년도 2학기 수강신청 기간"},
         ),
+        SourcePage(
+            doc_id="schedule_2026_summer_session",
+            title="국민대학교 학사일정 - 2026학년도 하계 계절학기",
+            url="https://www.kookmin.ac.kr/user/scGuid/scSchedule/index.do",
+            department="교무팀",
+            fallback_text=(
+                "2026학년도 하계 계절학기 장바구니 기간은 2026.05.19부터 2026.05.21까지이며, "
+                "하계 계절학기 수강신청 기간은 2026.05.26부터 2026.05.28까지이다. "
+                "하계 계절학기 등록 기간은 2026.06.02부터 2026.06.05까지이다."
+            ),
+            keywords=["학사일정", "하계 계절학기", "장바구니", "수강신청", "등록", "2026"],
+            search_hints=["하계 계절학기 수강신청", "계절학기 장바구니", "계절학기 등록 기간"],
+            issue_types=["course_registration", "registration_tuition", "schedule"],
+            schedule={"start_date": "2026-05-19", "end_date": "2026-06-05", "label": "2026학년도 하계 계절학기 장바구니/수강신청/등록 기간"},
+        ),
     ]

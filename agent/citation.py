@@ -25,6 +25,11 @@ def build_citations(chunks: list[dict]) -> tuple[dict[str, str], list[dict]]:
                 "source_type": chunk.get("source_type"),
                 "source_tier": chunk.get("source_tier"),
                 "department": chunk.get("department"),
+                "published_at": chunk.get("published_at"),
+                "fetched_from_network": chunk.get("fetched_from_network"),
+                "used_fallback": chunk.get("used_fallback"),
+                "fetch_status": chunk.get("fetch_status"),
+                "http_status": chunk.get("http_status"),
                 "text": chunk.get("text"),
             }
         )
@@ -37,4 +42,3 @@ def cite(chunk: dict | None, labels: dict[str, str]) -> str:
         return ""
     label = labels.get(chunk.get("chunk_id", ""))
     return f"[{label}]" if label else ""
-

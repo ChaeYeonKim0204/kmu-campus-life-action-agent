@@ -45,3 +45,51 @@ def test_graduation_action_calculates_gaps():
     assert result["status"] == "completed"
     assert result["audit"]["total_credit_gap"] == 10
     assert result["audit"]["major_credit_gap"] == 8
+
+
+def test_student_id_action_drafts_checklist():
+    slots = {"card_type": "모바일학생증", "student_status_optional": "재학생"}
+    result = continue_action("student_id_issue_guide", slots)
+    assert result["status"] == "completed"
+    assert "학생증 발급 체크리스트" in result["document"]
+    assert "모바일학생증" in result["document"]
+
+
+def test_portal_access_action_does_not_request_credentials():
+    slots = {"service_name": "eCampus", "problem_summary": "비밀번호를 잊음"}
+    result = continue_action("portal_access_checklist", slots)
+    assert result["status"] == "completed"
+    assert "개인정보" in result["document"]
+    assert "입력하지 않습니다" in result["document"]
+
+
+def test_campus_facility_action_drafts_checklist():
+    slots = {"facility_type": "통학버스", "need_summary_optional": "노선과 시간"}
+    result = continue_action("campus_facility_guide", slots)
+    assert result["status"] == "completed"
+    assert "생활지원 이용 체크리스트" in result["document"]
+    assert "통학버스" in result["document"]
+
+
+def test_academic_schedule_action_drafts_checklist():
+    slots = {"target_period": "이번 주", "concern_optional": "계절학기"}
+    result = continue_action("academic_schedule_digest", slots)
+    assert result["status"] == "completed"
+    assert "오늘 기준 학사일정 체크리스트" in result["document"]
+    assert "계절학기" in result["document"]
+
+
+def test_academic_record_action_drafts_checklist():
+    slots = {"correction_item": "영문명", "reason_optional": "정정 필요"}
+    result = continue_action("academic_record_correction_checklist", slots)
+    assert result["status"] == "completed"
+    assert "학적부 정정 체크리스트" in result["document"]
+    assert "개인정보" in result["document"]
+
+
+def test_student_insurance_action_drafts_checklist():
+    slots = {"incident_type": "교내 활동 중 부상", "incident_date_optional": "2026-05-19"}
+    result = continue_action("student_insurance_checklist", slots)
+    assert result["status"] == "completed"
+    assert "학생보험 청구 체크리스트" in result["document"]
+    assert "진단서" in result["document"]

@@ -12,7 +12,7 @@ This is a course **team project**; the professor's grading rubric below is a bin
 
 - **워크플로우 노드 분절** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. (현재 `guard→classify→retrieve→plan→build→validate` 파이프라인이 이 기준에 부합 — 이 구조를 유지·강화하고, LLM은 노드를 *대체*하지 말고 노드 사이에 *보조*로만 끼운다. 그래서 `generate()`로 답변을 통째로 생성하는 방향은 루브릭에 역행한다.)
 - **데이터 관리** — 사용자 입력 양식을 구체적으로 정의(`student_context`, action `ACTION_SCHEMAS`의 슬롯)하고, 노드 간 데이터 흐름이 또렷할 것(앞 노드 출력이 뒤 노드에서 실제로 쓰이고 `tool_logs`로 추적 가능).
-- **결과의 정형성·품질** — 출력이 즉시 업무에 쓸 수 있는 수준일 것(섹션형 답변 + citation, 액션 문서 초안).
+- **결과의 정형성·품질** — 출력이 즉시 업무에 쓸 수 있는 수준일 것(섹션형 답변 + citation, 액션 문서 초안). LLM 출력의 무작위성을 통제해(결정론적 조립·구조화 출력·낮은 temperature) 매번 일관된 결과를 낼 것 — 교수가 구두로 강조한 포인트.
 - **실무 유용성·문제 해결력** — 실제 업무/고객 경험 개선에 기여하는가.
 
 새 기능이나 추가 LLM 사용을 설계할 때 위 4개 기준에 비춰 판단한다.
@@ -83,7 +83,7 @@ Unlike the main `/ask` pipeline, the graduation center **requires** OpenAI + an 
 
 ### Optional LLM assist
 
-LLM use is **off by default and fails closed** to the deterministic path. `llm_client.GuardedLLMClient` reads `OPENAI_ENABLED` (query expansion + reranking) and `OPENAI_POLISH_ENABLED` (answer polishing); both also need `OPENAI_API_KEY`. The legacy `generate()` method is still a hard stub returning `""` — the answer is assembled deterministically in `answer_builder`. The three live helpers are retrieval/presentation-only and grounded:
+LLM use is **off by default and fails closed** to the deterministic path. `llm_client.GuardedLLMClient` reads `OPENAI_ENABLED` (query expansion + reranking) and `OPENAI_POLISH_ENABLED` (answer polishing); both also need `OPENAI_API_KEY`. The course supplies a **per-team OpenAI key** (distributed via the team leader); set `OPENAI_MODEL=gpt-5-mini` (code default is `gpt-4o-mini`) and prefer the small model when it suffices — cost is shared/limited. The legacy `generate()` method is still a hard stub returning `""` — the answer is assembled deterministically in `answer_builder`. The three live helpers are retrieval/presentation-only and grounded:
 
 - `expand_search_query` — adds official KMU synonyms to the retrieval query; never adds facts.
 - `rerank_chunks` — reorders *already-retrieved* chunks via a `chunk_id` enum schema; cannot introduce new sources.

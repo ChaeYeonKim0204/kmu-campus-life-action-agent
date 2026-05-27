@@ -99,7 +99,7 @@ export default function CampusMap({ activeBuilding, onBuildingSelect, quests }) 
   return (
     <div className="campus-map-wrapper" style={{ border: "none", background: "transparent", padding: 0, boxShadow: "none", width: "100%", height: "100%", borderRadius: 0 }}>
       <div className="map-viewport" style={{ marginTop: 0 }} onClick={handleMapClick}>
-        <svg viewBox="0 0 1000 800" className="kmu-isometric-svg" preserveAspectRatio="xMinYMid meet">
+        <svg viewBox="0 0 1000 800" className="kmu-isometric-svg" preserveAspectRatio="xMidYMid meet">
           {/* Defs for gradients/shadows */}
           <defs>
             <radialGradient id="field-grad" cx="50%" cy="50%" r="50%">

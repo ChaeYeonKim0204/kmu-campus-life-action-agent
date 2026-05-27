@@ -14,7 +14,7 @@ const TABS = [
 
 const CATEGORY_ORDER = ["기초교양", "핵심교양", "자유교양", "전공", "일반선택", "교직", "미분류"];
 
-export default function GraduationCenter({ apiBase, onClose }) {
+export default function GraduationCenter({ apiBase, onClose, hideHeader }) {
   const [status, setStatus] = React.useState(null);
   const [activeTab, setActiveTab] = React.useState("upload");
   const [file, setFile] = React.useState(null);
@@ -151,13 +151,15 @@ export default function GraduationCenter({ apiBase, onClose }) {
 
   return (
     <div className="graduation-center">
-      <div className="graduation-header">
-        <div>
-          <h2>졸업 센터</h2>
-          <p>성적증명서를 임시 파싱해 졸업요건, 조기졸업, Customized전공, 성적포기, 직무 역량을 분석합니다.</p>
+      {!hideHeader && (
+        <div className="graduation-header">
+          <div>
+            <h2>졸업 센터</h2>
+            <p>성적증명서를 임시 파싱해 졸업요건, 조기졸업, Customized전공, 성적포기, 직무 역량을 분석합니다.</p>
+          </div>
+          <button type="button" className="rpg-modal-close inline" onClick={onClose}>✕</button>
         </div>
-        <button type="button" className="rpg-modal-close inline" onClick={onClose}>✕</button>
-      </div>
+      )}
 
       {status && !status.ready && (
         <div className="graduation-alert">

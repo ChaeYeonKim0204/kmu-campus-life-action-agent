@@ -83,40 +83,22 @@ export default function QuestBoard({
           </div>
         )}
 
-        <div className="hud-actions" style={{ marginTop: "12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-          <button 
+        <div style={{ marginTop: "12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+          <button
             type="button"
-            className="primary hud-encyclopedia-btn" 
-            onClick={onOpenEncyclopedia} 
-            style={{ 
-              padding: "8px 6px", 
-              fontSize: "11.5px", 
-              display: "flex", 
-              alignItems: "center", 
-              justifyContent: "center", 
-              gap: "4px",
-              background: "linear-gradient(135deg, #d97706 0%, #b45309 100%)",
-              borderColor: "#d97706"
-            }}
+            className="action"
+            onClick={onOpenEncyclopedia}
+            style={{ padding: "9px 6px", fontSize: "11.5px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
           >
             📚 규정 대백과
           </button>
-          <button 
+          <button
             type="button"
-            className="primary hud-bag-btn" 
-            onClick={onOpenActionForm} 
-            style={{ 
-              padding: "8px 6px", 
-              fontSize: "11.5px", 
-              display: "flex", 
-              alignItems: "center", 
-              justifyContent: "center", 
-              gap: "4px",
-              background: "linear-gradient(135deg, #0891b2 0%, #0e7490 100%)",
-              borderColor: "#0891b2"
-            }}
+            className="primary"
+            onClick={onOpenActionForm}
+            style={{ padding: "9px 6px", fontSize: "11.5px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
           >
-            🎒 서류 가방
+            📂 서류 가방
           </button>
         </div>
       </div>

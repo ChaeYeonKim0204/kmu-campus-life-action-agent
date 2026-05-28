@@ -7,6 +7,8 @@ from graduation_center.parser import parse_transcript_bytes
 from graduation_center.service import (
     GraduationServiceUnavailable,
     GraduationCenterService,
+    TASK_TITLES,
+    _build_answer,
     _credit_drop_source,
     _customized_major_source,
     _analysis_prompt,
@@ -234,3 +236,80 @@ def test_task_specific_rules_cover_customized_major():
     assert "자격" in rules
     assert "서류" in rules
     assert "승인 후 제한" in rules
+
+
+# ---- P2 회귀: agent_product_planning.md §15.4 5섹션 통일 ----
+
+import pytest
+
+
+def _sample_sources():
+    return [
+        {"id": "G1", "title": "요람 별표5", "page": "195", "section": "졸업이수학점표"},
+        {"id": "G2", "title": "요람", "page": "732", "section": "졸업요건"},
+    ]
+
+
+def _sample_payload():
+    return {
+        "summary": "총학점과 전공학점이 부족하여 졸업 요건을 충족하지 못합니다.",
+        "findings": [
+            {"label": "가능 여부", "detail": "졸업 불가능", "source_ids": ["G1"]},
+            {"label": "부족 항목", "detail": "전공 16학점 부족", "source_ids": ["G1"]},
+            {"label": "확인 필요", "detail": "캡스톤 이수 여부", "source_ids": ["G2"]},
+        ],
+        "recommendations": [
+            {"action": "전공 16학점 학기별 계획", "reason": "졸업 위해", "source_ids": ["G1"]},
+        ],
+        "warnings": ["성적포기 처리 여부 확인 필요"],
+    }
+
+
+@pytest.mark.parametrize("task", [
+    "audit", "early_graduation", "substitute_courses", "micro_degree",
+    "customized_major", "credit_drop",
+])
+def test_build_answer_planning_tasks_use_semester_plan_label(task):
+    """6 task: '[다음 학기 수강계획에 반영할 항목]' 라벨 (학기 계획 적용 가능)."""
+    answer = _build_answer(task, _sample_payload(), _sample_sources())
+    assert f"[{TASK_TITLES[task]}]" in answer
+    assert "[자동 분석 결과]" in answer
+    assert "[부족·불확실 항목]" in answer
+    assert "[학과·교무팀에 확인할 질문]" in answer
+    assert "[다음 학기 수강계획에 반영할 항목]" in answer
+    assert "[다음 행동]" not in answer  # 학기 라벨이 우선
+    assert "[최종 확인]" in answer
+    assert "[근거]" in answer
+
+
+@pytest.mark.parametrize("task", ["post_graduation_checklist", "career_translator"])
+def test_build_answer_post_grad_and_career_use_action_label(task):
+    """post_grad/career: 학기 계획 부적합 → '[다음 행동]' 라벨로 교체."""
+    answer = _build_answer(task, _sample_payload(), _sample_sources())
+    assert "[자동 분석 결과]" in answer
+    assert "[부족·불확실 항목]" in answer
+    assert "[학과·교무팀에 확인할 질문]" in answer
+    assert "[다음 학기 수강계획에 반영할 항목]" not in answer  # 드롭
+    assert "[다음 행동]" in answer
+    assert "[최종 확인]" in answer
+    assert "[근거]" in answer
+
+
+def test_build_answer_always_has_final_confirmation_and_sources():
+    """§15.4 binding — 모든 task에 [최종 확인]·[근거]·고정 문구 존재."""
+    for task in TASK_TITLES:
+        answer = _build_answer(task, _sample_payload(), _sample_sources())
+        assert "[최종 확인]" in answer
+        assert "최종 판정은 학과사무실/교무팀 확인" in answer
+        assert "[근거]" in answer
+        assert "[G1]" in answer  # citation 보존
+
+
+def test_build_answer_fallback_when_findings_empty():
+    """findings 비어있어도 [부족·불확실]과 [학과·교무팀 확인] 섹션은 fallback 문구로 채워짐."""
+    payload = {"summary": "졸업 가능", "findings": [], "recommendations": [], "warnings": []}
+    answer = _build_answer("audit", payload, _sample_sources())
+    assert "[부족·불확실 항목]" in answer
+    assert "부족·불확실 항목 없음" in answer
+    assert "[학과·교무팀에 확인할 질문]" in answer
+    assert "학과사무실/교무팀에서 검토받고" in answer

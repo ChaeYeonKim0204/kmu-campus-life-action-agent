@@ -437,33 +437,97 @@ def _task_specific_rules(task: str) -> list[str]:
     return rules.get(task, ["확인 가능한 근거와 확인 필요 항목을 분리해 답하세요."])
 
 
+# --- P2 — docs/agent_product_planning.md §15.4 5섹션 통일 ---
+
+TASK_TITLES: dict[str, str] = {
+    "audit": "졸업 진단",
+    "early_graduation": "조기졸업 가능 여부 및 조심할 점",
+    "customized_major": "커스터마이징 전공 제도",
+    "credit_drop": "학점 드랍/성적포기 제도",
+    "substitute_courses": "대체 이수 과목 탐색",
+    "micro_degree": "마이크로디그리 발굴",
+    "post_graduation_checklist": "졸업 전후 체크리스트",
+    "career_translator": "직무 역량 번역",
+}
+
+# §15.4 4번째 섹션 라벨 — post_grad / career_translator는 학기 계획이 부적합 → "다음 행동"으로 교체.
+PLAN_SECTION_LABEL_PER_TASK: dict[str, str] = {
+    "post_graduation_checklist": "[다음 행동]",
+    "career_translator": "[다음 행동]",
+}
+DEFAULT_PLAN_SECTION_LABEL = "[다음 학기 수강계획에 반영할 항목]"
+
+# _call_llm 스키마의 findings.label enum 분류:
+DEFICIT_LABELS = {"부족 항목", "확인 필요"}
+CONFIRM_QUESTION_LABELS = {"확인 필요"}
+ANALYSIS_LABELS = {"가능 여부", "충족 항목", "제도 기준", "행정 일정", "추천 경로", "주의사항"}
+
+
 def _build_answer(task: str, payload: dict, sources: list[dict]) -> str:
+    """docs/agent_product_planning.md §15.4 — 5섹션 통일.
+
+    모든 task: [자동 분석 결과] / [부족·불확실 항목] / [학과·교무팀에 확인할 질문]
+    / [다음 학기 수강계획] (또는 [다음 행동]) / [최종 확인] / [근거].
+    post_graduation_checklist·career_translator는 학기 계획 부적합 → 라벨만 교체.
+    """
     source_ids = {source["id"] for source in sources}
-    title = {
-        "audit": "졸업 진단",
-        "early_graduation": "조기졸업 가능 여부 및 조심할 점",
-        "customized_major": "커스터마이징 전공 제도",
-        "credit_drop": "학점 드랍/성적포기 제도",
-        "substitute_courses": "대체 이수 과목 탐색",
-        "micro_degree": "마이크로디그리 발굴",
-        "post_graduation_checklist": "졸업 전후 체크리스트",
-        "career_translator": "직무 역량 번역",
-    }.get(task, "졸업 센터 분석")
-    lines = [f"[{title}]", f"{payload.get('summary', '')} {_markers(['G1'], source_ids)}", "", "[주요 확인]"]
-    for item in payload.get("findings", []):
+    title = TASK_TITLES.get(task, "졸업 센터 분석")
+    summary = str(payload.get("summary", "")).strip()
+    findings = payload.get("findings", []) or []
+    recommendations = payload.get("recommendations", []) or []
+    warnings = payload.get("warnings", []) or []
+
+    lines = [f"[{title}]"]
+
+    # 1. 자동 분석 결과 (summary + 정보성 findings)
+    lines.extend(["", "[자동 분석 결과]"])
+    if summary:
+        lines.append(f"- {summary} {_markers(['G1'], source_ids)}".rstrip())
+    for item in (it for it in findings if it.get("label") in ANALYSIS_LABELS):
         markers = _markers(item.get("source_ids") or ["G1"], source_ids)
-        lines.append(f"- {item.get('label')}: {item.get('detail')} {markers}")
-    lines.extend(["", "[추천 행동]"])
-    for item in payload.get("recommendations", []):
-        markers = _markers(item.get("source_ids") or ["G1"], source_ids)
-        lines.append(f"- {item.get('action')}: {item.get('reason')} {markers}")
-    warnings = payload.get("warnings", [])
+        lines.append(f"- {item.get('label')}: {item.get('detail')} {markers}".rstrip())
+
+    # 2. 부족·불확실 항목
+    deficit_items = [it for it in findings if it.get("label") in DEFICIT_LABELS]
+    lines.extend(["", "[부족·불확실 항목]"])
+    if deficit_items:
+        for item in deficit_items:
+            markers = _markers(item.get("source_ids") or ["G1"], source_ids)
+            lines.append(f"- {item.get('label')}: {item.get('detail')} {markers}".rstrip())
+    else:
+        lines.append("- 비식별 요약 범위에서 확인된 부족·불확실 항목 없음.")
+
+    # 3. 학과·교무팀에 확인할 질문 (항상 존재 — §15.4)
+    confirm_items = [it for it in findings if it.get("label") in CONFIRM_QUESTION_LABELS]
+    lines.extend(["", "[학과·교무팀에 확인할 질문]"])
+    if confirm_items:
+        for item in confirm_items:
+            markers = _markers(item.get("source_ids") or ["G1"], source_ids)
+            lines.append(f"- {item.get('detail')} {markers}".rstrip())
+    else:
+        lines.append("- 본 분석 결과를 학과사무실/교무팀에서 검토받고 최종 일정·추가 요건을 확인해 주세요.")
+
+    # 4. 다음 학기 수강계획 (또는 다음 행동)
+    if recommendations:
+        plan_label = PLAN_SECTION_LABEL_PER_TASK.get(task, DEFAULT_PLAN_SECTION_LABEL)
+        lines.extend(["", plan_label])
+        for item in recommendations:
+            markers = _markers(item.get("source_ids") or ["G1"], source_ids)
+            lines.append(f"- {item.get('action')}: {item.get('reason')} {markers}".rstrip())
+
+    # LLM warnings (있을 때만)
     if warnings:
         lines.extend(["", "[주의]"])
-        lines.extend(f"- {warning}" for warning in warnings)
+        lines.extend(f"- {w}" for w in warnings)
+
+    # 5. 최종 확인 (고정 — §15.4)
+    lines.extend(["", "[최종 확인]", "- 최종 판정은 학과사무실/교무팀 확인이 필요합니다."])
+
+    # 근거
     lines.extend(["", "[근거]"])
     for source in sources:
         lines.append(f"- [{source['id']}] {source.get('title')} / {source.get('page')}p / {source.get('section')}")
+
     return "\n".join(lines)
 
 

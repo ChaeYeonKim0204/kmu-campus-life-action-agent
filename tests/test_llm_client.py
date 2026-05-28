@@ -95,3 +95,78 @@ def test_polish_answer_rejects_changed_citations():
     assert result["used"] is False
     assert result["answer"] == answer
     assert result["rejected_reason"] == "citation_markers_changed"
+
+
+class FakeResponsesWithTempReject:
+    """Simulate a model that rejects the temperature parameter on first N calls."""
+
+    def __init__(self, payload, fail_n: int = 1):
+        self.payload = payload
+        self.calls = []
+        self._fail_remaining = fail_n
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if "temperature" in kwargs and self._fail_remaining > 0:
+            self._fail_remaining -= 1
+            raise RuntimeError(
+                "400 Bad Request: Unsupported value: 'temperature' is not supported with this model."
+            )
+        return type("FakeResponse", (), {"output_text": json.dumps(self.payload, ensure_ascii=False)})()
+
+
+class FakeOpenAIClientWithTempReject:
+    def __init__(self, payload, fail_n: int = 1):
+        self.responses = FakeResponsesWithTempReject(payload, fail_n=fail_n)
+
+
+def test_json_response_falls_back_when_temperature_rejected():
+    fake = FakeOpenAIClientWithTempReject(
+        {"expanded_query": "이캠 안돼요 eCampus", "keywords": ["eCampus"]},
+        fail_n=1,
+    )
+    client = GuardedLLMClient(enabled=True, client=fake)
+
+    result = client.expand_search_query("이캠 안돼요", "portal_access")
+
+    assert result["used"] is True
+    assert len(fake.responses.calls) == 2
+    assert "temperature" in fake.responses.calls[0]
+    assert "temperature" not in fake.responses.calls[1]
+    assert client._supports_temperature is False
+
+
+def test_json_response_passes_max_output_tokens_per_method():
+    fake_expand = FakeOpenAIClient({"expanded_query": "q", "keywords": []})
+    GuardedLLMClient(enabled=True, client=fake_expand).expand_search_query("질문", "attendance")
+    assert fake_expand.responses.calls[0]["max_output_tokens"] == 150
+
+    fake_rerank = FakeOpenAIClient({"selected_chunk_ids": ["c1"]})
+    client_rerank = GuardedLLMClient(enabled=True, client=fake_rerank)
+    client_rerank.rerank_chunks("질문", "attendance", [{"chunk_id": "c1", "title": "t", "text": "x"}])
+    assert fake_rerank.responses.calls[0]["max_output_tokens"] == 200
+
+    answer = "[답변 요약]\n안내.[S1]\n\n[근거]\n- [S1] src / url / x"
+    fake_polish = FakeOpenAIClient({"polished_body": "[답변 요약]\n안내 드립니다.[S1]"})
+    client_polish = GuardedLLMClient(enabled=True, client=fake_polish)
+    client_polish.polish_enabled = True
+    client_polish.polish_answer(answer)
+    assert fake_polish.responses.calls[0]["max_output_tokens"] == 900
+
+
+def test_supports_temperature_flag_cached_after_rejection():
+    fake = FakeOpenAIClientWithTempReject(
+        {"expanded_query": "q", "keywords": []},
+        fail_n=1,
+    )
+    client = GuardedLLMClient(enabled=True, client=fake)
+
+    client.expand_search_query("질문1", "attendance")
+    client.expand_search_query("질문2", "attendance")
+
+    # 첫 호출: temperature 포함(실패) → 재시도(성공) = 2회
+    # 두 번째 호출: 캐싱된 _supports_temperature=False로 temperature 미포함 = 1회
+    assert len(fake.responses.calls) == 3
+    assert "temperature" in fake.responses.calls[0]
+    assert "temperature" not in fake.responses.calls[1]
+    assert "temperature" not in fake.responses.calls[2]

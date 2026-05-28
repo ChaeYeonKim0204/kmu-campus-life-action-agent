@@ -26,7 +26,8 @@ class GraduationCenterService:
         self.collection_name = "kmu_graduation_yoram"
         self.legacy_collection_name = "kookmin_yoram"
         self.embedding_model = "text-embedding-3-small"
-        self.model = os.getenv("OPENAI_GRADUATION_MODEL", "gpt-4o")
+        self.model = os.getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini")
+        self._supports_temperature = True
         self._client = None
         self._collection = None
 
@@ -58,7 +59,7 @@ class GraduationCenterService:
             filename,
             vision_ocr_consent=vision_ocr_consent,
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
-            model=self.model,
+            model=os.getenv("OPENAI_GRADUATION_VISION_MODEL", "gpt-4o"),
         )
         return response.model_dump()
 
@@ -218,15 +219,26 @@ class GraduationCenterService:
             "required": ["summary", "findings", "recommendations", "warnings"],
         }
         prompt = _analysis_prompt(task, transcript, structured_check, sources, extra)
-        response = client.responses.create(
-            model=self.model,
-            input=[
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "input": [
                 {"role": "system", "content": "You analyze Korean university graduation requirements using only provided sanitized transcript summaries and sources."},
                 {"role": "user", "content": prompt},
             ],
-            text={"format": {"type": "json_schema", "name": "graduation_analysis", "schema": schema, "strict": True}},
-            temperature=0.1,
-        )
+            "text": {"format": {"type": "json_schema", "name": "graduation_analysis", "schema": schema, "strict": True}},
+        }
+        if self._supports_temperature:
+            kwargs["temperature"] = 0.1
+        try:
+            response = client.responses.create(**kwargs)
+        except Exception as exc:
+            message = str(exc).lower()
+            if self._supports_temperature and "temperature" in message:
+                self._supports_temperature = False
+                kwargs.pop("temperature", None)
+                response = client.responses.create(**kwargs)
+            else:
+                raise
         output_text = getattr(response, "output_text", "") or _extract_output_text(response)
         return json.loads(output_text)
 

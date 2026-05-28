@@ -35,6 +35,7 @@ class GuardedLLMClient:
         self.timeout_seconds = timeout_seconds
         self._client = client
         self.error: str | None = "openai_api_key_missing" if self.enabled and not self.api_key_configured else None
+        self._supports_temperature = True
 
     def generate(self, prompt: str, grounded_context: list[dict]) -> str:
         """Generate text only from grounded context.
@@ -91,6 +92,7 @@ class GuardedLLMClient:
                 user=prompt,
                 schema_name="search_query_expansion",
                 schema=schema,
+                max_output_tokens=150,
             )
         except Exception as exc:  # pragma: no cover - network/SDK failure fallback
             self.error = str(exc)
@@ -144,6 +146,7 @@ class GuardedLLMClient:
                 user=prompt,
                 schema_name="chunk_rerank",
                 schema=schema,
+                max_output_tokens=200,
             )
         except Exception as exc:  # pragma: no cover - network/SDK failure fallback
             self.error = str(exc)
@@ -204,6 +207,7 @@ class GuardedLLMClient:
                 user=prompt,
                 schema_name="answer_polish",
                 schema=schema,
+                max_output_tokens=900,
             )
         except Exception as exc:  # pragma: no cover - network/SDK failure fallback
             self.error = str(exc)
@@ -221,15 +225,23 @@ class GuardedLLMClient:
             "rejected_reason": None,
         }
 
-    def _json_response(self, system: str, user: str, schema_name: str, schema: dict[str, Any]) -> dict[str, Any]:
+    def _json_response(
+        self,
+        system: str,
+        user: str,
+        schema_name: str,
+        schema: dict[str, Any],
+        *,
+        max_output_tokens: int,
+    ) -> dict[str, Any]:
         client = self._get_client()
-        response = client.responses.create(
-            model=self.model,
-            input=[
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "input": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            text={
+            "text": {
                 "format": {
                     "type": "json_schema",
                     "name": schema_name,
@@ -237,8 +249,20 @@ class GuardedLLMClient:
                     "strict": True,
                 }
             },
-            temperature=0,
-        )
+            "max_output_tokens": max_output_tokens,
+        }
+        if self._supports_temperature:
+            kwargs["temperature"] = 0
+        try:
+            response = client.responses.create(**kwargs)
+        except Exception as exc:
+            message = str(exc).lower()
+            if self._supports_temperature and "temperature" in message:
+                self._supports_temperature = False
+                kwargs.pop("temperature", None)
+                response = client.responses.create(**kwargs)
+            else:
+                raise
         output_text = getattr(response, "output_text", "") or _extract_output_text(response)
         if not output_text:
             raise ValueError("empty_openai_response")

@@ -6,6 +6,9 @@ import re
 from typing import Any
 
 
+# Phase 5 follow-up: 일반 /ask 답변에도 졸업센터 sanitize 8 패턴과 동등한 출력 검증 적용.
+# 졸업센터는 마스킹(replacement), 여기는 검증(detection) — 패턴은 동일/동등.
+# 출처: graduation_center/service.py:SENSITIVE_PATTERNS + 기존 portal_password.
 OUTPUT_PRIVACY_PATTERNS = {
     "student_id_value": re.compile(r"(?<!\d)20\d{6,8}(?!\d)"),
     "resident_number_value": re.compile(r"\d{6}-\d{7}"),
@@ -13,6 +16,16 @@ OUTPUT_PRIVACY_PATTERNS = {
     "portal_password_value": re.compile(
         r"(비밀번호|패스워드|password|pw)\s*(은|는|:|=)\s*[A-Za-z0-9!@#$%^&*._-]{4,}",
         re.IGNORECASE,
+    ),
+    # 졸업센터와 통일된 GPA/성적/이메일 패턴 (Phase 5 P3와 동등)
+    "gpa_value_korean": re.compile(r"(GPA|평점평균)\s*[:：]?\s*\d+(?:\.\d+)?", re.IGNORECASE),
+    "gpa_value_fraction": re.compile(r"\b\d\.\d{1,2}\s*/\s*4(?:\.\d+)?"),
+    "gpa_value_decimal_nearby": re.compile(
+        r"(?:학점|평점|성적)(?:이|은|는|이라|\s*[=:])?\s*[0-4]\.\d{1,2}"
+    ),
+    "email_value": re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}"),
+    "grade_letter_nearby": re.compile(
+        r"(?:성적|학점|grade|score)\s*[:=]?\s*[ABCDF][+\-0]?", re.IGNORECASE
     ),
 }
 

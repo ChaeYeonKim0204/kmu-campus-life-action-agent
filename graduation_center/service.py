@@ -28,6 +28,7 @@ class GraduationCenterService:
         self.embedding_model = "text-embedding-3-small"
         self.model = os.getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini")
         self._supports_temperature = True
+        self._is_reasoning_model = any(self.model.startswith(prefix) for prefix in ("gpt-5", "o1", "o3", "o4"))
         self._client = None
         self._collection = None
 
@@ -227,6 +228,10 @@ class GraduationCenterService:
             ],
             "text": {"format": {"type": "json_schema", "name": "graduation_analysis", "schema": schema, "strict": True}},
         }
+        if self._is_reasoning_model:
+            # gpt-5/o-series: 졸업 분석도 minimal reasoning으로 시작.
+            # 분석 품질이 낮으면 medium으로 올릴 것.
+            kwargs["reasoning"] = {"effort": "minimal"}
         if self._supports_temperature:
             kwargs["temperature"] = 0.1
         try:

@@ -139,19 +139,37 @@ def test_json_response_falls_back_when_temperature_rejected():
 def test_json_response_passes_max_output_tokens_per_method():
     fake_expand = FakeOpenAIClient({"expanded_query": "q", "keywords": []})
     GuardedLLMClient(enabled=True, client=fake_expand).expand_search_query("질문", "attendance")
-    assert fake_expand.responses.calls[0]["max_output_tokens"] == 150
+    assert fake_expand.responses.calls[0]["max_output_tokens"] == 400
 
     fake_rerank = FakeOpenAIClient({"selected_chunk_ids": ["c1"]})
     client_rerank = GuardedLLMClient(enabled=True, client=fake_rerank)
     client_rerank.rerank_chunks("질문", "attendance", [{"chunk_id": "c1", "title": "t", "text": "x"}])
-    assert fake_rerank.responses.calls[0]["max_output_tokens"] == 200
+    assert fake_rerank.responses.calls[0]["max_output_tokens"] == 400
 
     answer = "[답변 요약]\n안내.[S1]\n\n[근거]\n- [S1] src / url / x"
     fake_polish = FakeOpenAIClient({"polished_body": "[답변 요약]\n안내 드립니다.[S1]"})
     client_polish = GuardedLLMClient(enabled=True, client=fake_polish)
     client_polish.polish_enabled = True
     client_polish.polish_answer(answer)
-    assert fake_polish.responses.calls[0]["max_output_tokens"] == 900
+    assert fake_polish.responses.calls[0]["max_output_tokens"] == 1500
+
+
+def test_reasoning_effort_minimal_added_for_gpt5_model():
+    fake = FakeOpenAIClient({"expanded_query": "q", "keywords": []})
+    client = GuardedLLMClient(enabled=True, client=fake, model="gpt-5-mini")
+
+    client.expand_search_query("질문", "attendance")
+
+    assert fake.responses.calls[0].get("reasoning") == {"effort": "minimal"}
+
+
+def test_reasoning_param_omitted_for_non_reasoning_model():
+    fake = FakeOpenAIClient({"expanded_query": "q", "keywords": []})
+    client = GuardedLLMClient(enabled=True, client=fake, model="gpt-4o-mini")
+
+    client.expand_search_query("질문", "attendance")
+
+    assert "reasoning" not in fake.responses.calls[0]
 
 
 def test_supports_temperature_flag_cached_after_rejection():

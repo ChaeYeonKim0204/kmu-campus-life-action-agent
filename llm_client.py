@@ -36,6 +36,7 @@ class GuardedLLMClient:
         self._client = client
         self.error: str | None = "openai_api_key_missing" if self.enabled and not self.api_key_configured else None
         self._supports_temperature = True
+        self._is_reasoning_model = any(self.model.startswith(prefix) for prefix in ("gpt-5", "o1", "o3", "o4"))
 
     def generate(self, prompt: str, grounded_context: list[dict]) -> str:
         """Generate text only from grounded context.
@@ -92,7 +93,7 @@ class GuardedLLMClient:
                 user=prompt,
                 schema_name="search_query_expansion",
                 schema=schema,
-                max_output_tokens=150,
+                max_output_tokens=400,
             )
         except Exception as exc:  # pragma: no cover - network/SDK failure fallback
             self.error = str(exc)
@@ -146,7 +147,7 @@ class GuardedLLMClient:
                 user=prompt,
                 schema_name="chunk_rerank",
                 schema=schema,
-                max_output_tokens=200,
+                max_output_tokens=400,
             )
         except Exception as exc:  # pragma: no cover - network/SDK failure fallback
             self.error = str(exc)
@@ -207,7 +208,7 @@ class GuardedLLMClient:
                 user=prompt,
                 schema_name="answer_polish",
                 schema=schema,
-                max_output_tokens=900,
+                max_output_tokens=1500,
             )
         except Exception as exc:  # pragma: no cover - network/SDK failure fallback
             self.error = str(exc)
@@ -251,6 +252,11 @@ class GuardedLLMClient:
             },
             "max_output_tokens": max_output_tokens,
         }
+        if self._is_reasoning_model:
+            # gpt-5/o-series 는 max_output_tokens에 reasoning 토큰이 포함돼,
+            # 짧게 잡으면 reasoning만 가득 차고 출력이 빈 응답이 됨.
+            # expand/rerank/polish는 깊은 reasoning이 불필요하므로 minimal로 차단.
+            kwargs["reasoning"] = {"effort": "minimal"}
         if self._supports_temperature:
             kwargs["temperature"] = 0
         try:

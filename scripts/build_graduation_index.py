@@ -5,7 +5,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# 루트의 .env 자동 로드 (OPENAI_API_KEY 등)
+load_dotenv()
 
 
 PDF_PATH = Path("test/2025국민대학교요람_20250910.pdf")
@@ -81,10 +87,23 @@ def embed_batch(client, texts: list[str]) -> list[list[float]]:
     return embeddings
 
 
+def _resolve_pdf_path(default: Path) -> Path:
+    """Match NFC/NFD-normalized filenames so 한글 PDF가 정규화 차이로 안 깨지게."""
+    if default.exists():
+        return default
+    parent = default.parent if default.parent.exists() else Path(".")
+    target_nfc = unicodedata.normalize("NFC", default.name)
+    for candidate in parent.glob("*.pdf"):
+        if unicodedata.normalize("NFC", candidate.name) == target_nfc:
+            return candidate
+    return default
+
+
 def build_index(pdf_path: Path = PDF_PATH, chroma_dir: Path = CHROMA_DIR) -> None:
     """Build a persistent Chroma index for graduation-center RAG."""
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY 환경변수가 필요합니다.")
+    pdf_path = _resolve_pdf_path(pdf_path)
     if not pdf_path.exists():
         raise FileNotFoundError(f"요람 PDF를 찾을 수 없습니다: {pdf_path}")
 

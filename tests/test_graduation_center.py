@@ -313,3 +313,39 @@ def test_build_answer_fallback_when_findings_empty():
     assert "부족·불확실 항목 없음" in answer
     assert "[학과·교무팀에 확인할 질문]" in answer
     assert "학과사무실/교무팀에서 검토받고" in answer
+
+
+# ---- P3 회귀: sanitization 7 패턴 ----
+
+@pytest.mark.parametrize("raw,mask_token,original", [
+    ("학번 2025123456 입력 받음",        "[학번 마스킹]",      "2025123456"),
+    ("주민번호 991231-1234567 첨부",     "[주민번호 마스킹]",  "991231-1234567"),
+    ("연락처 010-1234-5678 받았음",      "[연락처 마스킹]",    "010-1234-5678"),
+    ("GPA: 3.8 으로 확인됨",             "GPA 기준 비공개",    "3.8"),
+    ("평점평균 3.85 입력",               "평점평균 기준 비공개", "3.85"),
+    ("3.8/4.5 평점 예시",                "GPA 기준 비공개",    "3.8/4.5"),
+    ("문의 example@kookmin.ac.kr 보내", "[이메일 마스킹]",    "example@kookmin.ac.kr"),
+    ("성적: A+ 로 받음",                 "[성적 마스킹]",      "성적: A+"),
+    ("grade: B0 acquired",               "[성적 마스킹]",      "grade: B0"),
+    ("score = C-",                       "[성적 마스킹]",      "score = C-"),
+])
+def test_sanitize_masks_seven_patterns(raw, mask_token, original):
+    out = _sanitize_sensitive_output(raw)
+    assert mask_token in out, f"{raw!r} → {out!r}: 마스킹 토큰 누락"
+    assert original not in out, f"{raw!r} → {out!r}: 원본 잔존"
+
+
+def test_sanitize_no_false_positive_on_natural_english_text():
+    """letter grade 단독 ('A great course')은 grade_nearby가 안 잡음 — 근접 키워드 필요."""
+    text = "A great course on data structures. B level performance overall."
+    out = _sanitize_sensitive_output(text)
+    assert out == text, f"자연어 false positive: {out!r}"
+    assert "[성적 마스킹]" not in out
+
+
+def test_sanitize_no_false_positive_on_normal_credit_numbers():
+    """학점 수치 '130학점' '전공 50학점'은 GPA 패턴에 안 잡힘 (학번/GPA와 다름)."""
+    text = "총 130학점 중 전공 50학점, 부족 36학점."
+    out = _sanitize_sensitive_output(text)
+    assert out == text
+    assert "마스킹" not in out

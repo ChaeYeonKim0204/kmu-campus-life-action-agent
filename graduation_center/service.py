@@ -550,11 +550,24 @@ def _input_safety_flags(transcript: dict, extra: dict[str, Any]) -> list[str]:
     return flags
 
 
+# P3 — agent_product_planning.md §7.3·§15.2 + README §15.3 민감정보 마스킹.
+# raw regex string은 dict로 명시 (markdown table 이스케이프 문제 회피).
+# grade_nearby는 '성적/학점/grade/score' 근접 키워드 기반 — letter 단독 매칭 회피 (false positive).
+SENSITIVE_PATTERNS: tuple[tuple[str, str, str, int], ...] = (
+    # (name, pattern, replacement, flags)
+    ("student_id",   r"\b20\d{6,8}\b",                                          "[학번 마스킹]",     0),
+    ("resident",     r"\d{6}-\d{7}",                                            "[주민번호 마스킹]", 0),
+    ("phone",        r"01[016789]-?\d{3,4}-?\d{4}",                             "[연락처 마스킹]",   0),
+    ("gpa_korean",   r"(GPA|평점평균)\s*[:：]?\s*\d+(?:\.\d+)?",                 r"\1 기준 비공개",  re.IGNORECASE),
+    ("gpa_fraction", r"\b\d\.\d{1,2}\s*/\s*4(?:\.\d+)?",                        "GPA 기준 비공개",  0),
+    ("email",        r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}",                         "[이메일 마스킹]",   0),
+    ("grade_nearby", r"(?:성적|학점|grade|score)\s*[:=]?\s*[ABCDF][+\-0]?",      "[성적 마스킹]",     re.IGNORECASE),
+)
+
+
 def _sanitize_sensitive_output(text: str) -> str:
-    text = re.sub(r"\b20\d{6,8}\b", "[학번 마스킹]", text)
-    text = re.sub(r"\d{6}-\d{7}", "[주민번호 마스킹]", text)
-    text = re.sub(r"01[016789]-?\d{3,4}-?\d{4}", "[연락처 마스킹]", text)
-    text = re.sub(r"(GPA|평점평균)\s*[:：]?\s*\d+(?:\.\d+)?", r"\1 기준 비공개", text, flags=re.IGNORECASE)
+    for _name, pattern, replacement, flags in SENSITIVE_PATTERNS:
+        text = re.sub(pattern, replacement, text, flags=flags)
     return text
 
 

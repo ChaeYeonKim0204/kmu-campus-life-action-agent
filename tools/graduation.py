@@ -75,8 +75,13 @@ def _resolve_requirements(
         for chunk in chunks:
             req = chunk.get("graduation_requirements")
             if isinstance(req, dict) and "total_credits" in req:
+                # major_credits 누락 시 default(60)로 보강 — KeyError 방어 (Codex SHOULD-FIX)
+                safe_req = {
+                    "total_credits": req["total_credits"],
+                    "major_credits": req.get("major_credits", DEFAULT_REQUIREMENTS["major_credits"]),
+                }
                 doc_id = chunk.get("doc_id") or chunk.get("chunk_id") or "?"
-                return req, f"chunk:{doc_id}"
+                return safe_req, f"chunk:{doc_id}"
     return DEFAULT_REQUIREMENTS, "default(130/60) — 학과 요람 확인 필요"
 
 

@@ -324,6 +324,11 @@ def test_build_answer_fallback_when_findings_empty():
     ("GPA: 3.8 으로 확인됨",             "GPA 기준 비공개",    "3.8"),
     ("평점평균 3.85 입력",               "평점평균 기준 비공개", "3.85"),
     ("3.8/4.5 평점 예시",                "GPA 기준 비공개",    "3.8/4.5"),
+    # gpa_decimal_near (Codex MUST-FIX) — '학점이/평점/성적' 키워드 + decimal
+    ("학점이 3.8입니다",                 "[학점/평점 기준 비공개]", "3.8"),
+    ("내 학점 3.85",                     "[학점/평점 기준 비공개]", "3.85"),
+    ("평점 4.0 받음",                    "[학점/평점 기준 비공개]", "4.0"),
+    ("성적 3.5",                         "[학점/평점 기준 비공개]", "3.5"),
     ("문의 example@kookmin.ac.kr 보내", "[이메일 마스킹]",    "example@kookmin.ac.kr"),
     ("성적: A+ 로 받음",                 "[성적 마스킹]",      "성적: A+"),
     ("grade: B0 acquired",               "[성적 마스킹]",      "grade: B0"),
@@ -349,3 +354,10 @@ def test_sanitize_no_false_positive_on_normal_credit_numbers():
     out = _sanitize_sensitive_output(text)
     assert out == text
     assert "마스킹" not in out
+
+
+def test_sanitize_gpa_decimal_near_does_not_falsely_mask_credit_units():
+    """gpa_decimal_near는 decimal(\\d\\.\\d)만 매칭 — 정수 학점 수치 '학점 130'엔 안 잡힘."""
+    text = "학점 130개 / 전공 학점 50개 / 총 부족 36학점"
+    out = _sanitize_sensitive_output(text)
+    assert "마스킹" not in out, f"false positive: {out!r}"

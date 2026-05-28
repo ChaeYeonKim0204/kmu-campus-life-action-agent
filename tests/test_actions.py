@@ -89,6 +89,25 @@ def test_graduation_action_audit_has_operational_fields():
     assert len(audit["confirm_with_department"]) >= 1
 
 
+def test_graduation_audit_chunks_with_partial_requirements_no_keyerror():
+    """Codex SHOULD-FIX — chunks에 major_credits 없어도 default(60)로 보강, KeyError 없음."""
+    slots = {"total_credits": "100", "major_credits": "50"}
+    # major_credits 누락된 chunk
+    chunks = [
+        {
+            "doc_id": "yoram_partial",
+            "graduation_requirements": {"total_credits": 136},  # major_credits 없음
+        }
+    ]
+    result = continue_action("graduation_audit", slots, chunks)
+    assert result["status"] == "completed"
+    audit = result["audit"]
+    assert "chunk:yoram_partial" in audit["requirements_source"]
+    # total_credits=136 (chunks) + major_credits=60 (default fill)
+    assert audit["total_credit_gap"] == 36  # 136-100
+    assert audit["major_credit_gap"] == 10  # 60-50 (default)
+
+
 def test_course_planner_action_output_ends_with_final_confirmation():
     """recommend_course_plan 출력에 §15.4 최종 확인 항목 포함."""
     slots = {

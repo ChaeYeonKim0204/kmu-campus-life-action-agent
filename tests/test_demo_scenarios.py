@@ -106,7 +106,10 @@ def test_demo_scenario_graduation_requirements():
 
 @pytest.mark.live_llm
 def test_demo_scenario_attendance_with_llm_assist_uses_selection():
-    """llm_assist=true에서 보조 노드 최소 1개 동작 + rerank 사용 시 selected 비어있지 않음."""
+    """llm_assist=true에서 expand·rerank 둘 다 used=true + selected_chunk_ids 비어있지 않음.
+
+    polish는 rejection 가능성 있어 조건부; expand/rerank는 정상 흐름에서 항상 동작해야.
+    """
     r = client.post("/ask", json={
         "question": "다음 주 예비군 훈련 때문에 결석하는데 어떻게 해야 하나요?",
         "student_context": {"status": "enrolled"},
@@ -116,8 +119,10 @@ def test_demo_scenario_attendance_with_llm_assist_uses_selection():
     assert r.status_code == 200
     data = r.json()
     llm = data["llm"]
-    # 3 보조 노드 중 최소 1개는 used=true
-    assert llm["query_expansion"]["used"] or llm["rerank"]["used"] or llm["polish"]["used"], llm
-    # rerank이 동작했다면 결과 비어있지 않음 (source contract: selected ⊆ input은 unit test에서 검증)
-    if llm["rerank"]["used"]:
-        assert len(llm["rerank"]["selected_chunk_ids"]) >= 1
+    # 정상 운영 흐름 강제: expand 사용 + rerank 사용 + selected_chunk_ids 비어있지 않음
+    assert llm["query_expansion"]["used"], f"expand used=false (정상 운영 흐름 위반): {llm}"
+    assert llm["rerank"]["used"], f"rerank used=false (정상 운영 흐름 위반): {llm}"
+    assert len(llm["rerank"]["selected_chunk_ids"]) >= 1, llm["rerank"]
+    # polish는 rejection 가능 (citation 보존 실패 등) — 조건부 검증
+    if llm["polish"]["used"]:
+        assert llm["polish"]["rejected_reason"] is None

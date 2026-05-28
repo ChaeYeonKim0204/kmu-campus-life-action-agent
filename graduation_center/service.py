@@ -555,13 +555,15 @@ def _input_safety_flags(transcript: dict, extra: dict[str, Any]) -> list[str]:
 # grade_nearby는 '성적/학점/grade/score' 근접 키워드 기반 — letter 단독 매칭 회피 (false positive).
 SENSITIVE_PATTERNS: tuple[tuple[str, str, str, int], ...] = (
     # (name, pattern, replacement, flags)
-    ("student_id",   r"\b20\d{6,8}\b",                                          "[학번 마스킹]",     0),
-    ("resident",     r"\d{6}-\d{7}",                                            "[주민번호 마스킹]", 0),
-    ("phone",        r"01[016789]-?\d{3,4}-?\d{4}",                             "[연락처 마스킹]",   0),
-    ("gpa_korean",   r"(GPA|평점평균)\s*[:：]?\s*\d+(?:\.\d+)?",                 r"\1 기준 비공개",  re.IGNORECASE),
-    ("gpa_fraction", r"\b\d\.\d{1,2}\s*/\s*4(?:\.\d+)?",                        "GPA 기준 비공개",  0),
-    ("email",        r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}",                         "[이메일 마스킹]",   0),
-    ("grade_nearby", r"(?:성적|학점|grade|score)\s*[:=]?\s*[ABCDF][+\-0]?",      "[성적 마스킹]",     re.IGNORECASE),
+    ("student_id",       r"\b20\d{6,8}\b",                                          "[학번 마스킹]",     0),
+    ("resident",         r"\d{6}-\d{7}",                                            "[주민번호 마스킹]", 0),
+    ("phone",            r"01[016789]-?\d{3,4}-?\d{4}",                             "[연락처 마스킹]",   0),
+    ("gpa_korean",       r"(GPA|평점평균)\s*[:：]?\s*\d+(?:\.\d+)?",                 r"\1 기준 비공개",  re.IGNORECASE),
+    ("gpa_fraction",     r"\b\d\.\d{1,2}\s*/\s*4(?:\.\d+)?",                        "GPA 기준 비공개",  0),
+    # GPA-성 decimal 근접: '학점이 3.8입니다', '내 학점 3.85', '평점 4.0', '성적 3.5' — 4 이하 \d\.\d{1,2}만
+    ("gpa_decimal_near", r"(?:학점|평점|성적)(?:이|은|는|이라|\s*[=:])?\s*[0-4]\.\d{1,2}", "[학점/평점 기준 비공개]", 0),
+    ("email",            r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}",                         "[이메일 마스킹]",   0),
+    ("grade_nearby",     r"(?:성적|학점|grade|score)\s*[:=]?\s*[ABCDF][+\-0]?",      "[성적 마스킹]",     re.IGNORECASE),
 )
 
 

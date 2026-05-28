@@ -47,6 +47,62 @@ def test_graduation_action_calculates_gaps():
     assert result["audit"]["major_credit_gap"] == 8
 
 
+# ---- P4 회귀: 운영 품질화 ----
+
+def test_graduation_action_has_no_mvp_label_in_document_or_audit():
+    """Plan P4 — 문서·audit.note에서 'MVP' 표현 제거됨."""
+    slots = {"total_credits": "100", "major_credits": "50"}
+    result = continue_action("graduation_audit", slots)
+    assert result["status"] == "completed"
+    assert "MVP" not in result["document"], result["document"]
+    assert "MVP" not in result["audit"]["note"]
+    assert "학과사무실" in result["audit"]["note"]
+
+
+def test_graduation_action_passes_policy_chunks_through_to_audit():
+    """policy_chunks 흐름 — chunks 명시 졸업요건이 audit.requirements_source에 반영."""
+    slots = {"total_credits": "100", "major_credits": "50"}
+    chunks = [
+        {
+            "doc_id": "yoram_swdept_2025",
+            "title": "요람 별표5 (소프트웨어학부)",
+            "graduation_requirements": {"total_credits": 136, "major_credits": 66},
+        }
+    ]
+    result = continue_action("graduation_audit", slots, chunks)
+    assert result["status"] == "completed"
+    audit = result["audit"]
+    assert "chunk:yoram_swdept_2025" in audit["requirements_source"], audit["requirements_source"]
+    assert audit["total_credit_gap"] == 36
+    assert audit["major_credit_gap"] == 16
+    assert "yoram_swdept_2025" in result["document"]
+
+
+def test_graduation_action_audit_has_operational_fields():
+    """audit dict에 next_actions_for_plan / confirm_with_department 필드 존재."""
+    slots = {"total_credits": "100", "major_credits": "50"}
+    result = continue_action("graduation_audit", slots)
+    audit = result["audit"]
+    assert isinstance(audit.get("next_actions_for_plan"), list)
+    assert len(audit["next_actions_for_plan"]) >= 1
+    assert isinstance(audit.get("confirm_with_department"), list)
+    assert len(audit["confirm_with_department"]) >= 1
+
+
+def test_course_planner_action_output_ends_with_final_confirmation():
+    """recommend_course_plan 출력에 §15.4 최종 확인 항목 포함."""
+    slots = {
+        "total_credit_gap": "10",
+        "major_credit_gap": "5",
+        "interests_optional": "데이터",
+    }
+    result = continue_action("recommend_course_plan", slots)
+    assert result["status"] == "completed"
+    text = "\n".join(result["checklist"])
+    assert "최종 졸업요건 충족 여부는" in text
+    assert "학과사무실" in text or "교무팀" in text
+
+
 def test_student_id_action_drafts_checklist():
     slots = {"card_type": "모바일학생증", "student_status_optional": "재학생"}
     result = continue_action("student_id_issue_guide", slots)

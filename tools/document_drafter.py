@@ -139,7 +139,8 @@ ACTION_SCHEMAS: dict[str, dict] = {
     "graduation_audit": {
         "label": "졸업요건 간이 진단",
         "issue_type": "graduation",
-        "required_slots": ["total_credits", "major_credits", "target_total_credits_optional", "target_major_credits_optional"],
+        # P4: target_*_optional은 이름대로 진짜 optional로 분리 — 비어있으면 policy_chunks 또는 default 130/60 사용.
+        "required_slots": ["total_credits", "major_credits"],
         "questions": {
             "total_credits": "현재 총 이수학점을 숫자로 적어주세요. 개인 성적표 원본은 입력하지 마세요.",
             "major_credits": "현재 전공 이수학점을 숫자로 적어주세요.",
@@ -223,7 +224,7 @@ def draft_action_document(action_id: str, slots: dict, policy_chunks: list[dict]
     if action_id == "military_service_checklist":
         return _military_service_checklist(slots)
     if action_id == "graduation_audit":
-        return _graduation_audit(slots)
+        return _graduation_audit(slots, policy_chunks)
     if action_id == "recommend_course_plan":
         return _course_plan(slots)
     if action_id == "draft_contact_message":
@@ -448,22 +449,36 @@ def _military_service_checklist(slots: dict) -> dict:
     return {"document": document, "checklist": checklist}
 
 
-def _graduation_audit(slots: dict) -> dict:
-    requirements = {
-        "total_credits": _to_int(slots.get("target_total_credits_optional"), 130),
-        "major_credits": _to_int(slots.get("target_major_credits_optional"), 60),
-    }
+def _graduation_audit(slots: dict, policy_chunks: list[dict] | None = None) -> dict:
+    # 사용자가 명시한 기준만 dict로 전달; 없으면 None → policy_chunks 또는 default 적용 (audit 내부).
+    user_total = slots.get("target_total_credits_optional")
+    user_major = slots.get("target_major_credits_optional")
+    requirements: dict | None = None
+    if user_total or user_major:
+        requirements = {
+            "total_credits": _to_int(user_total, 130),
+            "major_credits": _to_int(user_major, 60),
+        }
     result = audit_graduation_requirements(
         {"total_credits": _to_int(slots.get("total_credits")), "major_credits": _to_int(slots.get("major_credits"))},
         requirements=requirements,
+        chunks=policy_chunks,
     )
     checklist = [
         f"총 졸업학점 부족분: {result['total_credit_gap']}학점",
         f"전공 졸업학점 부족분: {result['major_credit_gap']}학점",
-        "요람과 학과별 교육과정에서 필수과목/교양영역 충족 여부를 별도로 확인합니다.",
-        "최종 판정은 소속 학과사무실 또는 교무팀에 확인합니다.",
+        *result.get("next_actions_for_plan", []),
+        *result.get("confirm_with_department", []),
     ]
-    return {"document": "[졸업요건 간이 진단]\n" + "\n".join(f"- {item}" for item in checklist), "checklist": checklist, "audit": result}
+    doc_lines = [
+        "[졸업요건 간이 진단]",
+        f"기준 출처: {result.get('requirements_source', '?')}",
+        "",
+        *(f"- {item}" for item in checklist),
+        "",
+        f"주의: {result.get('note', '')}",
+    ]
+    return {"document": "\n".join(doc_lines), "checklist": checklist, "audit": result}
 
 
 def _course_plan(slots: dict) -> dict:

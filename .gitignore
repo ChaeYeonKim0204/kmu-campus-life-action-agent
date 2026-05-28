@@ -14,6 +14,7 @@ __pycache__/
 data/vector/
 data/graduation/chroma/
 data/graduation/index_stats.json
+data/state/llm_usage.jsonl
 test/chroma_db/
 test/*.pdf
 test/index_stats.json

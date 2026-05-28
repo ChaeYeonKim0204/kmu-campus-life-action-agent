@@ -10,10 +10,46 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 
 FALSE_VALUES = {"", "0", "false", "no", "off"}
+
+USAGE_LOG_PATH = Path("data/state/llm_usage.jsonl")
+
+# 모델별 토큰 단가 (USD / token). 출처: OpenAI 공시(2026-01). 미등록 모델은 0 처리.
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    "gpt-5-mini": {"input": 0.25e-6, "output": 2.0e-6},
+    "gpt-4o-mini": {"input": 0.15e-6, "output": 0.6e-6},
+    "gpt-4o": {"input": 2.5e-6, "output": 10.0e-6},
+}
+
+
+def _extract_usage(response: Any, model: str) -> dict[str, Any]:
+    """Pull token counts + cost estimate from a Responses API response.
+
+    Tolerates fake/missing usage fields (test fakes don't include them) — zero-fill.
+    """
+    usage_obj = getattr(response, "usage", None)
+    if usage_obj is None:
+        return {"input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0, "cost_usd_est": 0.0}
+    input_t = int(getattr(usage_obj, "input_tokens", 0) or 0)
+    output_t = int(getattr(usage_obj, "output_tokens", 0) or 0)
+    reasoning_t = 0
+    details = getattr(usage_obj, "output_tokens_details", None)
+    if details is not None:
+        reasoning_t = int(getattr(details, "reasoning_tokens", 0) or 0)
+    pricing = MODEL_PRICING.get(model, {"input": 0.0, "output": 0.0})
+    cost = input_t * pricing["input"] + output_t * pricing["output"]
+    return {
+        "input_tokens": input_t,
+        "output_tokens": output_t,
+        "reasoning_tokens": reasoning_t,
+        "cost_usd_est": round(cost, 6),
+    }
 
 
 class GuardedLLMClient:
@@ -87,22 +123,32 @@ class GuardedLLMClient:
             f"학생 맥락: {_safe_context(student_context)}\n"
             f"질문: {question}"
         )
+        start = time.perf_counter()
         try:
-            data = self._json_response(
+            data, usage = self._json_response(
                 system="You expand Korean university RAG search queries without adding factual advice.",
                 user=prompt,
                 schema_name="search_query_expansion",
                 schema=schema,
                 max_output_tokens=400,
             )
-        except Exception as exc:  # pragma: no cover - network/SDK failure fallback
+        except Exception as exc:
             self.error = str(exc)
+            self._record_usage(
+                "expand", {}, used=False, error=self.error, rejected_reason=None,
+                latency_ms=int((time.perf_counter() - start) * 1000),
+            )
             return {**fallback, "error": self.error}
 
         expanded_query = _compact_space(str(data.get("expanded_query") or question))
         keywords = [str(item).strip() for item in data.get("keywords", []) if str(item).strip()]
         if not expanded_query:
             expanded_query = question
+        self._record_usage(
+            "expand", usage, used=True, error=None, rejected_reason=None,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            extras={"keywords_n": len(keywords)},
+        )
         return {
             "used": True,
             "expanded_query": expanded_query,
@@ -141,20 +187,33 @@ class GuardedLLMClient:
             f"질문: {question}\n\n"
             f"후보:\n{_chunk_prompt(chunks)}"
         )
+        input_ids_n = len(chunk_by_id)
+        start = time.perf_counter()
         try:
-            data = self._json_response(
+            data, usage = self._json_response(
                 system="You rerank retrieved Korean university source chunks. Return IDs only.",
                 user=prompt,
                 schema_name="chunk_rerank",
                 schema=schema,
                 max_output_tokens=400,
             )
-        except Exception as exc:  # pragma: no cover - network/SDK failure fallback
+        except Exception as exc:
             self.error = str(exc)
+            self._record_usage(
+                "rerank", {}, used=False, error=self.error, rejected_reason=None,
+                latency_ms=int((time.perf_counter() - start) * 1000),
+                extras={"input_chunk_ids_n": input_ids_n, "selected_chunk_ids_n": 0},
+            )
             return chunks, {**metadata, "error": self.error}
 
         selected_ids = [chunk_id for chunk_id in data.get("selected_chunk_ids", []) if chunk_id in chunk_by_id]
+        latency_ms = int((time.perf_counter() - start) * 1000)
         if not selected_ids:
+            self._record_usage(
+                "rerank", usage, used=False, error=None, rejected_reason=None,
+                latency_ms=latency_ms,
+                extras={"input_chunk_ids_n": input_ids_n, "selected_chunk_ids_n": 0},
+            )
             return chunks, metadata
 
         selected = [chunk_by_id[chunk_id] for chunk_id in selected_ids]
@@ -163,6 +222,11 @@ class GuardedLLMClient:
         reranked = [*selected, *remainder]
         if limit is not None:
             reranked = reranked[:limit]
+        self._record_usage(
+            "rerank", usage, used=True, error=None, rejected_reason=None,
+            latency_ms=latency_ms,
+            extras={"input_chunk_ids_n": input_ids_n, "selected_chunk_ids_n": len(selected_ids)},
+        )
         return reranked, {"used": True, "selected_chunk_ids": selected_ids, "error": None}
 
     def polish_answer(self, answer: str) -> dict[str, Any]:
@@ -199,32 +263,90 @@ class GuardedLLMClient:
             "- 모든 섹션 제목과 목록 구조를 유지하라.\n"
             "- 모든 citation marker([S1], [S2] 등)를 정확히 보존하라.\n"
             "- [근거] 블록은 제공하지 않았으므로 만들지 마라.\n"
-            "- 개인정보나 로그인 정보 입력을 요구하지 마라.\n\n"
+            "- 개인정보나 로그인 정보 입력을 요구하지 마라.\n"
+            "- 다음 표현은 절대 사용 금지: '승인됩니다' / '확정됩니다' / '반드시 처리됩니다' /"
+            " '학번을 알려주세요' / '비밀번호를 입력하세요' / '연락처를 알려주세요' /"
+            " '제가 포털에서 확인했습니다'.\n"
+            "- 다음 톤을 권장 (의미 변경 없이 어조만): '공식 근거에서 확인되는 내용은' /"
+            " '개인 신청 상태는 ON국민 포털에서 직접 확인해야' /"
+            " '문의 전에는 아래 정보를 개인정보 없이 정리해 주세요' /"
+            " '최종 처리는 담당 부서 확인이 필요합니다'.\n"
+            "- [주의] 섹션의 최신성/네트워크 확인 관련 문구는 자연스럽게 표현만 다듬되,"
+            " 라이브 확인 결과의 의미·정확도는 변경하지 마라.\n\n"
             f"본문:\n{body}"
         )
+        start = time.perf_counter()
         try:
-            data = self._json_response(
+            data, usage = self._json_response(
                 system="You polish grounded Korean RAG answers without adding facts or changing citations.",
                 user=prompt,
                 schema_name="answer_polish",
                 schema=schema,
                 max_output_tokens=1500,
             )
-        except Exception as exc:  # pragma: no cover - network/SDK failure fallback
+        except Exception as exc:
             self.error = str(exc)
+            self._record_usage(
+                "polish", {}, used=False, error=self.error, rejected_reason=None,
+                latency_ms=int((time.perf_counter() - start) * 1000),
+            )
             return {**fallback, "error": self.error}
 
         polished_body = str(data.get("polished_body") or "").strip()
         rejection = _polish_rejection_reason(body, polished_body, original_markers, original_headers)
+        latency_ms = int((time.perf_counter() - start) * 1000)
         if rejection:
+            self._record_usage(
+                "polish", usage, used=False, error=None, rejected_reason=rejection,
+                latency_ms=latency_ms,
+                extras={"polished_body_len": len(polished_body)},
+            )
             return {**fallback, "rejected_reason": rejection}
 
+        self._record_usage(
+            "polish", usage, used=True, error=None, rejected_reason=None,
+            latency_ms=latency_ms,
+            extras={"polished_body_len": len(polished_body)},
+        )
         return {
             "used": True,
             "answer": f"{polished_body}{split_marker}{sources}",
             "error": None,
             "rejected_reason": None,
         }
+
+    def _record_usage(
+        self,
+        node: str,
+        usage: dict[str, Any],
+        *,
+        used: bool,
+        error: str | None,
+        rejected_reason: str | None,
+        latency_ms: int,
+        extras: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a single-line usage record. Raw text never persisted; write failure silent."""
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "node": node,
+            "model": self.model,
+            "input_tokens": int(usage.get("input_tokens", 0)),
+            "output_tokens": int(usage.get("output_tokens", 0)),
+            "reasoning_tokens": int(usage.get("reasoning_tokens", 0)),
+            "cost_usd_est": float(usage.get("cost_usd_est", 0.0)),
+            "used": bool(used),
+            "error": error,
+            "rejected_reason": rejected_reason,
+            "latency_ms": int(latency_ms),
+            "extras": extras or {},
+        }
+        try:
+            USAGE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with USAGE_LOG_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception:  # pragma: no cover - silent: operational log must not crash the API
+            pass
 
     def _json_response(
         self,
@@ -234,7 +356,7 @@ class GuardedLLMClient:
         schema: dict[str, Any],
         *,
         max_output_tokens: int,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = self._get_client()
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -272,7 +394,7 @@ class GuardedLLMClient:
         output_text = getattr(response, "output_text", "") or _extract_output_text(response)
         if not output_text:
             raise ValueError("empty_openai_response")
-        return json.loads(output_text)
+        return json.loads(output_text), _extract_usage(response, self.model)
 
     def _get_client(self):
         if self._client is not None:

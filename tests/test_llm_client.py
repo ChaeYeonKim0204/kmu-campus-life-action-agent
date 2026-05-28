@@ -188,3 +188,115 @@ def test_supports_temperature_flag_cached_after_rejection():
     assert "temperature" in fake.responses.calls[0]
     assert "temperature" not in fake.responses.calls[1]
     assert "temperature" not in fake.responses.calls[2]
+
+
+# ---- P1 회귀: usage 로그 ----
+
+class FakeResponsesUnconditionalFail:
+    """Simulate an API error unrelated to temperature so the gard does not retry."""
+
+    def __init__(self):
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        raise RuntimeError("502 Bad Gateway: upstream timed out")
+
+
+class FakeOpenAIClientUnconditionalFail:
+    def __init__(self):
+        self.responses = FakeResponsesUnconditionalFail()
+
+
+def test_usage_log_never_contains_raw_question_or_chunk_text(usage_log_path):
+    """raw 절대 미저장: question 본문·chunk text·answer body가 로그에 들어가면 안 됨."""
+    raw_question = "학번 2025XXXXXX 입니다 이캠 강의가 안 떠요"  # 민감값 + 질문 본문
+    raw_chunk_text = "공식안내본문_DO_NOT_LOG"
+    fake = FakeOpenAIClient(
+        {
+            "expanded_query": "이캠 강의 안 뜸",
+            "keywords": ["이캠", "강의"],
+        }
+    )
+    client = GuardedLLMClient(enabled=True, client=fake)
+
+    client.expand_search_query(raw_question, "portal_access", {"status": "enrolled"})
+
+    chunks = [{"chunk_id": "c1", "title": "t", "text": raw_chunk_text}]
+    fake2 = FakeOpenAIClient({"selected_chunk_ids": ["c1"]})
+    client2 = GuardedLLMClient(enabled=True, client=fake2)
+    client2.rerank_chunks(raw_question, "portal_access", chunks)
+
+    log_content = usage_log_path.read_text(encoding="utf-8")
+    assert raw_question not in log_content, "raw question 본문이 로그에 유출됨"
+    assert "2025XXXXXX" not in log_content, "raw 학번 값이 로그에 유출됨"
+    assert raw_chunk_text not in log_content, "raw chunk text가 로그에 유출됨"
+
+
+def test_usage_log_records_when_used_false_on_api_failure(usage_log_path):
+    """used=False (API 실패) 케이스도 1줄 기록 — 운영 메트릭에서 실패율 보이게."""
+    fake = FakeOpenAIClientUnconditionalFail()
+    client = GuardedLLMClient(enabled=True, client=fake)
+
+    result = client.expand_search_query("test", "attendance")
+
+    assert result["used"] is False
+    assert result["error"] is not None
+    assert usage_log_path.exists()
+    lines = [line for line in usage_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["node"] == "expand"
+    assert record["used"] is False
+    assert record["error"] is not None
+    assert record["model"]  # 모델명 채워짐
+
+
+def test_polish_prompt_includes_readme_section_11_2_phrases():
+    """README §11.2 권장 표현 + 금지 표현 + [주의] 톤 지시가 polish 프롬프트에 들어가있음."""
+    answer = "[답변 요약]\n안내합니다.[S1]\n\n[근거]\n- [S1] src / url / x"
+    fake = FakeOpenAIClient({"polished_body": "[답변 요약]\n안내드립니다.[S1]"})
+    client = GuardedLLMClient(enabled=True, client=fake)
+    client.polish_enabled = True
+
+    client.polish_answer(answer)
+
+    user_input = next(
+        item["content"]
+        for item in fake.responses.calls[0]["input"]
+        if item["role"] == "user"
+    )
+    # 권장 표현 (README §11.2)
+    assert "공식 근거에서 확인되는 내용은" in user_input
+    assert "ON국민 포털에서 직접 확인" in user_input
+    # 금지 표현
+    assert "승인됩니다" in user_input
+    assert "비밀번호를 입력하세요" in user_input
+    assert "제가 포털에서 확인했습니다" in user_input
+    # live_check 톤 보존 지시
+    assert "[주의]" in user_input
+
+
+def test_rerank_selected_chunk_ids_are_subset_of_input(usage_log_path):
+    """rerank source contract: selected_chunk_ids ⊆ 입력 chunk_ids (사실 추가 방지)."""
+    # 모델이 invalid ID('xx99')를 섞어서 반환해도 클라이언트가 입력 set 안에서만 골라야 함
+    fake = FakeOpenAIClient({"selected_chunk_ids": ["c2", "xx99", "c1"]})
+    client = GuardedLLMClient(enabled=True, client=fake)
+    chunks = [
+        {"chunk_id": "c1", "title": "A", "text": "첫 번째"},
+        {"chunk_id": "c2", "title": "B", "text": "두 번째"},
+        {"chunk_id": "c3", "title": "C", "text": "세 번째"},
+    ]
+    input_ids = {chunk["chunk_id"] for chunk in chunks}
+
+    _, metadata = client.rerank_chunks("질문", "attendance", chunks)
+
+    assert set(metadata["selected_chunk_ids"]).issubset(input_ids)
+    assert "xx99" not in metadata["selected_chunk_ids"]
+    # usage 로그에 input/selected 카운트 기록 확인
+    lines = [line for line in usage_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["node"] == "rerank"
+    assert record["extras"]["input_chunk_ids_n"] == 3
+    assert record["extras"]["selected_chunk_ids_n"] == 2  # c1, c2 (xx99 제외)

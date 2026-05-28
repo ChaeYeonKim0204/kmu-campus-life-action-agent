@@ -13,10 +13,12 @@ __pycache__/
 # Generated indexes and local databases
 data/vector/
 data/graduation/chroma/
+data/graduation/index_stats.json
 test/chroma_db/
 test/*.pdf
 test/index_stats.json
 *.sqlite3
+*Zone.Identifier*
 
 # Frontend build artifacts
 frontend/dist/

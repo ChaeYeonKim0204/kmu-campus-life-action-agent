@@ -1,0 +1,23 @@
+{
+  "action_id": "draft_attendance_recognition_form",
+  "label": "출석인정신청서 초안 작성",
+  "issue_type": "attendance",
+  "required_slots": [
+    "event_date",
+    "absence_reason",
+    "course_name",
+    "instructor_name_optional",
+    "evidence_document_type",
+    "planned_submission_date"
+  ],
+  "privacy_blocklist": [
+    "student_id",
+    "resident_number",
+    "portal_id",
+    "portal_password",
+    "phone",
+    "real_name",
+    "grade_report"
+  ]
+}
+

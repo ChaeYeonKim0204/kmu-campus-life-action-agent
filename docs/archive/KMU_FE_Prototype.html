@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>국민대 캠퍼스 도우미 — UI 프로토타입</title>
+<style>
+  :root {
+    --blue-600: #2563eb; --blue-700: #1d4ed8; --blue-50: #eff6ff; --blue-100: #dbeafe;
+    --gray-50: #f9fafb; --gray-100: #f3f4f6; --gray-200: #e5e7eb; --gray-300: #d1d5db;
+    --gray-400: #9ca3af; --gray-500: #6b7280; --gray-600: #4b5563; --gray-700: #374151;
+    --gray-800: #1f2937; --gray-900: #111827;
+    --green-50: #f0fdf4; --green-100: #dcfce7; --green-600: #16a34a; --green-700: #15803d;
+    --red-50: #fef2f2; --red-100: #fee2e2; --red-600: #dc2626; --red-700: #b91c1c;
+    --yellow-50: #fefce8; --yellow-100: #fef9c3; --yellow-600: #ca8a04;
+    --purple-50: #faf5ff; --purple-100: #f3e8ff; --purple-600: #9333ea;
+    --font: 'Pretendard', 'Noto Sans KR', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--gray-100); color: var(--gray-800); min-height: 100vh; }
+
+  /* ── Nav ── */
+  .nav { background: white; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; gap: 0; }
+  .nav-brand { font-size: 16px; font-weight: 700; color: var(--blue-600); display: flex; align-items: center; gap: 8px; margin-right: 32px; white-space: nowrap; }
+  .nav-brand span { font-size: 20px; }
+  .nav-tabs { display: flex; gap: 0; }
+  .nav-tab { padding: 0 16px; height: 56px; display: flex; align-items: center; font-size: 14px; font-weight: 500; color: var(--gray-500); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; white-space: nowrap; }
+  .nav-tab:hover { color: var(--blue-600); }
+  .nav-tab.active { color: var(--blue-600); border-bottom-color: var(--blue-600); }
+
+  /* ── Screen ── */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ── Chat Layout ── */
+  .chat-layout { max-width: 840px; margin: 0 auto; padding: 24px 16px 80px; display: flex; flex-direction: column; gap: 16px; }
+  .student-accordion { background: white; border: 1px solid var(--gray-200); border-radius: 12px; overflow: hidden; }
+  .accordion-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 600; color: var(--gray-700); }
+  .accordion-header:hover { background: var(--gray-50); }
+  .accordion-arrow { transition: transform .2s; color: var(--gray-400); font-size: 12px; }
+  .accordion-arrow.open { transform: rotate(180deg); }
+  .accordion-body { display: none; border-top: 1px solid var(--gray-100); padding: 16px; }
+  .accordion-body.open { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-group { display: flex; flex-direction: column; gap: 6px; }
+  .field-label { font-size: 12px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: .05em; }
+  .field-select { padding: 8px 10px; border: 1px solid var(--gray-200); border-radius: 8px; font-size: 13px; color: var(--gray-700); background: var(--gray-50); cursor: pointer; }
+  .field-select:focus { outline: none; border-color: var(--blue-600); background: white; }
+
+  /* chips */
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 8px 14px; border: 1px solid var(--gray-200); border-radius: 999px; font-size: 13px; color: var(--gray-600); background: white; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .chip:hover { border-color: var(--blue-600); color: var(--blue-600); background: var(--blue-50); }
+
+  /* input bar */
+  .input-bar { background: white; border: 1.5px solid var(--gray-200); border-radius: 16px; display: flex; align-items: flex-end; padding: 10px 12px; gap: 8px; transition: border-color .15s; }
+  .input-bar:focus-within { border-color: var(--blue-600); }
+  .input-bar textarea { flex: 1; border: none; outline: none; resize: none; font-family: var(--font); font-size: 14px; line-height: 1.5; color: var(--gray-800); background: transparent; min-height: 24px; max-height: 120px; }
+  .send-btn { width: 36px; height: 36px; background: var(--blue-600); border: none; border-radius: 10px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; flex-shrink: 0; font-size: 16px; }
+  .send-btn:hover { background: var(--blue-700); }
+  .send-btn:disabled { background: var(--gray-200); cursor: not-allowed; }
+
+  /* messages */
+  .messages { display: flex; flex-direction: column; gap: 20px; }
+  .msg-user { align-self: flex-end; background: var(--blue-600); color: white; padding: 12px 16px; border-radius: 16px 16px 4px 16px; font-size: 14px; max-width: 80%; line-height: 1.5; }
+  .msg-bot { align-self: flex-start; max-width: 100%; width: 100%; }
+
+  /* loading */
+  .loading-steps { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: white; border: 1px solid var(--gray-200); border-radius: 12px; }
+  .step { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--gray-400); }
+  .step.done { color: var(--green-600); }
+  .step.active { color: var(--gray-700); font-weight: 500; }
+  .step-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .step.done .step-icon { background: var(--green-100); color: var(--green-600); }
+  .step.active .step-icon { background: var(--blue-100); }
+  .step.inactive .step-icon { background: var(--gray-100); }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--blue-200); border-top-color: var(--blue-600); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* answer cards */
+  .answer-cards { display: flex; flex-direction: column; gap: 10px; }
+  .card { background: white; border: 1px solid var(--gray-200); border-radius: 12px; overflow: hidden; }
+  .card-header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; cursor: pointer; user-select: none; }
+  .card-header:hover { background: var(--gray-50); }
+  .card-icon { font-size: 16px; }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--gray-700); flex: 1; }
+  .card-arrow { color: var(--gray-400); font-size: 12px; transition: transform .2s; }
+  .card-arrow.open { transform: rotate(180deg); }
+  .card-body { border-top: 1px solid var(--gray-100); padding: 14px 16px; display: none; }
+  .card-body.open { display: block; }
+  .card-body p { font-size: 13px; line-height: 1.7; color: var(--gray-600); }
+  .card-body ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .card-body li { font-size: 13px; color: var(--gray-600); padding-left: 16px; position: relative; }
+  .card-body li::before { content: "·"; position: absolute; left: 4px; color: var(--blue-600); font-weight: 700; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge-blue { background: var(--blue-100); color: var(--blue-700); }
+  .badge-green { background: var(--green-100); color: var(--green-700); }
+  .badge-red { background: var(--red-100); color: var(--red-700); }
+  .badge-yellow { background: var(--yellow-100); color: var(--yellow-600); }
+  .source-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: var(--gray-100); border-radius: 4px; font-size: 11px; color: var(--gray-500); margin: 2px; }
+  .contact-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--gray-100); }
+  .contact-row:last-child { border-bottom: none; }
+  .contact-name { font-size: 13px; font-weight: 600; color: var(--gray-700); }
+  .contact-phone { font-size: 12px; color: var(--blue-600); font-weight: 500; }
+  .step-task { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--gray-100); }
+  .step-task:last-child { border-bottom: none; }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--blue-600); color: white; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-text { font-size: 13px; color: var(--gray-600); line-height: 1.5; }
+
+  /* ── Error Screen ── */
+  .error-layout { max-width: 840px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; }
+  .error-card { background: white; border-radius: 12px; border: 1px solid var(--gray-200); overflow: hidden; }
+  .error-card-header { padding: 14px 16px; font-size: 14px; font-weight: 700; border-bottom: 1px solid var(--gray-100); display: flex; align-items: center; gap: 8px; }
+  .error-card-body { padding: 16px; }
+  .error-banner { border-radius: 10px; padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px; }
+  .error-banner-icon { font-size: 20px; margin-top: 1px; }
+  .error-banner-text { flex: 1; }
+  .error-banner-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .error-banner-desc { font-size: 13px; line-height: 1.6; }
+  .error-privacy { background: var(--red-50); border: 1px solid var(--red-100); }
+  .error-privacy .error-banner-title { color: var(--red-700); }
+  .error-privacy .error-banner-desc { color: var(--red-600); }
+  .error-nosource { background: var(--yellow-50); border: 1px solid var(--yellow-100); }
+  .error-nosource .error-banner-title { color: var(--yellow-600); }
+  .error-nosource .error-banner-desc { color: var(--gray-600); }
+  .error-server { background: var(--gray-50); border: 1px solid var(--gray-200); }
+  .error-server .error-banner-title { color: var(--gray-700); }
+  .error-server .error-banner-desc { color: var(--gray-500); }
+
+  /* ── Action Screen ── */
+  .action-layout { max-width: 840px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; }
+  .action-type-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .action-type-btn { padding: 10px 18px; border: 1.5px solid var(--gray-200); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; background: white; color: var(--gray-600); transition: all .15s; }
+  .action-type-btn:hover, .action-type-btn.selected { border-color: var(--blue-600); color: var(--blue-600); background: var(--blue-50); }
+  .slot-form { background: white; border: 1px solid var(--gray-200); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .slot-field { display: flex; flex-direction: column; gap: 6px; }
+  .slot-label { font-size: 13px; font-weight: 600; color: var(--gray-700); }
+  .slot-input { padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: 8px; font-size: 13px; color: var(--gray-800); font-family: var(--font); }
+  .slot-input:focus { outline: none; border-color: var(--blue-600); }
+  .primary-btn { padding: 12px 24px; background: var(--blue-600); color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .15s; }
+  .primary-btn:hover { background: var(--blue-700); }
+  .draft-card { background: white; border: 1px solid var(--gray-200); border-radius: 12px; overflow: hidden; }
+  .draft-card-header { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--gray-100); }
+  .draft-card-title { font-size: 14px; font-weight: 700; color: var(--gray-700); }
+  .copy-btn { padding: 6px 12px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 12px; color: var(--gray-500); cursor: pointer; background: white; transition: all .15s; }
+  .copy-btn:hover { border-color: var(--blue-600); color: var(--blue-600); }
+  .draft-body { padding: 16px; }
+  .draft-pre { font-family: var(--font); font-size: 13px; line-height: 1.8; color: var(--gray-700); white-space: pre-wrap; }
+  .disclaimer { background: var(--yellow-50); border: 1px solid var(--yellow-100); border-radius: 10px; padding: 12px 14px; font-size: 12px; color: var(--yellow-600); line-height: 1.6; }
+
+  /* ── Admin Screen ── */
+  .admin-layout { max-width: 960px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 20px; }
+  .admin-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stat-card { background: white; border: 1px solid var(--gray-200); border-radius: 12px; padding: 16px; }
+  .stat-label { font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+  .stat-value { font-size: 28px; font-weight: 700; color: var(--gray-800); }
+  .stat-sub { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+  .admin-section { background: white; border: 1px solid var(--gray-200); border-radius: 12px; overflow: hidden; }
+  .admin-section-header { padding: 14px 16px; font-size: 14px; font-weight: 700; color: var(--gray-700); border-bottom: 1px solid var(--gray-100); display: flex; align-items: center; gap: 8px; }
+  .admin-section-body { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .admin-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--gray-100); font-size: 13px; }
+  .admin-row:last-child { border-bottom: none; }
+  .admin-row-label { color: var(--gray-600); font-weight: 500; }
+  .admin-row-value { color: var(--gray-800); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-green { background: #22c55e; }
+  .dot-red { background: #ef4444; }
+  .dot-gray { background: var(--gray-300); }
+  .danger-btn { padding: 8px 16px; border: 1px solid var(--red-200); background: var(--red-50); color: var(--red-600); border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .danger-btn:hover { background: var(--red-100); }
+  .action-btn-sm { padding: 8px 16px; border: 1px solid var(--blue-200); background: var(--blue-50); color: var(--blue-600); border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .action-btn-sm:hover { background: var(--blue-100); }
+  .admin-notice { background: var(--yellow-50); border: 1px solid var(--yellow-100); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--yellow-600); }
+  .section-title { font-size: 15px; font-weight: 700; color: var(--gray-800); }
+
+  /* scrollable area placeholder */
+  .scroll-hint { text-align: center; padding: 20px; font-size: 12px; color: var(--gray-400); }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand"><span>🎓</span> 국민대 캠퍼스 도우미</div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showScreen('chat')">💬 채팅 화면</div>
+    <div class="nav-tab" onclick="showScreen('action')">📝 신청서 작성</div>
+    <div class="nav-tab" onclick="showScreen('errors')">⚠️ 에러 상태</div>
+    <div class="nav-tab" onclick="showScreen('admin')">⚙️ 관리자</div>
+  </div>
+</nav>
+
+<!-- ════════════════════════════════════════
+     SCREEN 1: CHAT
+════════════════════════════════════════ -->
+<div id="screen-chat" class="screen active">
+<div class="chat-layout">
+
+  <!-- Student Context Accordion -->
+  <div class="student-accordion">
+    <div class="accordion-header" onclick="toggleAccordion()">
+      <span>🎒 학생 상태 설정 <span style="font-size:12px;font-weight:400;color:var(--gray-400)">(선택)</span></span>
+      <span class="accordion-arrow" id="accordion-arrow">▼</span>
+    </div>
+    <div class="accordion-body" id="accordion-body">
+      <div class="field-group">
+        <div class="field-label">학적 상태</div>
+        <select class="field-select">
+          <option>재학생</option>
+          <option>휴학 중</option>
+          <option>복학 예정</option>
+          <option>졸업 예정</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <div class="field-label">학년</div>
+        <select class="field-select">
+          <option>1학년</option>
+          <option>2학년</option>
+          <option>3학년</option>
+          <option>4학년</option>
+          <option>5학년+</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <div class="field-label">전형</div>
+        <select class="field-select">
+          <option>일반학생</option>
+          <option>국가보훈대상</option>
+          <option>외국인 유학생</option>
+          <option>편입학생</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <div class="field-label">군 관련</div>
+        <select class="field-select">
+          <option>해당 없음</option>
+          <option>현역 복무 중</option>
+          <option>예비군 대상</option>
+          <option>사회복무요원</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Example Chips -->
+  <div class="chip-row" id="chip-row">
+    <div class="chip" onclick="askChip(this)">📚 수강신청 꽉 찼을 때 어떻게 해요?</div>
+    <div class="chip" onclick="askChip(this)">🪖 예비군 때문에 출석인정 받으려면?</div>
+    <div class="chip" onclick="askChip(this)">✈️ 일반 휴학 신청 방법이 뭔가요?</div>
+    <div class="chip" onclick="askChip(this)">💰 국가장학금 신청은 어디서 해요?</div>
+    <div class="chip" onclick="askChip(this)">📄 재학증명서 어떻게 발급하나요?</div>
+    <div class="chip" onclick="askChip(this)">🎓 졸업요건 어디서 확인하나요?</div>
+  </div>
+
+  <!-- Messages Area -->
+  <div class="messages" id="messages"></div>
+
+  <!-- Input Bar -->
+  <div class="input-bar">
+    <textarea id="query-input" placeholder="궁금한 내용을 입력하세요…" rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendQuestion();}"
+      oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="send-btn" onclick="sendQuestion()">↑</button>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     SCREEN 2: ACTION / DOCUMENT DRAFTING
+════════════════════════════════════════ -->
+<div id="screen-action" class="screen">
+<div class="action-layout">
+
+  <div class="section-title">📝 신청서 초안 작성</div>
+  <p style="font-size:13px;color:var(--gray-500);margin-top:-8px;">작성하실 신청서 유형을 선택하면 필요한 정보를 안내해드립니다.</p>
+
+  <div class="action-type-row">
+    <button class="action-type-btn selected" onclick="selectAction(this,'attendance')">출석인정신청</button>
+    <button class="action-type-btn" onclick="selectAction(this,'leave')">휴학신청 체크리스트</button>
+    <button class="action-type-btn" onclick="selectAction(this,'inquiry')">문의 이메일 초안</button>
+    <button class="action-type-btn" onclick="selectAction(this,'graduation')">졸업요건 자가점검</button>
+  </div>
+
+  <div class="slot-form" id="slot-form">
+    <div class="slot-field">
+      <label class="slot-label">훈련 유형</label>
+      <select class="slot-input">
+        <option>예비군 훈련</option>
+        <option>사회복무요원 복무</option>
+        <option>공익 근무</option>
+      </select>
+    </div>
+    <div class="slot-field">
+      <label class="slot-label">훈련 날짜 (예: 2026-05-22)</label>
+      <input class="slot-input" type="text" placeholder="YYYY-MM-DD" value="2026-05-22" />
+    </div>
+    <div class="slot-field">
+      <label class="slot-label">담당 교과목명</label>
+      <input class="slot-input" type="text" placeholder="예: 데이터베이스 설계" value="데이터베이스 설계" />
+    </div>
+    <div class="slot-field">
+      <label class="slot-label">담당 교강사명</label>
+      <input class="slot-input" type="text" placeholder="예: 홍길동 교수님" value="김민준 교수님" />
+    </div>
+    <button class="primary-btn" onclick="generateDraft()">초안 생성하기 →</button>
+  </div>
+
+  <div class="draft-card" id="draft-card" style="display:none;">
+    <div class="draft-card-header">
+      <div class="draft-card-title">📄 출석인정신청서 초안</div>
+      <button class="copy-btn" onclick="copyDraft()">📋 복사</button>
+    </div>
+    <div class="draft-body">
+      <pre class="draft-pre" id="draft-content">
+출석인정신청서
+
+소속 학과: ___________________
+학번: ___________________
+성명: ___________________
+연락처: ___________________
+
+신청 구분: ☑ 예비군훈련  □ 동원훈련  □ 기타 공적 사유
+
+훈련 일시: 2026년 05월 22일
+
+교과목명: 데이터베이스 설계
+담당 교강사: 김민준 교수님
+
+신청 사유:
+위 기간 예비군 훈련 참가로 인하여 상기 교과목 수업에 참석하지 못하였기에,
+국민대학교 학사운영규정 제○조에 따라 출석인정을 신청합니다.
+
+첨부 서류:
+1. 예비군훈련 통지서 사본
+
+제출일: 2026년 __월 __일
+
+신청인 (서명): ___________________
+      </pre>
+    </div>
+    <div style="padding:0 16px 16px;">
+      <div class="disclaimer">⚠️ 이 초안은 공식 양식이 아닙니다. 소속 학과사무실 또는 담당 교강사에게 공식 양식을 확인한 뒤 제출하세요. 개인정보(학번, 연락처 등)는 직접 입력해야 합니다.</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     SCREEN 3: ERROR STATES
+════════════════════════════════════════ -->
+<div id="screen-errors" class="screen">
+<div class="error-layout">
+
+  <div class="section-title">⚠️ 에러 상태 화면</div>
+
+  <!-- Privacy Block -->
+  <div class="error-card">
+    <div class="error-card-header">
+      <span>🔒</span> 개인정보 보호 차단 — <span class="badge badge-red">privacy_blocked</span>
+    </div>
+    <div class="error-card-body">
+      <div class="msg-user" style="margin-bottom:12px;max-width:100%;">내 학번 2022XXXXX이랑 성적표 가지고 장학금 되는지 확인해줘</div>
+      <div class="error-banner error-privacy">
+        <div class="error-banner-icon">🚫</div>
+        <div class="error-banner-text">
+          <div class="error-banner-title">개인정보가 포함된 내용은 처리할 수 없습니다</div>
+          <div class="error-banner-desc">학번, 주민번호, 성적 원본 등 민감 정보는 이 서비스에 입력하지 마세요. 장학금 절차 안내는 개인정보 없이도 도와드릴 수 있습니다.</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <div class="chip" style="display:inline-flex;">💰 장학금 신청 절차 알려줘</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- No Source -->
+  <div class="error-card">
+    <div class="error-card-header">
+      <span>🔍</span> 공식 근거 없음 — <span class="badge badge-yellow">no_source</span>
+    </div>
+    <div class="error-card-body">
+      <div class="msg-user" style="margin-bottom:12px;max-width:100%;">학교 근처 맛있는 식당 추천해줘</div>
+      <div class="error-banner error-nosource">
+        <div class="error-banner-icon">📭</div>
+        <div class="error-banner-text">
+          <div class="error-banner-title">공식 문서 근거가 없는 질문입니다</div>
+          <div class="error-banner-desc">이 서비스는 국민대학교 공식 학사·행정 문서에 기반해 답변드립니다. 식당 추천·동아리 후기·에브리타임 정보는 제공하지 않습니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Server Error -->
+  <div class="error-card">
+    <div class="error-card-header">
+      <span>🔧</span> 서버 오류 — <span class="badge badge-blue" style="background:var(--gray-100);color:var(--gray-500);">server_error</span>
+    </div>
+    <div class="error-card-body">
+      <div class="error-banner error-server">
+        <div class="error-banner-icon">⚙️</div>
+        <div class="error-banner-text">
+          <div class="error-banner-title">일시적인 서버 오류가 발생했습니다</div>
+          <div class="error-banner-desc">잠시 후 다시 시도해 주세요. 문제가 계속되면 학교 포털을 직접 이용해 주세요.</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <button class="action-btn-sm">🔄 다시 시도</button>
+        <button class="action-btn-sm" style="border-color:var(--gray-200);color:var(--gray-500);background:var(--gray-50);">ON국민 포털 →</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     SCREEN 4: ADMIN
+════════════════════════════════════════ -->
+<div id="screen-admin" class="screen">
+<div class="admin-layout">
+
+  <div class="section-title">⚙️ 관리자 대시보드</div>
+
+  <div class="admin-grid">
+    <div class="stat-card">
+      <div class="stat-label">총 청크 수</div>
+      <div class="stat-value">103</div>
+      <div class="stat-sub">chunks.jsonl 기준</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">벡터 인덱스</div>
+      <div class="stat-value" style="font-size:18px;color:var(--red-600);">비활성</div>
+      <div class="stat-sub">키워드 검색으로 대체</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">오늘 쿼리 수</div>
+      <div class="stat-value">47</div>
+      <div class="stat-sub">개인정보 차단 3건 포함</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">마지막 인제스트</div>
+      <div class="stat-value" style="font-size:16px;">2일 전</div>
+      <div class="stat-sub">2026-05-19 14:22</div>
+    </div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-header">🔌 시스템 상태</div>
+    <div class="admin-section-body">
+      <div class="admin-row">
+        <span class="admin-row-label">FastAPI 서버</span>
+        <span class="admin-row-value"><span class="status-dot dot-green"></span> 정상</span>
+      </div>
+      <div class="admin-row">
+        <span class="admin-row-label">ChromaDB 벡터 DB</span>
+        <span class="admin-row-value"><span class="status-dot dot-red"></span> No module named 'chromadb'</span>
+      </div>
+      <div class="admin-row">
+        <span class="admin-row-label">키워드 검색 (JSONL)</span>
+        <span class="admin-row-value"><span class="status-dot dot-green"></span> 정상 (103 청크)</span>
+      </div>
+      <div class="admin-row">
+        <span class="admin-row-label">LLM (Claude API)</span>
+        <span class="admin-row-value"><span class="status-dot dot-gray"></span> 미연결 (신규 구축 시 활성화)</span>
+      </div>
+      <div class="admin-row">
+        <span class="admin-row-label">개인정보 가드</span>
+        <span class="admin-row-value"><span class="status-dot dot-green"></span> 활성 (5개 패턴)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-header">🔄 크롤 / 인제스트</div>
+    <div class="admin-section-body">
+      <div class="admin-notice">⚠️ 인제스트는 5분 쿨다운이 있으며, 실행 중 중복 요청은 차단됩니다.</div>
+      <div class="admin-row">
+        <span class="admin-row-label">쿨다운 잔여 시간</span>
+        <span class="admin-row-value">없음 (실행 가능)</span>
+      </div>
+      <div class="admin-row">
+        <span class="admin-row-label">마지막 네트워크 상태</span>
+        <span class="admin-row-value"><span class="status-dot dot-green"></span> network_success: 8 / fallback: 0</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="action-btn-sm">▶ 인제스트 실행</button>
+        <button class="action-btn-sm">📊 소스 목록 보기</button>
+        <button class="danger-btn">🗑 벡터 인덱스 초기화</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-header">🏷 이슈 타입 분류 현황 (오늘)</div>
+    <div class="admin-section-body">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <span class="badge badge-blue">course_registration 12</span>
+        <span class="badge badge-green">attendance 9</span>
+        <span class="badge badge-blue">scholarship 8</span>
+        <span class="badge badge-blue">leave_return 6</span>
+        <span class="badge badge-blue">certificate 5</span>
+        <span class="badge badge-blue">schedule 3</span>
+        <span class="badge badge-yellow" style="background:var(--red-100);color:var(--red-700);">privacy_blocked 3</span>
+        <span class="badge" style="background:var(--gray-100);color:var(--gray-500);">기타 1</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── Navigation ──
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// ── Accordion ──
+function toggleAccordion() {
+  const body = document.getElementById('accordion-body');
+  const arrow = document.getElementById('accordion-arrow');
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+// ── Auto-resize textarea ──
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ── Mock answers per issue ──
+const MOCK_ANSWERS = {
+  course_registration: {
+    summary: "수강신청/폐강 관련 공식 공지를 확인했습니다. 수강신청 완료 여부는 수강신청시스템 '나의 시간표' 또는 ON국민 포털 '개인수업시간표 조회' 기준으로 확인합니다. [S1]",
+    tasks: ["수강신청시스템 접속 → '나의 시간표' 확인", "정원 초과 시 교수님께 수강 허락 요청 이메일 발송", "수강 변경 기간(2주 차) 이후 재신청 대기", "폐강 과목은 대체 과목 탐색 후 담당 부서 확인"],
+    deadline: "수강 정정 기간: 2026-05-25 ~ 2026-05-29 (오늘 기준 4일 후 시작)",
+    docs: ["학생증 또는 본인 확인 서류", "수강 희망 사유서 (교수님 요청 시)"],
+    paths: ["수강신청시스템 → 개인 수강신청 메뉴", "ON국민 포털 → 수업 → 수강신청"],
+    contacts: [{ name: "교무처 학사지원팀", phone: "02-910-4131" }, { name: "수강신청시스템 헬프데스크", phone: "02-910-5555" }],
+    sources: ["[S1] 2026학년도 수강신청 안내 / https://www.kookmin.ac.kr/... / 수강 정정은 개강 후 2주 이내 변경 가능하며 수강신청시스템을 통해 처리…"]
+  },
+  attendance: {
+    summary: "출석인정 관련 공식 근거를 확인했습니다. 예비군 훈련은 출석인정 신청 가능 사유에 해당할 수 있으며 [S2], 사유 발생 7일 이내 신청서와 증빙서류 제출이 필요합니다. [S1]",
+    tasks: ["예비군 훈련 통지서 수령·보관", "출석인정신청서 양식 학과사무실 수령 또는 다운로드", "훈련 종료 후 7일 이내 교강사에게 제출", "증빙서류(예비군훈련 확인서) 함께 첨부"],
+    deadline: "제출기한: 훈련일로부터 7일 이내 (훈련일이 2026-05-22이면 2026-05-29까지)",
+    docs: ["출석인정신청서 (학과사무실 양식)", "예비군훈련 통지서 사본", "예비군훈련 참가확인서 (훈련 후 발급)"],
+    paths: ["학과사무실 직접 방문 제출", "담당 교강사 이메일 제출 (교강사 허용 시)"],
+    contacts: [{ name: "소속 학과사무실", phone: "학과별 상이" }, { name: "병무청 예비군 안내", phone: "1588-9090" }],
+    sources: ["[S1] 국민대학교 학사운영규정 제○조 / https://www.kookmin.ac.kr/... / 예비군·민방위 훈련 참가자는 관련 증빙 제출 시 출석 인정…", "[S2] 예비군 출석인정 안내 공지 / https://www.kookmin.ac.kr/... / 7일 이내 신청 필수…"]
+  },
+  leave_return: {
+    summary: "휴학/복학 관련 공식 안내를 확인했습니다. 신청 경로와 필요서류는 질문의 휴학/복학 유형에 따라 달라지며, ON국민 포털의 휴학/복학신청 경로를 우선 확인해야 합니다. [S1]",
+    tasks: ["휴학 유형 확인 (일반/질병/군입대/창업 등)", "ON국민 포털 → 학적 → 휴학신청 메뉴 접속", "필요서류 스캔 업로드 또는 학과사무실 제출", "지도교수 또는 학과장 승인 대기", "휴학 처리 결과 ON국민 포털에서 확인"],
+    deadline: "1학기 휴학 신청 마감: 2026-06-13",
+    docs: ["휴학신청서 (ON국민 포털 자동 생성)", "질병 휴학: 진단서 또는 소견서", "군 휴학: 입대 통지서"],
+    paths: ["ON국민 포털(https://onkookmin.kookmin.ac.kr) → 학적 → 휴학신청"],
+    contacts: [{ name: "교무처 학사지원팀", phone: "02-910-4131" }, { name: "소속 학과사무실", phone: "학과별 상이" }],
+    sources: ["[S1] 2026학년도 학사일정 공지 / https://www.kookmin.ac.kr/... / 일반 휴학은 ON국민 포털을 통해 신청하며 지도교수 승인이 필요…"]
+  },
+  scholarship: {
+    summary: "장학 관련 공식 공지와 학생지원 안내를 확인했습니다. 장학금은 등록금지원, 등록금외지원, 대출 등 성격에 따라 신청 요건과 중복지원 처리가 달라질 수 있습니다. [S1]",
+    tasks: ["한국장학재단 홈페이지(www.kosaf.go.kr) 접속", "국가장학금 II유형 신청 기간 확인", "가구원 정보 제공 동의 처리 (부모 동의 필요)", "학교 장학금 ON국민 포털 → 장학 메뉴 확인", "중복 수혜 제한 여부 확인"],
+    deadline: "2026-1학기 국가장학금 추가신청: 2026-05-28까지",
+    docs: ["가족관계증명서 (필요 시)", "소득분위 확인 서류 (한국장학재단 요청 시)"],
+    paths: ["한국장학재단(www.kosaf.go.kr) → 국가장학금 신청", "ON국민 포털 → 장학 → 교내장학금"],
+    contacts: [{ name: "학생지원팀 장학 담당", phone: "02-910-4082" }, { name: "한국장학재단 콜센터", phone: "1599-2000" }],
+    sources: ["[S1] 2026-1학기 장학금 신청 안내 / https://www.kookmin.ac.kr/... / 국가장학금 II유형은 한국장학재단 홈페이지에서 신청하며 학교 심사를 거쳐 지급…"]
+  }
+};
+
+function detectIssueType(text) {
+  if (/수강|폐강|시간표|강의/.test(text)) return 'course_registration';
+  if (/출석|예비군|훈련|결석/.test(text)) return 'attendance';
+  if (/휴학|복학/.test(text)) return 'leave_return';
+  if (/장학금|장학/.test(text)) return 'scholarship';
+  return 'attendance';
+}
+
+// ── Send question ──
+let isLoading = false;
+function askChip(el) {
+  document.getElementById('query-input').value = el.textContent.replace(/^[^\s]+\s/,'').trim();
+  sendQuestion();
+}
+
+function sendQuestion() {
+  if (isLoading) return;
+  const input = document.getElementById('query-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  // Remove chips
+  const chipRow = document.getElementById('chip-row');
+  if (chipRow) { chipRow.style.display = 'none'; }
+
+  // User bubble
+  const msgs = document.getElementById('messages');
+  const userBubble = document.createElement('div');
+  userBubble.className = 'msg-user';
+  userBubble.textContent = text;
+  msgs.appendChild(userBubble);
+
+  // Clear input
+  input.value = '';
+  input.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  isLoading = true;
+
+  // Show loading
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'msg-bot';
+  loadingEl.innerHTML = `
+    <div class="loading-steps">
+      <div class="step active" id="ls1"><div class="step-icon"><div class="spinner"></div></div> 이슈 분류 중…</div>
+      <div class="step inactive" id="ls2"><div class="step-icon" style="background:var(--gray-100);width:20px;height:20px;border-radius:50%;"></div> 공식 자료 검색 중</div>
+      <div class="step inactive" id="ls3"><div class="step-icon" style="background:var(--gray-100);width:20px;height:20px;border-radius:50%;"></div> 답변 생성 중</div>
+    </div>`;
+  msgs.appendChild(loadingEl);
+  msgs.lastElementChild.scrollIntoView({ behavior:'smooth' });
+
+  const issueType = detectIssueType(text);
+  const data = MOCK_ANSWERS[issueType] || MOCK_ANSWERS['attendance'];
+
+  setTimeout(() => {
+    document.getElementById('ls1').className = 'step done';
+    document.getElementById('ls1').innerHTML = '<div class="step-icon">✓</div> 이슈 분류 완료';
+    document.getElementById('ls2').className = 'step active';
+    document.getElementById('ls2').innerHTML = '<div class="step-icon"><div class="spinner"></div></div> 공식 자료 검색 중…';
+  }, 800);
+  setTimeout(() => {
+    document.getElementById('ls2').className = 'step done';
+    document.getElementById('ls2').innerHTML = '<div class="step-icon">✓</div> 자료 검색 완료';
+    document.getElementById('ls3').className = 'step active';
+    document.getElementById('ls3').innerHTML = '<div class="step-icon"><div class="spinner"></div></div> 답변 생성 중…';
+  }, 1700);
+  setTimeout(() => {
+    loadingEl.remove();
+    renderAnswer(msgs, data);
+    document.getElementById('send-btn').disabled = false;
+    isLoading = false;
+    msgs.lastElementChild.scrollIntoView({ behavior:'smooth' });
+  }, 2600);
+}
+
+function renderAnswer(msgs, d) {
+  const el = document.createElement('div');
+  el.className = 'msg-bot';
+  el.innerHTML = `
+    <div class="answer-cards">
+      ${card('💡','답변 요약',`<p>${d.summary}</p>`, true)}
+      ${card('✅','해야 할 일',`<ul>${d.tasks.map((t,i)=>`<li class="step-task" style="padding-left:0;display:flex;gap:10px;align-items:flex-start;"><span class="step-num">${i+1}</span><span class="step-text">${t}</span></li>`).join('')}</ul>`, true)}
+      ${card('📅','기한',`<ul><li>${d.deadline}</li></ul>`)}
+      ${card('📄','필요 서류',`<ul>${d.docs.map(x=>`<li>${x}</li>`).join('')}</ul>`)}
+      ${card('🔗','신청 경로',`<ul>${d.paths.map(x=>`<li>${x}</li>`).join('')}</ul>`)}
+      ${card('📞','문의처',d.contacts.map(c=>`<div class="contact-row"><span class="contact-name">${c.name}</span><span class="contact-phone">${c.phone}</span></div>`).join(''))}
+      ${card('📚','근거 출처',d.sources.map(s=>`<div class="source-tag">🔗 ${s}</div>`).join(''))}
+    </div>
+    <p style="font-size:11px;color:var(--gray-400);margin-top:10px;padding-left:4px;">⚠️ 최종 처리는 ON국민 포털 또는 담당 부서에서 직접 확인하세요.</p>
+  `;
+  msgs.appendChild(el);
+}
+
+function card(icon, title, bodyHtml, openDefault = false) {
+  const id = 'card-' + Math.random().toString(36).slice(2,8);
+  return `
+    <div class="card">
+      <div class="card-header" onclick="toggleCard('${id}')">
+        <span class="card-icon">${icon}</span>
+        <span class="card-title">${title}</span>
+        <span class="card-arrow ${openDefault?'open':''}" id="arr-${id}">▼</span>
+      </div>
+      <div class="card-body ${openDefault?'open':''}" id="${id}">${bodyHtml}</div>
+    </div>`;
+}
+
+function toggleCard(id) {
+  document.getElementById(id).classList.toggle('open');
+  document.getElementById('arr-' + id).classList.toggle('open');
+}
+
+// ── Action screen ──
+function selectAction(el, type) {
+  document.querySelectorAll('.action-type-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('draft-card').style.display = 'none';
+  const forms = {
+    attendance: `
+      <div class="slot-field"><label class="slot-label">훈련 유형</label><select class="slot-input"><option>예비군 훈련</option><option>사회복무요원</option></select></div>
+      <div class="slot-field"><label class="slot-label">훈련 날짜</label><input class="slot-input" type="text" value="2026-05-22"/></div>
+      <div class="slot-field"><label class="slot-label">담당 교과목명</label><input class="slot-input" type="text" value="데이터베이스 설계"/></div>
+      <div class="slot-field"><label class="slot-label">담당 교강사명</label><input class="slot-input" type="text" value="김민준 교수님"/></div>`,
+    leave: `
+      <div class="slot-field"><label class="slot-label">휴학 유형</label><select class="slot-input"><option>일반휴학</option><option>질병휴학</option><option>군 휴학</option><option>창업휴학</option></select></div>
+      <div class="slot-field"><label class="slot-label">희망 휴학 학기</label><input class="slot-input" type="text" value="2026년 1학기"/></div>`,
+    inquiry: `
+      <div class="slot-field"><label class="slot-label">문의 담당 부서</label><input class="slot-input" type="text" value="교무처 학사지원팀"/></div>
+      <div class="slot-field"><label class="slot-label">문의 주요 내용</label><textarea class="slot-input" rows="3">수강신청 기간 정정 관련 문의</textarea></div>`,
+    graduation: `
+      <div class="slot-field"><label class="slot-label">예상 졸업 시기</label><input class="slot-input" type="text" value="2027년 2월"/></div>
+      <div class="slot-field"><label class="slot-label">소속 학과</label><input class="slot-input" type="text" value="컴퓨터공학부"/></div>`
+  };
+  const form = document.getElementById('slot-form');
+  form.innerHTML = (forms[type] || forms.attendance) + '<button class="primary-btn" onclick="generateDraft()">초안 생성하기 →</button>';
+}
+
+function generateDraft() {
+  document.getElementById('draft-card').style.display = 'block';
+  document.getElementById('draft-card').scrollIntoView({ behavior:'smooth' });
+}
+
+function copyDraft() {
+  const text = document.getElementById('draft-content').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = '✅ 복사됨';
+    setTimeout(() => { btn.textContent = '📋 복사'; }, 2000);
+  });
+}
+</script>
+</body>
+</html>

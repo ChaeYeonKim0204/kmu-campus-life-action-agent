@@ -44,13 +44,26 @@ const PREVIEW_NAME = "이름 미기입";
 const PREVIEW_STUDENT_ID = "학번 미기입";
 const PREVIEW_APPLICANT = "본인 서명";
 
-export default function ActionForm({ actions, actionState, slots, setSlots, onStart, onContinue }) {
+export default function ActionForm({
+  actions,
+  actionState,
+  slots,
+  setSlots,
+  onStart,
+  onContinue,
+  savedDocuments = [],
+  setSavedDocuments
+}) {
   const [errors, setErrors] = React.useState({});
   const [activeTab, setActiveTab] = React.useState("form");
+  const [selectedSavedDocId, setSelectedSavedDocId] = React.useState(null);
 
   React.useEffect(() => {
     setErrors({});
     setActiveTab("form");
+    if (actionState) {
+      setSelectedSavedDocId(null);
+    }
   }, [actionState]);
 
   const handleContinue = () => {
@@ -74,7 +87,26 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
 
   // Helper to render high-fidelity A4 document preview based on action type
   const renderA4Document = () => {
-    if (!actionState) {
+    let currentActionId = null;
+    let currentLabel = "";
+    let currentSlots = {};
+    let isSaved = false;
+
+    if (actionState) {
+      currentActionId = actionState.action_id;
+      currentLabel = actionState.label;
+      currentSlots = slots;
+    } else if (selectedSavedDocId) {
+      const savedDoc = savedDocuments.find((d) => d.id === selectedSavedDocId);
+      if (savedDoc) {
+        currentActionId = savedDoc.action_id;
+        currentLabel = savedDoc.label;
+        currentSlots = savedDoc.slots;
+        isSaved = true;
+      }
+    }
+
+    if (!currentActionId) {
       return (
         <div className="a4-document-paper" style={{ justifyContent: "center", alignItems: "center", minHeight: "480px" }}>
           <div className="a4-logo" style={{ marginBottom: "20px" }}>
@@ -83,15 +115,14 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
           </div>
           <p className="muted" style={{ textAlign: "center", fontSize: "12px", color: "#64748b" }}>
             선택된 학사 행정 문서가 없습니다.<br />
-            왼쪽 패널에서 업무 시작 버튼을 눌러 양식을 기입하세요.
+            왼쪽 패널에서 업무 시작 버튼을 누르거나<br />
+            저장된 서류 보관함의 서류를 선택하세요.
           </p>
         </div>
       );
     }
 
-    const { action_id, label } = actionState;
-
-    if (action_id === "draft_attendance_recognition_form") {
+    if (currentActionId === "draft_attendance_recognition_form") {
       return (
         <div className="a4-document-paper">
           <div className="a4-header">
@@ -101,7 +132,7 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
             </div>
             <span className="a4-version">서식 제2호</span>
           </div>
-          <div className="a4-title">출 석 인 정 신 청 서</div>
+          <div className="a4-title">출 석 인 정 신 신청 서</div>
           
           <table className="a4-table">
             <tbody>
@@ -113,25 +144,25 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
               </tr>
               <tr>
                 <th>대상 교과목</th>
-                <td className={slots.course_name ? "filled-val" : ""}>{slots.course_name || "(미입력)"}</td>
+                <td className={currentSlots.course_name ? "filled-val" : ""}>{currentSlots.course_name || "(미입력)"}</td>
                 <th>담당 교강사</th>
-                <td className={slots.instructor_name_optional ? "filled-val" : ""}>{slots.instructor_name_optional || "(미입력)"}</td>
+                <td className={currentSlots.instructor_name_optional ? "filled-val" : ""}>{currentSlots.instructor_name_optional || "(미입력)"}</td>
               </tr>
               <tr>
                 <th>결석/훈련일</th>
-                <td className={slots.event_date ? "filled-val" : ""} colSpan="3">{slots.event_date || "(미입력)"}</td>
+                <td className={currentSlots.event_date ? "filled-val" : ""} colSpan="3">{currentSlots.event_date || "(미입력)"}</td>
               </tr>
               <tr>
                 <th>결석 사유</th>
-                <td className={slots.absence_reason ? "filled-val" : ""} colSpan="3">{slots.absence_reason || "(미입력)"}</td>
+                <td className={currentSlots.absence_reason ? "filled-val" : ""} colSpan="3">{currentSlots.absence_reason || "(미입력)"}</td>
               </tr>
               <tr>
                 <th>증빙 서류</th>
-                <td className={slots.evidence_document_type ? "filled-val" : ""} colSpan="3">{slots.evidence_document_type || "(미입력)"}</td>
+                <td className={currentSlots.evidence_document_type ? "filled-val" : ""} colSpan="3">{currentSlots.evidence_document_type || "(미입력)"}</td>
               </tr>
               <tr>
                 <th>제출 예정일</th>
-                <td className={slots.planned_submission_date ? "filled-val" : ""} colSpan="3">{slots.planned_submission_date || "(미입력)"}</td>
+                <td className={currentSlots.planned_submission_date ? "filled-val" : ""} colSpan="3">{currentSlots.planned_submission_date || "(미입력)"}</td>
               </tr>
             </tbody>
           </table>
@@ -142,19 +173,19 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
 
           <div className="a4-footer">
             <div className="a4-signature">
-              <span>신청일: {slots.planned_submission_date || "2026년   월   일"}</span>
-              <span>신청인: {PREVIEW_APPLICANT} <span className="sig-line"></span> (인)</span>
+              <span>신청일: {currentSlots.planned_submission_date || "2026년   월   일"}</span>
+              <span>신청인: {isSaved ? "홍길동 (서명완료 ✍️)" : PREVIEW_APPLICANT} <span className="sig-line"></span> (인)</span>
             </div>
-            <div className="a4-stamp-box">
-              국민대학교<br />교무처인
+            <div className={`a4-stamp-box ${isSaved ? "issued" : ""}`}>
+              {isSaved ? "발급완료\n(직인)" : <>국민대학교<br />교무처인</>}
             </div>
           </div>
         </div>
       );
     }
 
-    if (action_id === "draft_leave_checklist" || action_id === "draft_return_checklist") {
-      const isLeave = action_id === "draft_leave_checklist";
+    if (currentActionId === "draft_leave_checklist" || currentActionId === "draft_return_checklist") {
+      const isLeave = currentActionId === "draft_leave_checklist";
       return (
         <div className="a4-document-paper">
           <div className="a4-header">
@@ -176,19 +207,19 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
               </tr>
               <tr>
                 <th>대상 학기</th>
-                <td className={slots.target_semester ? "filled-val" : ""} colSpan="3">{slots.target_semester || "(미입력)"}</td>
+                <td className={currentSlots.target_semester ? "filled-val" : ""} colSpan="3">{currentSlots.target_semester || "(미입력)"}</td>
               </tr>
               {isLeave ? (
                 <tr>
                   <th>휴학 유형</th>
-                  <td className={slots.leave_type ? "filled-val" : ""}>{slots.leave_type || "(미입력)"}</td>
+                  <td className={currentSlots.leave_type ? "filled-val" : ""}>{currentSlots.leave_type || "(미입력)"}</td>
                   <th>증빙 서류</th>
-                  <td className={slots.evidence_document_type_optional ? "filled-val" : ""}>{slots.evidence_document_type_optional || "(미입력)"}</td>
+                  <td className={currentSlots.evidence_document_type_optional ? "filled-val" : ""}>{currentSlots.evidence_document_type_optional || "(미입력)"}</td>
                 </tr>
               ) : (
                 <tr>
                   <th>현재 휴학구분</th>
-                  <td className={slots.current_leave_type_optional ? "filled-val" : ""} colSpan="3">{slots.current_leave_type_optional || "(미입력)"}</td>
+                  <td className={currentSlots.current_leave_type_optional ? "filled-val" : ""} colSpan="3">{currentSlots.current_leave_type_optional || "(미입력)"}</td>
                 </tr>
               )}
             </tbody>
@@ -198,8 +229,8 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
             <strong style={{ fontSize: "11px", display: "block", marginBottom: "6px" }}>[제출 및 점검 필요 사항]</strong>
             <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "10px", display: "flex", flexDirection: "column", gap: "4px" }}>
               <li>[✓] ON국민 포털 {isLeave ? "휴학" : "복학"} 신청 메뉴 기입 여부</li>
-              <li>{slots.target_semester ? `[✓] 대상 학기(${slots.target_semester}) 신청 완료` : "[ ] 대상 학기 확인"}</li>
-              <li>{isLeave && slots.evidence_document_type_optional && slots.evidence_document_type_optional !== "없음" ? `[✓] 증빙 서류(${slots.evidence_document_type_optional}) 지참 및 접수` : "[ ] 증빙 서류 지참 (해당 시)"}</li>
+              <li>{currentSlots.target_semester ? `[✓] 대상 학기(${currentSlots.target_semester}) 신청 완료` : "[ ] 대상 학기 확인"}</li>
+              <li>{isLeave && currentSlots.evidence_document_type_optional && currentSlots.evidence_document_type_optional !== "없음" ? `[✓] 증빙 서류(${currentSlots.evidence_document_type_optional}) 지참 및 접수` : "[ ] 증빙 서류 지참 (해당 시)"}</li>
               <li>[ ] 도서관 연체 도서 반납 및 체납 수수료 정산</li>
               <li>[ ] 장학금 수혜 예정자의 경우 등록금 선납 처리 후 휴학 권장</li>
             </ul>
@@ -210,19 +241,19 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
               <span>작성일: 2026년   월   일</span>
               <span>확인자: 종합민원실 조교 <span className="sig-line"></span> (인)</span>
             </div>
-            <div className="a4-stamp-box" style={{ borderColor: "#0f3d7a", color: "#0f3d7a" }}>
-              종합민원<br />영수인
+            <div className={`a4-stamp-box ${isSaved ? "issued" : ""}`} style={{ borderColor: isSaved ? "#10b981" : "#0f3d7a", color: isSaved ? "#10b981" : "#0f3d7a" }}>
+              {isSaved ? "발급완료\n(직인)" : <>종합민원<br />영수인</>}
             </div>
           </div>
         </div>
       );
     }
 
-    if (action_id === "graduation_audit") {
-      const tc = parseInt(slots.total_credits || "0", 10);
-      const mc = parseInt(slots.major_credits || "0", 10);
-      const targetTc = parseInt(slots.target_total_credits_optional || "130", 10);
-      const targetMc = parseInt(slots.target_major_credits_optional || "60", 10);
+    if (currentActionId === "graduation_audit") {
+      const tc = parseInt(currentSlots.total_credits || "0", 10);
+      const mc = parseInt(currentSlots.major_credits || "0", 10);
+      const targetTc = parseInt(currentSlots.target_total_credits_optional || "130", 10);
+      const targetMc = parseInt(currentSlots.target_major_credits_optional || "60", 10);
       
       const tcPct = Math.min(Math.round((tc / targetTc) * 100), 100);
       const mcPct = Math.min(Math.round((mc / targetMc) * 100), 100);
@@ -283,10 +314,10 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
           <div className="a4-footer">
             <div className="a4-signature">
               <span>진단일: 2026년   월   일</span>
-              <span>신청인: {PREVIEW_APPLICANT} <span className="sig-line"></span> (인)</span>
+              <span>신청인: {isSaved ? "홍길동 (서명완료 ✍️)" : PREVIEW_APPLICANT} <span className="sig-line"></span> (인)</span>
             </div>
-            <div className="a4-stamp-box">
-              국민대학교<br />자가진단
+            <div className={`a4-stamp-box ${isSaved ? "issued" : ""}`}>
+              {isSaved ? "발급완료\n(직인)" : <>국민대학교<br />자가진단</>}
             </div>
           </div>
         </div>
@@ -303,7 +334,7 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
           </div>
           <span className="a4-version">행정 서식</span>
         </div>
-        <div className="a4-title" style={{ fontSize: "15px" }}>{label || "학사 행정 신청서"}</div>
+        <div className="a4-title" style={{ fontSize: "15px" }}>{currentLabel || "학사 행정 신청서"}</div>
 
         <table className="a4-table">
           <tbody>
@@ -313,17 +344,17 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
               <th>학적 구분</th>
               <td>재학생</td>
             </tr>
-            {Object.keys(slots).map((key) => {
+            {Object.keys(currentSlots).map((key) => {
               const label = SLOT_LABELS[key] || key;
               return (
                 <tr key={key}>
                   <th>{label}</th>
-                  <td className="filled-val" colSpan="3">{slots[key] || "(미입력)"}</td>
+                  <td className="filled-val" colSpan="3">{currentSlots[key] || "(미입력)"}</td>
                 </tr>
               );
             })}
             {/* If no slots yet, render missing ones as placeholders */}
-            {Object.keys(slots).length === 0 && (actionState.missing_slots || []).map((key) => {
+            {Object.keys(currentSlots).length === 0 && (actionState?.missing_slots || []).map((key) => {
               const label = SLOT_LABELS[key] || key;
               return (
                 <tr key={key}>
@@ -342,10 +373,10 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
         <div className="a4-footer">
           <div className="a4-signature">
             <span>신청일: 2026년   월   일</span>
-            <span>신청인: {PREVIEW_APPLICANT} <span className="sig-line"></span> (서명)</span>
+            <span>신청인: {isSaved ? "홍길동 (서명완료 ✍️)" : PREVIEW_APPLICANT} <span className="sig-line"></span> (서명)</span>
           </div>
-          <div className="a4-stamp-box">
-            국민대학교<br />학사정보
+          <div className={`a4-stamp-box ${isSaved ? "issued" : ""}`}>
+            {isSaved ? "발급완료\n(직인)" : <>국민대학교<br />학사정보</>}
           </div>
         </div>
       </div>
@@ -367,8 +398,8 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
           type="button" 
           className={`mobile-tab-btn ${activeTab === "preview" ? "active" : ""}`}
           onClick={() => setActiveTab("preview")}
-          disabled={!actionState}
-          title={!actionState ? "활성화된 서류 양식이 없습니다." : ""}
+          disabled={!actionState && !selectedSavedDocId}
+          title={!actionState && !selectedSavedDocId ? "활성화된 서류 양식이 없습니다." : ""}
         >
           📄 서류 실시간 미리보기
         </button>
@@ -415,6 +446,90 @@ export default function ActionForm({ actions, actionState, slots, setSlots, onSt
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Saved Documents Briefcase */}
+        {!actionState && (
+          <div style={{ marginTop: "24px", borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "20px" }}>
+            <h3 style={{ fontSize: "14px", color: "#10b981", margin: "0 0 12px 0", display: "flex", alignItems: "center", gap: "6px" }}>
+              📁 작성된 서류 보관함
+              <span style={{ fontSize: "11px", fontWeight: "normal", color: "#64748b", marginLeft: "auto" }}>
+                {savedDocuments.length}개 보관됨
+              </span>
+            </h3>
+            
+            {savedDocuments.length === 0 ? (
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.05)", borderRadius: "8px", padding: "20px", textAlign: "center" }}>
+                <p className="muted" style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>보관된 완료 서류가 없습니다. 서류 신청 완료 시 여기에 자동 저장됩니다.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "280px", overflowY: "auto", paddingRight: "4px" }}>
+                {savedDocuments.map((doc) => {
+                  const isSelected = selectedSavedDocId === doc.id;
+                  return (
+                    <div
+                      key={doc.id}
+                      onClick={() => {
+                        setSelectedSavedDocId(isSelected ? null : doc.id);
+                        if (!isSelected && window.innerWidth <= 1024) {
+                          setActiveTab("preview");
+                        }
+                      }}
+                      style={{
+                        background: isSelected ? "rgba(16, 185, 129, 0.08)" : "rgba(255,255,255,0.03)",
+                        border: isSelected ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: "8px",
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "10px",
+                        transition: "all 0.2s ease"
+                      }}
+                      className="saved-doc-item"
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: isSelected ? "#10b981" : "#e2e8f0", fontSize: "12.5px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {doc.label}
+                        </div>
+                        <div style={{ fontSize: "10.5px", color: "#64748b", marginTop: "2px" }}>
+                          {doc.date}
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm("정말로 이 서류를 삭제하시겠습니까?")) {
+                              setSavedDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+                              if (selectedSavedDocId === doc.id) {
+                                setSelectedSavedDocId(null);
+                              }
+                            }
+                          }}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#ef4444",
+                            cursor: "pointer",
+                            fontSize: "14px",
+                            padding: "4px",
+                            borderRadius: "4px"
+                          }}
+                          title="삭제"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

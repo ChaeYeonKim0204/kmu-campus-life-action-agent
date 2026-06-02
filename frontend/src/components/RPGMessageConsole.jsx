@@ -16,10 +16,10 @@ export default function RPGMessageConsole({
   const inputRef = React.useRef(null);
 
   React.useEffect(() => {
-    if (listEndRef.current) {
+    if (showConsole && listEndRef.current) {
       listEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, loading]);
+  }, [messages, loading, showConsole]);
 
   React.useEffect(() => {
     if (showConsole && inputRef.current) {

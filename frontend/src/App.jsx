@@ -35,12 +35,6 @@ const studentStatuses = [
 ];
 
 const BUILDING_EXAMPLES = {
-  admin: [
-    "공결 신청 절차가 어떻게 돼?",
-    "예비군 훈련 공결 인정 서류는?",
-    "상해/질병 결석도 공결이 되나요?",
-    "공결계 제출은 며칠 이내 해야 해?",
-  ],
   union: [
     "일반휴학 신청 일정은?",
     "군휴학 신청 시 준비물은?",
@@ -53,17 +47,11 @@ const BUILDING_EXAMPLES = {
     "도서관 좌석 예약 오류나",
     "도서 연체 연체료 규정이 뭐야?",
   ],
-  ecampus: [
-    "이캠에 강의가 안 떠요",
-    "이캠퍼스 아이디/비밀번호 변경",
-    "이캠퍼스 모바일 앱 연동 오류",
-    "비대면 줌 강의 연동 실패",
-  ],
   bugak: [
+    "공결 신청 절차가 어떻게 돼?",
+    "예비군 훈련 공결 인정 서류는?",
     "수변 기간 언제야?",
     "성적 장학금 전액 기준은?",
-    "졸업예정증명서 어디서 떼?",
-    "학기 도중에 휴학할 수 있어?",
   ],
   engineering: [
     "소프트웨어학부 행정실 위치",
@@ -71,13 +59,61 @@ const BUILDING_EXAMPLES = {
     "졸업 요건 학점이 궁금해",
     "폐강 기준 인원이 몇 명이야?",
   ],
+  gyeongsang: [
+    "경상관 교학팀 위치가 어디야?",
+    "경제학과 전공 필수 과목 리스트는?",
+    "상경계열 복수전공 신청 조건",
+    "경상관 사물함 신청 일정",
+  ],
+  business: [
+    "경영관 교학팀 위치가 어디야?",
+    "경영학부 전공 필수 과목 리스트는?",
+    "경영대학 전공 선택 과목 이수 제한이 있어?",
+    "경영관 사물함 신청 일정",
+  ],
+  chohyung: [
+    "조형관 실습실 대여 규정은?",
+    "디자인학부 졸업 전시 일정이 언제야?",
+    "조형관 야간 작업(야작) 승인 신청",
+    "디자인 전공 기자재 대여 절차",
+  ],
+  art: [
+    "예술관 대강당 대관 절차가 어떻게 돼?",
+    "음악학부 개인 연습실 사용 예약",
+    "예술관 사물함 배정 시기",
+    "공연예술학부 정기공연 예매",
+  ],
+  science: [
+    "과학관 실험실 안전 교육 이수 방법",
+    "자연과학대학 공동기기실 이용",
+    "과학관 기자재 폐기 절차",
+    "실험 부주의 사고 발생 시 대처",
+  ],
+  international: [
+    "이캠에 강의가 안 떠요",
+    "교환학생 신청 자격요건이 뭐야?",
+    "어학원 한국어 과정 등록 절차",
+    "토익/토플 성적표 제출 방법",
+  ],
+  gym: [
+    "체육관 체력단련실 이용 요금",
+    "운동 시설 대여 요건",
+    "체육관 동아리방 배정 규정",
+    "농구장 사용 예약 방법",
+  ],
+  dormitory: [
+    "기숙사 통금 시간 및 외박 신청",
+    "생활관 입사 준비 서류",
+    "기숙사 벌점 기준 및 퇴사 규정",
+    "생활관 식권 구매 방법",
+  ]
 };
 
 const DEFAULT_QUESTS = [
   {
     id: "quest_attendance",
     title: "공결 신청서 작성",
-    desc: "본부관 학사지원팀 조교를 만나 출석인정신청서 작성 완료하기",
+    desc: "북악관 조교를 만나 출석인정신청서 작성 완료하기",
     status: "active",
     actionId: "draft_attendance_recognition_form",
     rewardXp: 40,
@@ -101,7 +137,7 @@ const DEFAULT_QUESTS = [
   {
     id: "quest_ecampus_sync",
     title: "E-Campus 클래스룸 동기화",
-    desc: "이캠퍼스 센터 헬프데스크를 방문해 수강 목록 누락 해결하기",
+    desc: "국제관 헬프데스크를 방문해 수강 목록 누락 해결하기",
     status: "active",
     triggerMsg: "이캠에 강의가 안 떠요",
     rewardXp: 20,
@@ -174,12 +210,18 @@ function MascotSVG() {
 // 레이더 미니맵 SVG
 function RadarMinimapSVG({ activeBuilding, avatarPos }) {
   const dots = [
-    { id: "admin", cx: 51, cy: 43 },
     { id: "union", cx: 31, cy: 58 },
     { id: "library", cx: 71, cy: 35 },
-    { id: "ecampus", cx: 43, cy: 28 },
     { id: "bugak", cx: 61, cy: 58 },
     { id: "engineering", cx: 81, cy: 53 },
+    { id: "gyeongsang", cx: 19, cy: 45 },
+    { id: "business", cx: 14, cy: 38 },
+    { id: "chohyung", cx: 33, cy: 38 },
+    { id: "art", cx: 65, cy: 22 },
+    { id: "science", cx: 85, cy: 42 },
+    { id: "international", cx: 25, cy: 30 },
+    { id: "gym", cx: 13, cy: 58 },
+    { id: "dormitory", cx: 90, cy: 60 },
   ];
 
   const ax = avatarPos ? Math.round(avatarPos.x / 10) : 45;
@@ -247,6 +289,8 @@ function App() {
   const [loading, setLoading] = React.useState(false);
   const [liveCheck, setLiveCheck] = React.useState(false);
   const [llmAssist, setLlmAssist] = React.useState(true);
+  const [showBubble, setShowBubble] = React.useState(true);
+  const [bubbleMessage, setBubbleMessage] = React.useState(null);
   const [liveCheckStatus, setLiveCheckStatus] = React.useState(null);
   const [llmStatus, setLlmStatus] = React.useState(null);
   const [answerValidation, setAnswerValidation] = React.useState(null);
@@ -268,7 +312,7 @@ function App() {
     } catch { return DEFAULT_QUESTS; }
   });
 
-  const [activeBuilding, setActiveBuilding] = React.useState("admin");
+  const [activeBuilding, setActiveBuilding] = React.useState("union");
   const [showLevelUpModal, setShowLevelUpModal] = React.useState(false);
   const [levelUpTitle, setLevelUpTitle] = React.useState("");
 
@@ -293,11 +337,29 @@ function App() {
   React.useEffect(() => { localStorage.setItem("studentXp", xp); }, [xp]);
   React.useEffect(() => { localStorage.setItem("studentQuests", JSON.stringify(quests)); }, [quests]);
 
+  const [savedDocuments, setSavedDocuments] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("savedDocuments");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem("savedDocuments", JSON.stringify(savedDocuments));
+  }, [savedDocuments]);
+
   React.useEffect(() => {
     if (bubbleScrollRef.current) {
       bubbleScrollRef.current.scrollTop = bubbleScrollRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  React.useEffect(() => {
+    setBubbleMessage(null);
+    setShowBubble(true);
+  }, [activeBuilding]);
 
   const currentExamples =
     activeBuilding && BUILDING_EXAMPLES[activeBuilding]
@@ -361,6 +423,7 @@ function App() {
         ...prev,
         { role: "agent", text: data.answer || "응답을 생성하지 못했습니다." },
       ]);
+      setBubbleMessage({ role: "agent", text: data.answer || "응답을 생성하지 못했습니다." });
       setToolLogs(data.tool_logs || []);
       setCitations(data.citations || []);
       setActions(data.next_actions || []);
@@ -378,10 +441,12 @@ function App() {
 
       if (data.next_actions && data.next_actions.length > 0) setShowConsole(true);
     } catch (error) {
+      const errMsg = `연결 오류: 백엔드 서버(8001)에 연결할 수 없습니다. 백엔드가 실행 중인지 확인해 주세요.\n(${error.message})`;
       setMessages((prev) => [
         ...prev,
-        { role: "agent", text: `연결 오류: 백엔드 서버(8001)에 연결할 수 없습니다. 백엔드가 실행 중인지 확인해 주세요.\n(${error.message})` },
+        { role: "agent", text: errMsg },
       ]);
+      setBubbleMessage({ role: "agent", text: errMsg });
     } finally {
       setLoading(false);
     }
@@ -437,6 +502,24 @@ function App() {
         ]);
         const mq = quests.find((q) => q.actionId === actionState.action_id && q.status === "active");
         if (mq) completeQuest(mq.id);
+
+        const newDoc = {
+          id: Date.now().toString(),
+          action_id: actionState.action_id,
+          label: actionState.label || "신청 서류",
+          slots: { ...slots },
+          document: data.document,
+          checklist: data.checklist || [],
+          date: new Date().toLocaleDateString("ko-KR", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+        setSavedDocuments((prev) => [newDoc, ...prev]);
+
         setActionState(null);
         setSlots({});
         setShowActionModal(false);
@@ -497,43 +580,43 @@ function App() {
     if (!question.trim() || loading) return;
     ask(question);
     setQuestion("");
+    setShowConsole(true);
+  };
+
+  const handleMascotClick = (e) => {
+    e.stopPropagation();
+    setShowConsole((prev) => !prev);
+    setShowBubble(true); // Reset bubble to show when closing/toggling
   };
 
   const renderBubbleMessages = () => {
-    const lastTwo = messages.slice(-2);
-    if (lastTwo.length === 0) {
+    if (!bubbleMessage) {
+      const b = BUILDINGS[activeBuilding] || BUILDINGS["union"];
       return (
         <p style={{ margin: 0, fontSize: "11.5px", color: "var(--text-secondary)", lineHeight: "1.6" }}>
-          안녕하세요! 학사지원 AI <strong style={{ color: "var(--kmu-primary)" }}>국민이</strong>입니다.
-          지도의 건물을 클릭해 조교를 만난 뒤 퀘스트를 수행해보세요! 🎓
+          안녕하세요! <strong style={{ color: "var(--kmu-primary)" }}>{b.npc}</strong>입니다.
+          {b.name}에 오신 것을 환영합니다! 아래 추천 질문을 클릭하거나 궁금한 점을 편하게 질문해 주세요. 😊
         </p>
       );
     }
-    return lastTwo.map((msg, index) => (
-      <div
-        key={index}
-        style={{
-          marginBottom: index === 0 && lastTwo.length > 1 ? "6px" : "0",
-          borderBottom: index === 0 && lastTwo.length > 1 ? "1px dashed rgba(15,61,122,0.1)" : "none",
-          paddingBottom: index === 0 && lastTwo.length > 1 ? "6px" : "0",
-        }}
-      >
+    return (
+      <div style={{ paddingBottom: "0" }}>
         <strong
           style={{
-            color: msg.role === "user" ? "var(--kmu-primary)" : "var(--kmu-gold-dark)",
+            color: "var(--kmu-gold-dark)",
             fontSize: "10px",
             display: "block",
             marginBottom: "2px",
             fontWeight: 800,
           }}
         >
-          {msg.role === "user" ? "나 (학생)" : "국민이 AI"}
+          {BUILDINGS[activeBuilding]?.npc || "국민이 AI"}
         </strong>
         <span style={{ fontSize: "11.5px", color: "var(--text-primary)", lineHeight: "1.5" }}>
-          {renderMessageText(msg.text)}
+          {renderMessageText(bubbleMessage.text)}
         </span>
       </div>
-    ));
+    );
   };
 
   // ESC로 모달 닫기
@@ -624,7 +707,7 @@ function App() {
                 data-title="홈"
                 aria-label="홈"
                 onClick={() => {
-                  setActiveBuilding("admin");
+                  setActiveBuilding("union");
                   setShowQuests(false);
                   setShowConsole(false);
                 }}
@@ -701,91 +784,122 @@ function App() {
             </div>
 
             {/* 마스코트 + 말풍선 */}
-            <div className="mascot-container">
-              <div className="mascot-speech-bubble">
-                <div className="bubble-message-area" ref={bubbleScrollRef}>
-                  {loading && messages.length > 0 && messages[messages.length - 1].role === "user" ? (
-                    <div className="rpg-loading-dots" style={{ padding: "8px 0" }}>
-                      <span /><span /><span />
+            {!showConsole && (
+              <div className="mascot-container">
+                {showBubble && (
+                  <div className="mascot-speech-bubble">
+                    {/* Close button for the speech bubble */}
+                    <button
+                      type="button"
+                      className="bubble-close-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowBubble(false);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: "6px",
+                        right: "8px",
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--text-secondary)",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                        padding: "2px",
+                        lineHeight: 1,
+                        fontWeight: 800,
+                        zIndex: 50,
+                      }}
+                      aria-label="말풍선 닫기"
+                    >✕</button>
+                    <div className="bubble-message-area" ref={bubbleScrollRef}>
+                      {loading && messages.length > 0 && messages[messages.length - 1].role === "user" ? (
+                        <div className="rpg-loading-dots" style={{ padding: "8px 0" }}>
+                          <span /><span /><span />
+                        </div>
+                      ) : (
+                        renderBubbleMessages()
+                      )}
                     </div>
-                  ) : (
-                    renderBubbleMessages()
-                  )}
-                </div>
 
-                {messages.length === 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", margin: "6px 0 2px" }}>
-                    {currentExamples.slice(0, 2).map((ex, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => ask(ex)}
-                        disabled={loading}
-                        style={{
-                          padding: "3px 9px",
-                          fontSize: "9.5px",
-                          borderRadius: "var(--radius-full)",
-                          background: "rgba(15,61,122,0.07)",
-                          border: "1px solid rgba(15,61,122,0.18)",
-                          color: "var(--kmu-primary)",
-                          cursor: "pointer",
-                          fontWeight: 700,
-                          fontFamily: "var(--font-sans)",
+                    {!bubbleMessage && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", margin: "6px 0 2px" }}>
+                        {currentExamples.slice(0, 2).map((ex, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              ask(ex);
+                              setShowConsole(true);
+                            }}
+                            disabled={loading}
+                            style={{
+                              padding: "3px 9px",
+                              fontSize: "9.5px",
+                              borderRadius: "var(--radius-full)",
+                              background: "rgba(15,61,122,0.07)",
+                              border: "1px solid rgba(15,61,122,0.18)",
+                              color: "var(--kmu-primary)",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              fontFamily: "var(--font-sans)",
+                            }}
+                          >
+                            🎯 {ex}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleBubbleSubmit} className="bubble-input-bar">
+                      <textarea
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        placeholder="질문 입력..."
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleBubbleSubmit(e);
+                          }
                         }}
+                        disabled={loading}
+                        aria-label="질문 입력"
+                      />
+                      <button
+                        type="submit"
+                        className="bubble-send-btn"
+                        disabled={loading || !question.trim()}
+                        aria-label="전송"
                       >
-                        🎯 {ex}
+                        ➤
                       </button>
-                    ))}
+                    </form>
+
+                    {privacyWarnings.length > 0 && (
+                      <div className="privacy-warn-text">
+                        ⚠️ {privacyWarnings.join(", ")} 감지됨. 실제 정보는 빼고 물어보세요.
+                      </div>
+                    )}
+
+                    <div className="bubble-log-link">
+                      <span onClick={() => setShowConsole(true)}>
+                        💬 상세 답변 기록 보기
+                      </span>
+                    </div>
                   </div>
                 )}
 
-                <form onSubmit={handleBubbleSubmit} className="bubble-input-bar">
-                  <textarea
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    placeholder="질문 입력..."
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleBubbleSubmit(e);
-                      }
-                    }}
-                    disabled={loading}
-                    aria-label="질문 입력"
-                  />
-                  <button
-                    type="submit"
-                    className="bubble-send-btn"
-                    disabled={loading || !question.trim()}
-                    aria-label="전송"
-                  >
-                    ➤
-                  </button>
-                </form>
-
-                {privacyWarnings.length > 0 && (
-                  <div className="privacy-warn-text">
-                    ⚠️ {privacyWarnings.join(", ")} 감지됨. 실제 정보는 빼고 물어보세요.
-                  </div>
-                )}
-
-                <div className="bubble-log-link">
-                  <span onClick={() => setShowConsole(true)}>
-                    💬 상세 답변 기록 보기
-                  </span>
+                <div
+                  className="mascot-character"
+                  onClick={handleMascotClick}
+                  title="국민이 AI 조우"
+                  role="button"
+                  aria-label="대화 기록 열기"
+                >
+                  <MascotSVG />
                 </div>
               </div>
-
-              <div
-                className="mascot-character"
-                onClick={() => setShowConsole(true)}
-                title="국민이 AI 조우"
-                role="button"
-                aria-label="대화 기록 열기"
-              >
-                <MascotSVG />
-              </div>
-            </div>
+            )}
 
             {/* 슬라이딩 대화 기록 패널 */}
             <div className={`sliding-rpg-console ${showConsole ? "open" : ""}`}>
@@ -928,7 +1042,7 @@ function App() {
               <h2>📂 스마트 서류 센터</h2>
               <button type="button" className="rpg-modal-close" onClick={() => setShowActionModal(false)} aria-label="닫기">✕</button>
             </div>
-            <div className="rpg-modal-body" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="rpg-modal-body" style={{ padding: 0, overflow: "hidden", minHeight: 0 }}>
               <ActionForm
                 actions={actions}
                 actionState={actionState}
@@ -936,6 +1050,8 @@ function App() {
                 setSlots={setSlots}
                 onStart={startAction}
                 onContinue={continueAction}
+                savedDocuments={savedDocuments}
+                setSavedDocuments={setSavedDocuments}
               />
             </div>
           </div>

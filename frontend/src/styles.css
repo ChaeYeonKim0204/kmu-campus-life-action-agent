@@ -568,7 +568,7 @@ input, textarea, select {
   right: 70px;
   display: flex;
   align-items: flex-end;
-  gap: 0;
+  gap: 12px;
   z-index: 20;
 }
 
@@ -579,6 +579,7 @@ input, textarea, select {
   flex-shrink: 0;
   filter: drop-shadow(0 4px 12px rgba(15, 61, 122, 0.3));
   transition: var(--transition-spring);
+  z-index: 5;
 }
 
 .mascot-character:hover {
@@ -605,6 +606,7 @@ input, textarea, select {
   box-shadow: var(--shadow-float);
   position: relative;
   margin-bottom: 8px;
+  z-index: 10;
 }
 
 .mascot-speech-bubble::after {
@@ -1159,6 +1161,7 @@ input, textarea, select {
   padding: 20px 24px;
   scrollbar-width: thin;
   scrollbar-color: rgba(200,169,81,0.3) transparent;
+  min-height: 0;
 }
 
 /* ── 학적 카드 모달 ── */
@@ -1820,6 +1823,18 @@ input, textarea, select {
   text-align: center;
   line-height: 1.4;
   opacity: 0.3;
+  transition: all 0.3s ease;
+}
+
+.a4-stamp-box.issued {
+  border-color: #10b981;
+  color: #10b981;
+  border-radius: 50%;
+  opacity: 0.85;
+  font-size: 9px;
+  font-weight: 800;
+  background: rgba(16, 185, 129, 0.05);
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.2);
 }
 
 /* ── 대백과 (SourcePanel) ── */

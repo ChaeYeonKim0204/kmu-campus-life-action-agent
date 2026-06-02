@@ -2,17 +2,6 @@ import React from "react";
 
 // KMU Buildings configuration
 export const BUILDINGS = {
-  admin: {
-    id: "admin",
-    name: "본부관 (본관)",
-    desc: "학사지원팀, 총무팀, 종합인재개발원",
-    npc: "학사지원 조교님",
-    questId: "quest_attendance",
-    questDesc: "출석 인정 신청서 작성 퀘스트",
-    x: 510,
-    y: 430,
-    color: "#4f46e5"
-  },
   union: {
     id: "union",
     name: "복지관",
@@ -35,24 +24,13 @@ export const BUILDINGS = {
     y: 350,
     color: "#eab308"
   },
-  ecampus: {
-    id: "ecampus",
-    name: "이캠퍼스 센터 (정보통신처)",
-    desc: "E-Campus 서버실, 스마트 강의실 장애 처리",
-    npc: "이캠퍼스 헬프데스크",
-    questId: "quest_ecampus_sync",
-    questDesc: "온라인 대외 연동 퀘스트",
-    x: 430,
-    y: 280,
-    color: "#ec4899"
-  },
   bugak: {
     id: "bugak",
     name: "북악관",
     desc: "인문대학, 사회과학대학, 조교실, 일반 강의실",
-    npc: "북악 조교",
-    questId: null,
-    questDesc: "행정 규정 질의응답",
+    npc: "북악관 조교님",
+    questId: "quest_attendance",
+    questDesc: "출석 인정 신청서 작성 퀘스트",
     x: 610,
     y: 580,
     color: "#10b981"
@@ -67,21 +45,105 @@ export const BUILDINGS = {
     x: 770,
     y: 530,
     color: "#f97316"
+  },
+  gyeongsang: {
+    id: "gyeongsang",
+    name: "경상관",
+    desc: "경상대학, 교학팀, 경제학과/경영학과 강의실",
+    npc: "경상관 행정실장",
+    questId: null,
+    questDesc: "행정 규정 질의응답",
+    x: 190,
+    y: 450,
+    color: "#f59e0b"
+  },
+  business: {
+    id: "business",
+    name: "경영관",
+    desc: "경영대학, 경영전문대학원, 일체형 강의실 및 경상홀",
+    npc: "경영대 교학팀 조교",
+    questId: null,
+    questDesc: "경영대학 학사 안내",
+    x: 140,
+    y: 380,
+    color: "#f59e0b"
+  },
+  chohyung: {
+    id: "chohyung",
+    name: "조형관",
+    desc: "조형대학, 디자인학부 실습실 및 전시실",
+    npc: "조형관 조교님",
+    questId: null,
+    questDesc: "실습실 대여 규정 문의",
+    x: 330,
+    y: 380,
+    color: "#a855f7"
+  },
+  art: {
+    id: "art",
+    name: "예술관",
+    desc: "예술대학, 음악/미술/공연예술 전공 연습실 및 극장",
+    npc: "예술관 관리인",
+    questId: null,
+    questDesc: "연습실 대관 절차 문의",
+    x: 650,
+    y: 220,
+    color: "#ec4899"
+  },
+  science: {
+    id: "science",
+    name: "과학관",
+    desc: "자연과학대학, 산림과학대학, 공동기기실, 실험실",
+    npc: "과학관 연구원",
+    questId: null,
+    questDesc: "실험실 안전 수칙 확인",
+    x: 850,
+    y: 420,
+    color: "#14b8a6"
+  },
+  international: {
+    id: "international",
+    name: "국제관",
+    desc: "글로벌인문·지역대학, 어학원, 외국인 지원 센터",
+    npc: "국제교류팀 직원",
+    questId: "quest_ecampus_sync",
+    questDesc: "온라인 대외 연동 퀘스트",
+    x: 250,
+    y: 300,
+    color: "#6366f1"
+  },
+  gym: {
+    id: "gym",
+    name: "체육관",
+    desc: "체육대학, 체력단련실, 대강당, 운동시설",
+    npc: "체육관 관리 요원",
+    questId: null,
+    questDesc: "체육시설 이용 수칙 문의",
+    x: 130,
+    y: 580,
+    color: "#3b82f6"
+  },
+  dormitory: {
+    id: "dormitory",
+    name: "생활관 (기숙사)",
+    desc: "교내 생활관, 행정실, 체력단련실, 세탁실",
+    npc: "생활관 사감님",
+    questId: null,
+    questDesc: "기숙사 통금 및 입사 규정 문의",
+    x: 900,
+    y: 600,
+    color: "#06b6d4"
   }
 };
 
 export default function CampusMap({ activeBuilding, onBuildingSelect, quests }) {
   const [avatarPos, setAvatarPos] = React.useState({ x: 450, y: 650 }); // Start at Main Field
-  const [isMoving, setIsMoving] = React.useState(false);
   const [hoveredBuilding, setHoveredBuilding] = React.useState(null);
 
   React.useEffect(() => {
     if (activeBuilding && BUILDINGS[activeBuilding]) {
       const { x, y } = BUILDINGS[activeBuilding];
-      setIsMoving(true);
       setAvatarPos({ x, y });
-      const timer = setTimeout(() => setIsMoving(false), 800); // Match CSS transition duration
-      return () => clearTimeout(timer);
     }
   }, [activeBuilding]);
 
@@ -123,24 +185,31 @@ export default function CampusMap({ activeBuilding, onBuildingSelect, quests }) 
           <ellipse cx="450" cy="650" rx="100" ry="40" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1" strokeDasharray="5,5" />
           <line x1="450" y1="590" x2="450" y2="710" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
 
-          {/* Main Campus Roads (Asphalt walkways connecting buildings) */}
-          {/* Path from Field to Admin */}
-          <path d="M 450,650 Q 500,580 510,480" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="12" strokeLinecap="round" />
-          {/* Path from Admin to Library */}
-          <path d="M 510,480 Q 620,430 710,380" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" strokeLinecap="round" />
-          {/* Path from Admin to Union */}
-          <path d="M 510,480 Q 400,510 310,580" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" strokeLinecap="round" />
-          {/* Path from Admin to E-Campus */}
-          <path d="M 510,480 Q 480,380 430,300" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="8" strokeLinecap="round" />
-          {/* Path from Admin to Bugak */}
-          <path d="M 510,480 L 610,580" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="8" strokeLinecap="round" />
-          {/* Path from Bugak to Engineering */}
-          <path d="M 610,580 L 810,530" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="8" strokeLinecap="round" />
+          {/* Main Campus Roads (Asphalt walkways connecting active buildings) */}
+          {/* Left side connections */}
+          <path d="M 450,650 Q 380,620 310,580" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="12" strokeLinecap="round" />
+          <path d="M 310,580 L 130,580" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" strokeLinecap="round" />
+          <path d="M 310,580 L 330,380" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="10" strokeLinecap="round" />
+          <path d="M 330,380 L 250,300" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+          <path d="M 310,580 Q 250,515 190,450" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+          <path d="M 190,450 L 140,380" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+          <path d="M 140,380 L 250,300" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+          <path d="M 130,580 L 190,450" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+
+          {/* Right side connections */}
+          <path d="M 450,650 Q 530,620 610,580" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="12" strokeLinecap="round" />
+          <path d="M 610,580 L 770,530" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" strokeLinecap="round" />
+          <path d="M 610,580 Q 660,465 710,350" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="10" strokeLinecap="round" />
+          <path d="M 770,530 L 850,420" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+          <path d="M 850,420 L 710,350" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+          <path d="M 710,350 L 650,220" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
+          <path d="M 770,530 Q 835,565 900,600" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" strokeLinecap="round" />
 
           {/* Dashed Center lines for roads */}
-          <path d="M 450,650 Q 500,580 510,480" fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4,4" />
-          <path d="M 510,480 Q 620,430 710,380" fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4,4" />
-          <path d="M 510,480 Q 400,510 310,580" fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4,4" />
+          <path d="M 450,650 Q 380,620 310,580" fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4,4" />
+          <path d="M 450,650 Q 530,620 610,580" fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4,4" />
+          <path d="M 310,580 Q 250,515 190,450" fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4,4" />
+          <path d="M 610,580 Q 660,465 710,350" fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4,4" />
 
           {/* Campus Decorative Trees */}
           {[[200, 480], [250, 420], [380, 450], [580, 360], [640, 400], [530, 530], [670, 480], [750, 450], [880, 580]].map(([tx, ty], idx) => (
@@ -305,8 +374,7 @@ export default function CampusMap({ activeBuilding, onBuildingSelect, quests }) 
           {/* Student Avatar (🏃) */}
           <g
             transform={`translate(${avatarPos.x}, ${avatarPos.y})`}
-            className={`map-avatar ${isMoving ? "avatar-walking" : ""}`}
-            style={{ transition: "transform 0.8s cubic-bezier(0.25, 1, 0.5, 1)" }}
+            className="map-avatar"
           >
             {/* Avatar Shadow */}
             <ellipse cx="0" cy="18" rx="14" ry="6" fill="rgba(0,0,0,0.4)" />

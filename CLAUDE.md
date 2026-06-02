@@ -16,7 +16,8 @@ This is a course **team project**; the professor's grading rubric below is a bin
 
 ## 평가 기준 = 설계 제약 (build & self-evaluate against this)
 
-- **워크플로우 노드 분절** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. **재설계 방향:** 졸업센터를 `parse → structured_check → 요람 RAG → (ReAct controller) → report build → validate` 노드로 구성한다. ReAct를 도입하되 **LLM은 "다음에 어떤 도구를 쓸지"만 추론**(Thought→Action 선택)하고, 실행(Action)은 **결정론적 도구 노드**가 한다. LLM이 답변·보고서를 통째로 생성하는 방향은 루브릭에 역행한다. (→ *ReAct 가드레일* 절)
+- **워크플로우 노드 분절 + 시각화** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. **재설계 방향:** 졸업센터를 `parse → structured_check → 요람 RAG → (ReAct controller) → report build → validate` 노드로 구성한다. ReAct를 도입하되 **LLM은 "다음에 어떤 도구를 쓸지"만 추론**(Thought→Action 선택)하고, 실행(Action)은 **결정론적 도구 노드**가 한다. LLM이 답변·보고서를 통째로 생성하는 방향은 루브릭에 역행한다. (→ *ReAct 가드레일* 절)
+  - **교수가 Dify처럼 노드가 분기된 workflow를 눈으로 보는 걸 선호한다 — 데모에서 노드 그래프를 시각화하는 것이 채점 포인트.** 따라서 노드를 코드로만 나누지 말고, **각 노드 실행을 구조화된 trace로 방출**한다: `{node, status, branch_taken, input_summary, output_summary, (ReAct step·tool명·observation 요약)}`. 프론트가 이 trace로 Dify식 그래프를 그리고 데모에서 노드가 순서대로 점등되게 한다(시각화는 프론트 파트지만 **trace 데이터는 모델/백엔드 책임**). ReAct 루프도 "도구 선택 → 해당 노드 점등 → observation → 다음 분기"가 그래프 위에 보이도록 trace를 설계할 것.
 - **데이터 관리** — 사용자 입력 양식을 구체적으로 정의하고(성적표 → `TranscriptSummary`, 과제별 입력 슬롯), 노드 간 데이터 흐름이 또렷할 것(앞 노드 출력이 뒤 노드에서 실제로 쓰이고 추적 가능). 개인 DB를 쓸수록 프라이버시 가드(아래)를 더 강하게.
 - **결과의 정형성·품질** — 출력이 즉시 업무에 쓸 수 있는 수준일 것: 텍스트 나열이 아니라 **섹션형 컨설팅 보고서**(현황진단 / 부족요건 / 대체경로 시나리오 / 학기별 액션플랜 / 근거) + citation. LLM 출력의 무작위성을 통제해(결정론적 조립·구조화 출력·낮은 temperature) 매번 일관된 결과를 낼 것 — 교수가 구두로 강조한 포인트.
 - **실무 유용성·문제 해결력** — 실제 학생 경험 개선에 기여하는가. 상용 LLM 대비 필요성이 드러나는가.

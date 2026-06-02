@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-국민대(KMU) 학생의 **졸업 요건을 분석해 컨설팅 보고서**를 내주는 grounded 에이전트다. 업로드한 성적표를 sanitize한 비식별 요약으로 만들고, 공식 요람·규정을 RAG로 근거 삼아, 학생 **개인 데이터**에 기반한 졸업 진단·대체경로·학기별 액션플랜을 **결정론적 보고서** 형태로 제시한다. 여기에 졸업센터(RAG)와 **다른 워크플로우 archetype을 가진 두 번째 주제** 1개를 더해 "학교생활 도우미" 틀을 채운다(주제 미정 — `docs/second_topic_workflow_candidates.md` 참고). 사용자 노출 문자열은 한국어; 따로 지시 없으면 한국어 유지.
+국민대(KMU) 학생의 **졸업 요건을 분석해 컨설팅 보고서**를 내주는 grounded 에이전트다. 업로드한 성적증명서를 요약(학번 뒷자리만 마스킹)으로 만들고, 공식 요람·규정을 RAG로 근거 삼아, 학생 **개인 데이터**에 기반한 졸업 진단·대체경로·학기별 액션플랜을 **결정론적 보고서** 형태로 제시한다. 여기에 졸업센터(RAG)와 **다른 워크플로우 archetype을 가진 두 번째 주제** 1개를 더해 "학교생활 도우미" 틀을 채운다(주제 미정 — `docs/second_topic_workflow_candidates.md` 참고). 사용자 노출 문자열은 한국어; 따로 지시 없으면 한국어 유지.
 
 차별점(왜 상용 LLM이 아니라 이걸 써야 하나)을 코드로 증명하는 게 목표다: ① 공식 요람·규정 grounding(환각 차단) ② 상용 LLM이 못 보는 **개인 DB(성적표·학적)** ③ 결정론적 보고서 산출 ④ ReAct로 *도구를 골라 쓰는* 에이전트적 동작.
 
@@ -63,9 +63,11 @@ There is no linter or formatter wired into the repo.
 
 `graduation_center/`는 자체 `/graduation/*` 엔드포인트를 가진 독립 서브시스템이다(`/graduation/status`, `/transcript/parse`, `/audit`, `/substitute-courses`, `/micro-degree`, `/post-graduation-checklist`, `/career-translator`, `/early-graduation`, `/customized-major`, `/credit-drop`).
 
-**현재 흐름:** 업로드한 성적표 PDF → **sanitize된 비식별 `TranscriptSummary`**(`graduation_center/parser.py`) → `compute_structured_check`(`data/graduation/graduation_requirements.json` 대조) → 요람 RAG(자체 Chroma `data/graduation/chroma`) → GPT 분석(`service._call_llm`) → `_sanitize_sensitive_output`가 학번/주민번호/전화/GPA를 마스킹한 뒤 반환. 출력 보고서는 `G1`/`G2` citation 체계를 쓴다(`service._build_answer`).
+**현재 흐름:** 업로드한 성적증명서 PDF → `TranscriptSummary`(`graduation_center/parser.py`) → `compute_structured_check`(`data/graduation/graduation_requirements.json` 대조) → 요람 RAG(자체 Chroma `data/graduation/chroma`) → GPT 분석(`service._call_llm`) → **학번 뒷자리만 마스킹**한 뒤 반환. 출력 보고서는 `G1`/`G2` citation 체계를 쓴다(`service._build_answer`).
 
-**전제조건:** 졸업센터는 `/ask`와 달리 OpenAI + 인덱싱된 요람 Chroma를 **요구**한다. 없으면 keyword-only로 degrade하지 않고 `GraduationServiceUnavailable`을 던지며 `app.py`가 HTTP 503으로 매핑한다. 이 서브시스템에서 성적표 원문·GPA 수치·과목별 성적을 절대 반환하지 말 것(`status().privacy`가 계약을 문서화).
+**전제조건:** 졸업센터는 `/ask`와 달리 OpenAI + 인덱싱된 요람 Chroma를 **요구**한다. 없으면 keyword-only로 degrade하지 않고 `GraduationServiceUnavailable`을 던지며 `app.py`가 HTTP 503으로 매핑한다.
+
+**프라이버시(최소 적용):** 입력이 학생 본인의 성적증명서라 주민번호가 없으므로, 본인이 올린 성적·GPA·과목은 자문 보고서에 **그대로 활용·표시**한다. 출력에서 **학번 뒷자리만 마스킹**(예: `2020XXXX`)하면 된다 — 자세한 결정·코드 정리 방향은 *Guardrails* 절 참고.
 
 **의존 주의:** `_official_policy_sources()`(service.py)가 `data/processed/chunks.jsonl`을 직접 읽는다 — *재설계 개요*의 선행 이관 참고.
 
@@ -92,20 +94,22 @@ ReAct를 잘못 잡으면 "노드 분절·결정론" 루브릭과 정면 충돌�
 - **구조화 출력(JSON schema)** — controller의 매 step 출력은 schema 강제(도구명 enum + 인자).
 - **max step budget** — 무한 루프 방지 상한.
 - **deterministic tool execution** — 도구 자체는 결정론적 노드(낮은 temp·고정 로직).
-- **observation sanitization** — 도구 결과를 LLM에 다시 넣기 전 민감정보 마스킹.
-- **final report validator** — 최종 보고서의 citation 계약·output 프라이버시를 재검증, 실패 시 안전 출력으로 폴백.
-- **citation coverage check** — 모든 사실 줄에 근거 마커.
+- **observation sanitization** — 도구 결과를 LLM에 다시 넣기 전 학번 뒷자리만 마스킹(최소 적용 — *Guardrails* 참고).
+- **final report validator** — 최종 보고서의 citation 정합·출력 안전(학번 뒷자리 마스킹)을 재검증, 실패 시 안전 출력으로 폴백.
+- **citation coverage check** — 모든 사실 줄에 근거 마커(내부 검증용; 화면 표시는 토글로 접음 — *Citation contract* 참고).
 - **Thought 원문 비노출** — 추론 원문을 로그/화면에 그대로 드러내지 않는다(개인정보·환각 설명 누출 위험).
 
 ## Guardrails that must hold
 
 These are project requirements, not preferences — see `project_plan.md` §7:
 
-- Never collect or echo back: 학번, 주민번호, 연락처, 성적표 원본, 포털 ID/PW. `graduation_center`는 입력·출력 모두 자체 `SENSITIVE_PATTERNS`/`_sanitize_sensitive_output`로 마스킹한다(개인 DB를 쓰는 메인 축이므로 가장 엄격히 적용). 티어1의 `agent/guard.py:PRIVACY_PATTERNS`·`answer_validator.OUTPUT_PRIVACY_PATTERNS`는 제거와 함께 사라지므로, 재사용할 패턴이 있으면 졸업센터 쪽으로 흡수할 것.
-- Never fabricate procedural advice without an official chunk backing it — 근거 없는 절차 안내 금지(요람·규정 RAG 또는 정책 데이터로 뒷받침).
+- **프라이버시 — 최소 적용 (2026-06 결정):** 입력은 학생 본인의 **성적증명서**라 주민번호가 없으므로 주민번호 마스킹은 비해당. 출력에서 **학번 뒷자리만 마스킹**한다(예: `2020XXXX`). 본인이 업로드한 성적·GPA·과목은 자문 도구 특성상 보고서에 **활용·표시 허용**. 따라서 기존의 GPA/성적/이메일/연락처 출력 마스킹, 입력측 차단(과거 `inspect_privacy`류), false-positive 유발 패턴은 **제거**한다(`graduation_center`의 `SENSITIVE_PATTERNS`를 학번 1종으로 축소). ⚠️ 데모·공유는 **본인 또는 더미 성적증명서**로 할 것 — 타인의 실제 증명서를 공개 화면에 띄우면 이름·성적이 노출된다. 다중 사용자/외부 배포로 가면 이 결정을 재검토.
+- **근거 우선 + graceful degrade (2026-06 결정, 완화):** 공식 근거(요람·규정 RAG·정책 데이터)가 있으면 근거를 달아 단정적으로 답한다. 근거가 얇거나 없으면 **차단하지 말고** 일반 가이드를 주되 `※ 공식 출처 미확인 — 학과사무실/교무팀 확인 권장`처럼 확신도를 표시한다. "몰라요"로 회피하지 않되(루브릭 4: 실무 유용성), 근거 없는 내용을 근거 있는 것처럼 단정하지도 않는다. 과거의 hard-block(`require_sources`로 답 자체를 막던 방식)은 쓰지 않는다.
 - Never auto-crawl post-login portals (ON국민, SWELL personal screens) or 에브리타임. Only the public sources tier-listed in the README. (티어2 크롤러를 동결·재사용하더라도 이 규칙과 `crawler/base.py`의 학교서버 보호 규칙 — 8~18s 딜레이, `max_pages_per_run`, `INGEST_COOLDOWN_SECONDS`, 조건부 GET, `_INGEST_LOCK` — 은 절대 완화 금지.)
 - LLM 사용은 grounded·결정론 우선. 보고서 본문은 결정론적 builder가 source of truth이고, LLM 산출은 final validator가 citation/프라이버시 위반 시 되돌린다.
 
 ## Citation contract
 
 졸업센터는 `G1`/`G2` 체계를 쓴다(`graduation_center/service.py:_build_answer`): 유니크 근거마다 `G1`, `G2`, … 라벨을 부여하고 보고서 본문의 사실 줄마다 해당 마커를 단다. 절차적·요건 주장에는 반드시 그것을 뒷받침하는 근거 마커를 붙이고, `[근거]` 블록에서 해소되게 한다 — validator와 테스트가 마커 해소를 검사한다. (옛 `/ask`는 `S1`/`S2` 체계를 썼고 `agent/citation.py`에 있었으나 티어1과 함께 제거된다.)
+
+**표시 — 토글 (2026-06 결정):** 화면 기본 뷰에서는 `[G1]` 인라인 마커와 `[근거]` 블록을 **접어 숨기고**, "근거 보기" 토글로 펼친다 — 텍스트 덤프처럼 보이지 않는 컨설팅 보고서 룩을 위해(교수 피드백: "텍스트만 뿌리지 마라"). 단 **내부적으로는 마커를 계속 생성·검증**한다(grounding 무결성·validator·환각 차단). 즉 계약을 *없애는* 게 아니라 *표시만 접는* 것. (마커 숨김은 프론트 표시 레이어에서, 데이터·검증 레이어는 그대로.)

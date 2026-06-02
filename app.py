@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +17,7 @@ from dotenv import load_dotenv
 
 from agent.action_state import continue_action, start_action
 from agent.answer_builder import build_final_answer
+from agent.citation import build_citations
 from agent.answer_validator import validate_answer_contract, validate_output_privacy
 from agent.classifier import classify_issue
 from agent.guard import inspect_privacy, require_sources
@@ -56,6 +60,7 @@ class ActionContinueRequest(BaseModel):
     action_id: str
     slots: dict[str, Any] = Field(default_factory=dict)
     live_check: bool = False
+    query: str = ""
 
 
 class IngestRequest(BaseModel):
@@ -132,6 +137,7 @@ def health() -> dict:
         "graduation_center": graduation_service.status(),
         "last_ingest": state.get("last_ingest"),
         "live_refresh": _summarize_live_refresh_state(state),
+        "agent_metrics": _summarize_agent_usage(),
     }
 
 
@@ -227,21 +233,167 @@ def graduation_credit_drop(request: CreditDropRequest) -> dict:
     return _graduation_analysis_response("credit_drop", request.transcript, {"concern": request.concern})
 
 
+_EMPTY_ANSWER_VALIDATION = {"ok": True, "flags": [], "markers": [], "citation_ids": []}
+_EMPTY_OUTPUT_PRIVACY = {"ok": True, "flags": []}
+_ACTION_LLM_DEFAULT = {"used": False, "reason": "not_applicable"}
+
+# B6 (§20): per-/ask operational telemetry. Mirrors llm_client._record_usage —
+# no raw question/answer/slots are ever written, and file IO fails silently so a
+# logging problem never breaks an answer.
+AGENT_USAGE_LOG_PATH = Path("data/state/agent_usage.jsonl")
+
+
+def _llm_usage_flags(llm_metadata: dict) -> dict:
+    """Derive boolean LLM-assist flags from /ask llm metadata for usage logging."""
+    qe = llm_metadata.get("query_expansion", {}) or {}
+    rr = llm_metadata.get("rerank", {}) or {}
+    pol = llm_metadata.get("polish", {}) or {}
+    return {
+        "llm_query_expansion_used": bool(qe.get("used")),
+        "llm_rerank_used": bool(rr.get("used")),
+        "llm_polish_used": bool(pol.get("used")),
+        "llm_fallback": bool(
+            qe.get("error") or rr.get("error") or pol.get("error") or pol.get("rejected_reason")
+        ),
+    }
+
+
+def _record_agent_usage(record: dict) -> None:
+    """Append one /ask telemetry line (no raw text) — silent on any failure."""
+    entry = {"ts": datetime.now(timezone.utc).isoformat(), "route": "/ask", **record}
+    try:
+        AGENT_USAGE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with AGENT_USAGE_LOG_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _read_recent_agent_usage(limit: int = 1000) -> list[dict]:
+    """Return up to the last ``limit`` usage records; tolerate missing/corrupt lines."""
+    try:
+        with AGENT_USAGE_LOG_PATH.open("r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except Exception:
+        return []
+    records: list[dict] = []
+    for raw in lines[-limit:]:
+        text = raw.strip()
+        if not text:
+            continue
+        try:
+            records.append(json.loads(text))
+        except Exception:
+            continue
+    return records
+
+
+def _summarize_agent_usage(limit: int = 1000) -> dict:
+    """Aggregate recent /ask telemetry into operational rates for /health (B6 §20)."""
+    records = _read_recent_agent_usage(limit)
+    count = len(records)
+    summary = {
+        "count": count,
+        "window": limit,
+        "privacy_block_rate": 0.0,
+        "no_source_rate": 0.0,
+        "citation_validation_fail_rate": 0.0,
+        "output_privacy_fail_rate": 0.0,
+        "live_check_success_rate": 0.0,
+        "llm_fallback_rate": 0.0,
+        "avg_latency_ms": 0.0,
+    }
+    if not count:
+        return summary
+
+    def _rate(predicate) -> float:
+        return round(sum(1 for r in records if predicate(r)) / count, 4)
+
+    summary["privacy_block_rate"] = _rate(lambda r: bool(r.get("privacy_blocked")))
+    summary["no_source_rate"] = _rate(lambda r: bool(r.get("no_source")))
+    summary["citation_validation_fail_rate"] = _rate(lambda r: r.get("citation_validation_ok") is False)
+    summary["output_privacy_fail_rate"] = _rate(lambda r: r.get("output_privacy_ok") is False)
+    summary["llm_fallback_rate"] = _rate(lambda r: bool(r.get("llm_fallback")))
+
+    # Success rate is measured only over attempts so non-live answers don't dilute it.
+    attempts = [r for r in records if r.get("live_check_attempted")]
+    if attempts:
+        succeeded = sum(1 for r in attempts if r.get("live_check_success"))
+        summary["live_check_success_rate"] = round(succeeded / len(attempts), 4)
+
+    latencies = [r.get("latency_ms") for r in records if isinstance(r.get("latency_ms"), (int, float))]
+    if latencies:
+        summary["avg_latency_ms"] = round(sum(latencies) / len(latencies), 2)
+    return summary
+
+
+def _action_response(result: dict, **overrides: Any) -> dict:
+    """Merge action-specific fields onto the A1 common-field contract.
+
+    Every /actions/continue return path goes through here so the response shape
+    matches /ask: action-specific keys (status/message/document/checklist/
+    missing_slots/...) are preserved, and any missing common field is filled with
+    a safe default. Overrides set to None are ignored so callers only pass the
+    fields they actually computed.
+    """
+    response: dict[str, Any] = {
+        "answer": "",
+        "issue_type": "",
+        "classification": {"issue_type": "", "confidence": 0.0, "scores": {}},
+        "tool_logs": [],
+        "sources": [],
+        "citations": [],
+        "next_actions": [],
+        "safety_flags": [],
+        "answer_validation": dict(_EMPTY_ANSWER_VALIDATION),
+        "output_privacy": dict(_EMPTY_OUTPUT_PRIVACY),
+        "llm": dict(_ACTION_LLM_DEFAULT),
+        "live_check": {"attempted": False, "requested": False},
+    }
+    response.update(result)
+    response.update({key: value for key, value in overrides.items() if value is not None})
+    return response
+
+
 @app.post("/ask")
 def ask(request: AskRequest) -> dict:
     """Answer a campus-life question with grounded sources and next actions."""
+    start = time.perf_counter()
     tool_logs: list[str] = []
     privacy = inspect_privacy(request.question)
     tool_logs.append("guard.inspect_privacy 호출됨")
     if privacy.blocked:
+        _record_agent_usage(
+            {
+                "issue_type": "privacy_blocked",
+                "status": "privacy_blocked",
+                "safety_flags": privacy.flags,
+                "chunk_count": 0,
+                "citation_count": 0,
+                "privacy_blocked": True,
+                "no_source": False,
+                "output_privacy_ok": True,
+                "citation_validation_ok": True,
+                "live_check_attempted": False,
+                "live_check_success": False,
+                "llm_query_expansion_used": False,
+                "llm_rerank_used": False,
+                "llm_polish_used": False,
+                "llm_fallback": False,
+                "latency_ms": round((time.perf_counter() - start) * 1000, 2),
+            }
+        )
         return {
             "answer": privacy.message,
             "issue_type": "privacy_blocked",
+            "classification": {"issue_type": "privacy_blocked", "confidence": 0.0, "scores": {}},
             "tool_logs": tool_logs,
             "sources": [],
             "citations": [],
             "next_actions": [],
             "safety_flags": privacy.flags,
+            "answer_validation": dict(_EMPTY_ANSWER_VALIDATION),
+            "output_privacy": dict(_EMPTY_OUTPUT_PRIVACY),
             "llm": {"used": False, "reason": "privacy_blocked"},
             "live_check": {"attempted": False, "reason": "privacy_blocked"},
         }
@@ -294,24 +446,51 @@ def ask(request: AskRequest) -> dict:
     source_guard = require_sources(chunks)
     tool_logs.append("guard.require_sources 호출됨")
     if source_guard.blocked:
+        _record_agent_usage(
+            {
+                "issue_type": issue_type,
+                "status": "no_source",
+                "safety_flags": source_guard.flags,
+                "chunk_count": 0,
+                "citation_count": 0,
+                "privacy_blocked": False,
+                "no_source": True,
+                "output_privacy_ok": True,
+                "citation_validation_ok": True,
+                "live_check_attempted": bool(live_check_result.get("attempted")),
+                "live_check_success": bool(live_check_result.get("network_success", 0) > 0),
+                **_llm_usage_flags(llm_metadata),
+                "latency_ms": round((time.perf_counter() - start) * 1000, 2),
+            }
+        )
         return {
             "answer": (
                 f"{source_guard.message}\n"
                 "국민대학교 공식 포털, 관련 부서, 학과사무실 또는 담당 교강사에게 확인해 주세요."
             ),
             "issue_type": issue_type,
+            "classification": classification,
             "tool_logs": tool_logs,
             "sources": [],
             "citations": [],
             "next_actions": [],
             "safety_flags": source_guard.flags,
+            "answer_validation": dict(_EMPTY_ANSWER_VALIDATION),
+            "output_privacy": dict(_EMPTY_OUTPUT_PRIVACY),
             "llm": llm_metadata,
             "live_check": live_check_result,
         }
 
     actions = suggest_actions(issue_type, chunks)
     tool_logs.append("suggest_actions 호출됨")
-    built = build_final_answer(request.question, issue_type, chunks, actions, request.student_context)
+    built = build_final_answer(
+        request.question,
+        issue_type,
+        chunks,
+        actions,
+        request.student_context,
+        live_check_result=live_check_result,
+    )
     tool_logs.extend(["generate_checklist 호출됨", "route_contact 호출됨", "build_final_answer 호출됨"])
     answer = built["answer"]
     if request.llm_assist and llm_client.polish_enabled:
@@ -341,6 +520,24 @@ def ask(request: AskRequest) -> dict:
 
     final_safety_flags = [*answer_validation["flags"], *output_privacy["flags"]]
 
+    _record_agent_usage(
+        {
+            "issue_type": issue_type,
+            "status": "answered",
+            "safety_flags": final_safety_flags,
+            "chunk_count": len(chunks),
+            "citation_count": len(built["citations"]),
+            "privacy_blocked": False,
+            "no_source": False,
+            "output_privacy_ok": bool(output_privacy["ok"]),
+            "citation_validation_ok": bool(answer_validation["ok"]),
+            "live_check_attempted": bool(live_check_result.get("attempted")),
+            "live_check_success": bool(live_check_result.get("network_success", 0) > 0),
+            **_llm_usage_flags(llm_metadata),
+            "latency_ms": round((time.perf_counter() - start) * 1000, 2),
+        }
+    )
+
     return {
         "answer": answer,
         "issue_type": issue_type,
@@ -366,31 +563,75 @@ def action_start(request: ActionStartRequest) -> dict:
 @app.post("/actions/continue")
 def action_continue(request: ActionContinueRequest) -> dict:
     """Continue a document/action drafting flow with user-provided non-sensitive slots."""
+    tool_logs: list[str] = []
     privacy_text = " ".join(str(value) for value in request.slots.values())
     privacy = inspect_privacy(privacy_text)
+    tool_logs.append("guard.inspect_privacy 호출됨")
     if privacy.blocked:
-        return {
-            "status": "blocked",
-            "message": privacy.message,
-            "safety_flags": privacy.flags,
-        }
-    from tools.document_drafter import action_issue_type
+        return _action_response(
+            {"status": "blocked", "message": privacy.message},
+            tool_logs=tool_logs,
+            safety_flags=privacy.flags,
+            live_check={"attempted": False, "requested": request.live_check},
+        )
+    from tools.document_drafter import action_grounding, action_issue_type, action_label
 
     issue_type = action_issue_type(request.action_id)
+    tool_logs.append(f"document_drafter.action_issue_type → {issue_type}")
+    classification = {"issue_type": issue_type, "confidence": 1.0, "scores": {}}
+    grounding = action_grounding(request.action_id)
+    # B3: enrich the grounding search beyond the bare action_id so official source
+    # chunks are more likely to surface (original query + human label + issue type).
+    search_terms = " ".join(
+        filter(None, [request.query, action_label(request.action_id), issue_type])
+    ).strip() or request.action_id
     action_live_check: dict[str, Any] = {"attempted": False, "requested": request.live_check}
     if request.live_check:
         action_live_check = refresh_sources_for_issue(
             issue_type,
-            query=request.action_id,
+            query=request.query or request.action_id,
             vector_retriever=retriever.vector,
         )
+        tool_logs.append("live_refresh.refresh_sources_for_issue 호출됨")
         if action_live_check.get("updated"):
             retriever.reload()
-    chunks = retriever.search(request.action_id, issue_type=issue_type, limit=4)
-    chunks = _prefer_issue_matched_chunks(chunks, issue_type, request.action_id)
+    chunks = retriever.search(search_terms, issue_type=issue_type, limit=4)
+    chunks = _prefer_issue_matched_chunks(chunks, issue_type, search_terms)
+    tool_logs.append(f"retriever.search 호출됨 (chunks={len(chunks)})")
+    _, action_citations = build_citations(chunks)
     result = continue_action(request.action_id, request.slots, chunks)
+    tool_logs.append(f"action_state.continue_action 호출됨 (status={result.get('status')})")
     if result.get("status") != "completed":
-        return {**result, "live_check": action_live_check}
+        return _action_response(
+            result,
+            tool_logs=tool_logs,
+            issue_type=issue_type,
+            classification=classification,
+            sources=chunks,
+            citations=action_citations,
+            live_check=action_live_check,
+            grounding=grounding,
+        )
+
+    # B3 (§11.4·§12.4): an action whose policy demands an official source must not
+    # return a finished draft when retrieval found nothing to ground it on.
+    if grounding == "official_chunk_required" and not chunks:
+        tool_logs.append("grounding.official_chunk_required → 공식 근거 없음으로 차단")
+        return _action_response(
+            {
+                "status": "blocked",
+                "action_id": request.action_id,
+                "message": "관련 공식 근거 문서를 찾지 못해 초안을 생성하지 않았습니다. 질문을 더 구체적으로 적거나 live_check를 사용해 최신 공식 자료를 받아 주세요.",
+                "grounding": grounding,
+            },
+            tool_logs=tool_logs,
+            issue_type=issue_type,
+            classification=classification,
+            sources=[],
+            citations=[],
+            safety_flags=["no_official_source"],
+            live_check=action_live_check,
+        )
 
     output_text = " ".join(
         [
@@ -399,15 +640,34 @@ def action_continue(request: ActionContinueRequest) -> dict:
         ]
     )
     output_privacy = validate_output_privacy(output_text)
+    tool_logs.append("answer_validator.validate_output_privacy 호출됨")
     if not output_privacy["ok"]:
-        return {
-            "status": "blocked",
-            "message": "초안에 민감정보 값이 포함될 가능성이 있어 반환하지 않았습니다. 개인정보를 제거한 뒤 다시 시도해 주세요.",
-            "safety_flags": output_privacy["flags"],
-            "output_privacy": output_privacy,
-            "live_check": action_live_check,
-        }
-    return {**result, "output_privacy": output_privacy, "live_check": action_live_check}
+        return _action_response(
+            {
+                "status": "blocked",
+                "message": "초안에 민감정보 값이 포함될 가능성이 있어 반환하지 않았습니다. 개인정보를 제거한 뒤 다시 시도해 주세요.",
+            },
+            tool_logs=tool_logs,
+            issue_type=issue_type,
+            classification=classification,
+            sources=chunks,
+            citations=action_citations,
+            safety_flags=output_privacy["flags"],
+            output_privacy=output_privacy,
+            live_check=action_live_check,
+            grounding=grounding,
+        )
+    return _action_response(
+        result,
+        tool_logs=tool_logs,
+        issue_type=issue_type,
+        classification=classification,
+        sources=chunks,
+        citations=action_citations,
+        output_privacy=output_privacy,
+        live_check=action_live_check,
+        grounding=grounding,
+    )
 
 
 def _graduation_analysis_response(task: str, transcript, extra: dict[str, Any] | None = None) -> dict:

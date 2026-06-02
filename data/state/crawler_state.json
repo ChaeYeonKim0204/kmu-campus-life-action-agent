@@ -28,10 +28,10 @@
       "url": "https://www.kookmin.ac.kr/comm/menu/user/e1c6c542f5c3f009ef24a10b89683abd/content/index.do"
     },
     "notice_course_registration_2026_1": {
-      "content_hash": "0748beb2544e5a884086d963fd434ae22c299eb354453ce945c0a35ac155d56e",
+      "content_hash": "b45d47676fb84babb4c293f38846bc3d1ae5f7cc0c22a05366cbf8bbef29568f",
       "fetch_status": "success",
       "http_status": 200,
-      "last_seen_at": "2026-05-12T07:20:33.325740+00:00",
+      "last_seen_at": "2026-05-29T14:23:59.333448+00:00",
       "source_type": "notice",
       "title": "2026-1학기 수강신청 일정안내",
       "url": "https://www.kookmin.ac.kr/user/kmuNews/notice/4/11139/view.do?currentPageNo=1"
@@ -49,7 +49,7 @@
       "content_hash": "4bcfc022f377eae63c478e5f09316eac3812d0e5094ebbfc98222bfe63d04295",
       "fetch_status": "success",
       "http_status": 200,
-      "last_seen_at": "2026-05-12T07:20:33.325897+00:00",
+      "last_seen_at": "2026-05-29T14:23:59.332447+00:00",
       "source_type": "schedule",
       "title": "국민대학교 학사일정 - 2026학년도 수강신청",
       "url": "https://www.kookmin.ac.kr/user/scGuid/scSchedule/index.do"
@@ -61,6 +61,15 @@
       "last_seen_at": "2026-05-12T07:20:33.325827+00:00",
       "source_type": "schedule",
       "title": "국민대학교 학사일정 - 2026학년도 휴학/복학",
+      "url": "https://www.kookmin.ac.kr/user/scGuid/scSchedule/index.do"
+    },
+    "schedule_2026_summer_session": {
+      "content_hash": "4bcfc022f377eae63c478e5f09316eac3812d0e5094ebbfc98222bfe63d04295",
+      "fetch_status": "success",
+      "http_status": 200,
+      "last_seen_at": "2026-05-29T14:23:59.333448+00:00",
+      "source_type": "schedule",
+      "title": "국민대학교 학사일정 - 2026학년도 하계 계절학기",
       "url": "https://www.kookmin.ac.kr/user/scGuid/scSchedule/index.do"
     },
     "student_support_certificate": {
@@ -117,5 +126,39 @@
     "new_documents": 0,
     "skipped_documents": 0,
     "source": "all"
+  },
+  "last_live_refresh": {
+    "course_registration": {
+      "completed_at": "2026-05-29T14:23:59.753570+00:00",
+      "documents_seen": 3,
+      "failures": [],
+      "fetch_summary": {
+        "failed_urls": [],
+        "fallback_used": 0,
+        "network_failed": 0,
+        "network_success": 3
+      },
+      "selected_pages": [
+        {
+          "doc_id": "schedule_2026_course_registration",
+          "source": "schedule",
+          "title": "국민대학교 학사일정 - 2026학년도 수강신청",
+          "url": "https://www.kookmin.ac.kr/user/scGuid/scSchedule/index.do"
+        },
+        {
+          "doc_id": "notice_course_registration_2026_1",
+          "source": "notice",
+          "title": "2026-1학기 수강신청 일정안내",
+          "url": "https://www.kookmin.ac.kr/user/kmuNews/notice/4/11139/view.do?currentPageNo=1"
+        },
+        {
+          "doc_id": "schedule_2026_summer_session",
+          "source": "schedule",
+          "title": "국민대학교 학사일정 - 2026학년도 하계 계절학기",
+          "url": "https://www.kookmin.ac.kr/user/scGuid/scSchedule/index.do"
+        }
+      ],
+      "updated_documents": 3
+    }
   }
 }

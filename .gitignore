@@ -15,6 +15,7 @@ data/vector/
 data/graduation/chroma/
 data/graduation/index_stats.json
 data/state/llm_usage.jsonl
+data/state/agent_usage.jsonl
 test/chroma_db/
 test/*.pdf
 test/index_stats.json
@@ -30,5 +31,6 @@ frontend/node_modules/
 *.env
 test/.env
 private/
+*.docx
 *성적증명서*.pdf
 *성적증명서*.pdf

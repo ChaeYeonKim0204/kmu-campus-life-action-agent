@@ -411,11 +411,20 @@ function App() {
 
   async function continueAction() {
     if (!actionState) return;
+    // 사용자가 이 action을 시작하게 된 원질문(가장 최근 사용자 메시지)을 함께 보내
+    // 백엔드 grounding 검색 품질을 높인다. 없으면 빈 문자열 → 백엔드가 action_id로 폴백.
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+    const originatingQuery = lastUserMessage?.text || "";
     try {
       const response = await fetch(`${API_BASE}/actions/continue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action_id: actionState.action_id, slots, live_check: liveCheck }),
+        body: JSON.stringify({
+          action_id: actionState.action_id,
+          slots,
+          live_check: liveCheck,
+          query: originatingQuery,
+        }),
       });
       const data = await response.json();
       if (data.live_check) setLiveCheckStatus(data.live_check);

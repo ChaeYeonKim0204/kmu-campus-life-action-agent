@@ -51,6 +51,11 @@ export default function AdminDashboard({ apiBase }) {
 
   React.useEffect(() => { loadHealth(); }, []);
 
+  function fmtPct(rate) {
+    if (typeof rate !== "number") return "—";
+    return `${(rate * 100).toFixed(1)}%`;
+  }
+
   return (
     <div className="admin-dashboard">
       {/* 헬스 체크 */}
@@ -116,6 +121,50 @@ export default function AdminDashboard({ apiBase }) {
           <p style={{ fontSize: "10.5px", color: "#FCA5A5", marginTop: "4px" }}>GPT: {health.llm.error}</p>
         )}
       </div>
+
+      {/* 에이전트 운영 지표 */}
+      {health && !health.error && health.agent_metrics && (
+        <div className="admin-section">
+          <h4 style={{ marginBottom: "6px" }}>📊 에이전트 운영 지표</h4>
+          <p style={{ fontSize: "10.5px", color: "rgba(255,255,255,0.4)", marginTop: 0, marginBottom: "10px" }}>
+            최근 {health.agent_metrics.count}건 (집계창 {health.agent_metrics.window})
+          </p>
+          <div className="health-grid">
+            <div className="health-item">
+              <span className="health-key">처리 건수</span>
+              <span className="health-value">{health.agent_metrics.count ?? "—"}</span>
+            </div>
+            <div className="health-item">
+              <span className="health-key">개인정보 차단율</span>
+              <span className="health-value">{fmtPct(health.agent_metrics.privacy_block_rate)}</span>
+            </div>
+            <div className="health-item">
+              <span className="health-key">근거 없음율</span>
+              <span className="health-value">{fmtPct(health.agent_metrics.no_source_rate)}</span>
+            </div>
+            <div className="health-item">
+              <span className="health-key">인용검증 실패율</span>
+              <span className="health-value">{fmtPct(health.agent_metrics.citation_validation_fail_rate)}</span>
+            </div>
+            <div className="health-item">
+              <span className="health-key">출력보호 실패율</span>
+              <span className="health-value">{fmtPct(health.agent_metrics.output_privacy_fail_rate)}</span>
+            </div>
+            <div className="health-item">
+              <span className="health-key">최신확인 성공율</span>
+              <span className="health-value" style={{ color: "#6EE7B7" }}>{fmtPct(health.agent_metrics.live_check_success_rate)}</span>
+            </div>
+            <div className="health-item">
+              <span className="health-key">LLM fallback율</span>
+              <span className="health-value">{fmtPct(health.agent_metrics.llm_fallback_rate)}</span>
+            </div>
+            <div className="health-item">
+              <span className="health-key">평균 지연</span>
+              <span className="health-value">{health.agent_metrics.avg_latency_ms ?? "—"}ms</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 데이터 수집 */}
       <div className="admin-section">

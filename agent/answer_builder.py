@@ -19,12 +19,39 @@ def _first_chunk(chunks: list[dict], predicate) -> dict | None:
     return chunks[0] if chunks else None
 
 
+def _live_check_note(live_check_result: dict | None) -> str | None:
+    """Map a live-refresh result to a single user-facing status line for [주의]."""
+    if not live_check_result:
+        return None
+    cooldown = int(live_check_result.get("cooldown_remaining_seconds", 0) or 0)
+    if cooldown > 0:
+        return f"최신 확인: 최근 확인됨 — 약 {cooldown}초 후 재확인 가능 (저장된 근거 사용)"
+    if not live_check_result.get("attempted"):
+        if live_check_result.get("status") == "skipped":
+            return "최신 확인: 실시간 확인 대상이 아니거나 연결된 공개 소스가 없어 저장된 근거로 답변합니다."
+        return None
+    success = int(live_check_result.get("network_success", 0) or 0)
+    fallback = int(live_check_result.get("fallback_used", 0) or 0)
+    failed = int(live_check_result.get("network_failed", 0) or 0)
+    if success > 0:
+        note = f"최신 확인: 최신 공식 자료 확인 완료 (관련 페이지 {success}건)"
+        if fallback > 0:
+            note += " — 일부는 저장/대체 근거 사용"
+        return note
+    if failed > 0:
+        return "최신 확인: 실패 — 저장된 근거로 답변 (공식 페이지를 한 번 더 확인해 주세요)"
+    if fallback > 0:
+        return "최신 확인: 일부 공식 페이지는 최신 확인 대신 저장/대체 근거를 사용했습니다"
+    return None
+
+
 def build_final_answer(
     query: str,
     issue_type: str,
     chunks: list[dict],
     next_actions: list[dict],
     student_context: dict | None = None,
+    live_check_result: dict | None = None,
 ) -> dict:
     """Build the final grounded answer with citations, tool results, and source metadata."""
     labels, citations = build_citations(chunks)
@@ -121,6 +148,9 @@ def build_final_answer(
             "최종 처리는 국민대학교 공식 포털, 담당 부서, 학과사무실 또는 담당 교강사 확인이 필요합니다. 실제 개인정보나 로그인 정보는 입력하지 마세요.",
         ]
     )
+    live_note = _live_check_note(live_check_result)
+    if live_note:
+        lines.append(live_note)
     return {
         "answer": "\n".join(lines),
         "citations": citations,

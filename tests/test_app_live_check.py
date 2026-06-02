@@ -1,6 +1,53 @@
 from fastapi.testclient import TestClient
 
 import app as app_module
+from agent.answer_builder import _live_check_note
+
+
+def test_live_check_note_success():
+    note = _live_check_note({"attempted": True, "network_success": 2, "fallback_used": 0, "network_failed": 0})
+    assert note is not None and "최신 공식 자료 확인 완료" in note and "2건" in note
+
+
+def test_live_check_note_failure():
+    note = _live_check_note({"attempted": True, "network_success": 0, "fallback_used": 0, "network_failed": 1})
+    assert note is not None and "실패" in note
+
+
+def test_live_check_note_fallback():
+    note = _live_check_note({"attempted": True, "network_success": 0, "fallback_used": 1, "network_failed": 0})
+    assert note is not None and "저장/대체 근거" in note
+
+
+def test_live_check_note_cooldown():
+    note = _live_check_note({"attempted": False, "cooldown_remaining_seconds": 30})
+    assert note is not None and "재확인" in note
+
+
+def test_live_check_note_none_when_not_attempted():
+    assert _live_check_note({"attempted": False, "cooldown_remaining_seconds": 0}) is None
+    assert _live_check_note(None) is None
+
+
+def test_live_check_note_skipped_when_requested_but_no_source():
+    note = _live_check_note({"attempted": False, "status": "skipped", "cooldown_remaining_seconds": 0})
+    assert note is not None and "저장된 근거" in note
+
+
+def test_ask_live_check_note_appears_in_answer_body(monkeypatch):
+    def fake_refresh(issue_type, query="", **kwargs):
+        return {"attempted": True, "updated": False, "network_success": 1, "fallback_used": 0, "network_failed": 0,
+                "cooldown_remaining_seconds": 0}
+
+    monkeypatch.setattr(app_module, "refresh_sources_for_issue", fake_refresh)
+    client = TestClient(app_module.app)
+
+    response = client.post("/ask", json={"question": "수강신청 기간 언제야?", "live_check": True})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "[주의]" in data["answer"]
+    assert "최신 확인: 최신 공식 자료 확인 완료" in data["answer"]
 
 
 def test_ask_runs_live_check_when_requested(monkeypatch):

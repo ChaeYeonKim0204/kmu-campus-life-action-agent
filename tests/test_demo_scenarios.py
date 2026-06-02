@@ -102,6 +102,47 @@ def test_demo_scenario_graduation_requirements():
     _assert_common_contract(data)
 
 
+# ---- early return 공통 필드 일관화 회귀 (A1) ----
+
+_COMMON_FIELDS = (
+    "answer", "issue_type", "classification", "tool_logs", "sources",
+    "citations", "next_actions", "safety_flags", "answer_validation",
+    "output_privacy", "llm", "live_check",
+)
+
+
+def _assert_has_common_fields(data: dict) -> None:
+    for field in _COMMON_FIELDS:
+        assert field in data, f"공통 필드 누락: {field} / keys={list(data)}"
+    assert "ok" in data["answer_validation"], data["answer_validation"]
+    assert "ok" in data["output_privacy"], data["output_privacy"]
+
+
+def test_ask_privacy_block_has_common_fields():
+    """privacy 차단 early return도 12개 공통 필드를 모두 반환."""
+    r = client.post("/ask", json={
+        "question": "내 주민번호 901010-1234567 인데 증명서 발급 도와줘",
+        "llm_assist": False,
+        "live_check": False,
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["issue_type"] == "privacy_blocked", data["issue_type"]
+    assert data["safety_flags"], data["safety_flags"]
+    _assert_has_common_fields(data)
+
+
+def test_ask_unknown_query_has_common_fields():
+    """no-source / 정상 어느 경로든 12개 공통 필드를 모두 반환 (shape 일관성)."""
+    r = client.post("/ask", json={
+        "question": "zxqwv 무의미한 질문 plplpl 12390",
+        "llm_assist": False,
+        "live_check": False,
+    })
+    assert r.status_code == 200
+    _assert_has_common_fields(r.json())
+
+
 # ---- Live LLM 마크 케이스 (opt-in: pytest -m live_llm) ----
 
 @pytest.mark.live_llm

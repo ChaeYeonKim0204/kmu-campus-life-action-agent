@@ -176,6 +176,44 @@ def supported_actions() -> dict[str, dict]:
     return ACTION_SCHEMAS
 
 
+# B3 (§11.4·§12.4): grounding policy per action.
+#   official_chunk_required  - block the draft when no official source chunk is retrieved.
+#   contact_only             - allowed without an official chunk (user-authored message).
+#   structured_summary_allowed - graduation / course-plan summaries allowed without a chunk.
+# Kept as a dedicated map (not inside ACTION_SCHEMAS) so the model-team graduation entries
+# are left untouched. Unknown actions default to the safe (blocking) policy.
+ACTION_GROUNDING: dict[str, str] = {
+    "draft_attendance_recognition_form": "official_chunk_required",
+    "draft_leave_checklist": "official_chunk_required",
+    "draft_return_checklist": "official_chunk_required",
+    "course_registration_checklist": "official_chunk_required",
+    "certificate_issue_guide": "official_chunk_required",
+    "student_id_issue_guide": "official_chunk_required",
+    "scholarship_notice_checklist": "official_chunk_required",
+    "portal_access_checklist": "official_chunk_required",
+    "academic_schedule_digest": "official_chunk_required",
+    "campus_facility_guide": "official_chunk_required",
+    "academic_record_correction_checklist": "official_chunk_required",
+    "student_insurance_checklist": "official_chunk_required",
+    "military_service_checklist": "official_chunk_required",
+    "graduation_audit": "structured_summary_allowed",
+    "recommend_course_plan": "structured_summary_allowed",
+    "draft_contact_message": "contact_only",
+}
+
+DEFAULT_GROUNDING = "official_chunk_required"
+
+
+def action_grounding(action_id: str) -> str:
+    """Return the grounding policy for an action (B3); safe default blocks ungrounded drafts."""
+    return ACTION_GROUNDING.get(action_id, DEFAULT_GROUNDING)
+
+
+def action_label(action_id: str) -> str | None:
+    """Return the human-readable label for an action (used to enrich grounding search)."""
+    return ACTION_SCHEMAS.get(action_id, {}).get("label")
+
+
 def action_issue_type(action_id: str) -> str | None:
     """Return the issue type associated with an action."""
     return ACTION_SCHEMAS.get(action_id, {}).get("issue_type")

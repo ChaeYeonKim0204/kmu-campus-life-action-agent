@@ -1,0 +1,11 @@
+# Human-in-the-Loop 학업·커리어 매니지먼트 에이전트 의존성
+requests>=2.31
+beautifulsoup4>=4.12
+pydantic>=2.6
+openai>=1.30
+pdfplumber>=0.11
+google-api-python-client>=2.120
+google-auth>=2.29
+google-auth-oauthlib>=1.2
+python-dotenv>=1.0
+# 텔레그램/노션은 외부 HTTP(requests)로 직접 호출하므로 별도 SDK 불필요

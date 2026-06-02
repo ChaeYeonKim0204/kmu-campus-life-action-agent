@@ -4,10 +4,28 @@
       "content_hash": "bc1ec47039f99ef29cfe2f89e06b1e1f65985f46a5e2d3aca9c33ef48c7c32bc",
       "fetch_status": "success",
       "http_status": 200,
-      "last_seen_at": "2026-05-12T07:20:33.325583+00:00",
+      "last_seen_at": "2026-06-02T04:35:39.509167+00:00",
       "source_type": "academic_guide",
       "title": "국민대학교 학사안내 - 출석",
       "url": "https://www.kookmin.ac.kr/comm/menu/user/38f9c1f2d0716f9a4665578e73d98571/content/index.do"
+    },
+    "campus_life_dorm_library_food": {
+      "content_hash": "9d070cf9937e9a721c5aeaf1a264ccaf2b896364abef94503858f2f2256577e1",
+      "fetch_status": "success",
+      "http_status": 200,
+      "last_seen_at": "2026-06-02T04:33:09.387530+00:00",
+      "source_type": "student_support",
+      "title": "국민대학교 생활관/도서관/오늘의 메뉴",
+      "url": "https://www.kookmin.ac.kr/user/unLvlh/lvlhSpor/todayMenu/index.do"
+    },
+    "campus_life_transport_parking": {
+      "content_hash": "ee0b83ca99bb2a52c9dbbcfc804d1ef3b12d802c9b10627b8e76a61f674f7b43",
+      "fetch_status": "success",
+      "http_status": 200,
+      "last_seen_at": "2026-06-02T04:33:09.387615+00:00",
+      "source_type": "student_support",
+      "title": "국민대학교 통학버스/주차 안내",
+      "url": "https://www.kookmin.ac.kr/comm/menu/user/640df1d2662a8972d4b32237c68f9e42/content/index.do"
     },
     "cradle_2025_graduation": {
       "content_hash": "e2c175016a327e60fa4c1676b22923321bf9858a8b03c061bf76d24c491b34a1",
@@ -40,7 +58,7 @@
       "content_hash": "cbf14279b50cc2f448baa2c11bb448b9bafab09e924c4a6674962d764d5c6329",
       "fetch_status": "success",
       "http_status": 200,
-      "last_seen_at": "2026-05-12T07:20:33.326246+00:00",
+      "last_seen_at": "2026-06-02T04:35:39.509200+00:00",
       "source_type": "university_rule",
       "title": "국민대학교 학사규정 - 출석/성적 관련 조항",
       "url": "https://rule.kookmin.ac.kr/lmxsrv/law/lawFullView.do?SEQ=303"
@@ -80,6 +98,15 @@
       "source_type": "student_support",
       "title": "국민대학교 증명서 발급",
       "url": "https://www.kookmin.ac.kr/comm/menu/user/00078abe6af76fde00965b928c8c9067/content/index.do"
+    },
+    "student_support_military": {
+      "content_hash": "710067d68c0f7924302bf028fb1a0410dd0c85dc22a879e4f43c07790f7f2cab",
+      "fetch_status": "success",
+      "http_status": 200,
+      "last_seen_at": "2026-06-02T04:35:39.509286+00:00",
+      "source_type": "student_support",
+      "title": "국민대학교 병무/예비군",
+      "url": "https://www.kookmin.ac.kr/comm/menu/user/0f4599e39a8b492a409322ac8e60f140/content/index.do"
     },
     "swell_public_guidance": {
       "content_hash": "708979eece6f4b42baa2a49406e73ac19b0b140967b84566464334a77dcc3c88",
@@ -128,6 +155,64 @@
     "source": "all"
   },
   "last_live_refresh": {
+    "attendance": {
+      "completed_at": "2026-06-02T04:35:39.716048+00:00",
+      "documents_seen": 3,
+      "failures": [],
+      "fetch_summary": {
+        "failed_urls": [],
+        "fallback_used": 0,
+        "network_failed": 0,
+        "network_success": 3
+      },
+      "selected_pages": [
+        {
+          "doc_id": "attendance_guide",
+          "source": "academic_guide",
+          "title": "국민대학교 학사안내 - 출석",
+          "url": "https://www.kookmin.ac.kr/comm/menu/user/38f9c1f2d0716f9a4665578e73d98571/content/index.do"
+        },
+        {
+          "doc_id": "rule_academic_303",
+          "source": "university_rule",
+          "title": "국민대학교 학사규정 - 출석/성적 관련 조항",
+          "url": "https://rule.kookmin.ac.kr/lmxsrv/law/lawFullView.do?SEQ=303"
+        },
+        {
+          "doc_id": "student_support_military",
+          "source": "student_support",
+          "title": "국민대학교 병무/예비군",
+          "url": "https://www.kookmin.ac.kr/comm/menu/user/0f4599e39a8b492a409322ac8e60f140/content/index.do"
+        }
+      ],
+      "updated_documents": 3
+    },
+    "campus_facility": {
+      "completed_at": "2026-06-02T04:33:09.545153+00:00",
+      "documents_seen": 2,
+      "failures": [],
+      "fetch_summary": {
+        "failed_urls": [],
+        "fallback_used": 0,
+        "network_failed": 0,
+        "network_success": 2
+      },
+      "selected_pages": [
+        {
+          "doc_id": "campus_life_dorm_library_food",
+          "source": "student_support",
+          "title": "국민대학교 생활관/도서관/오늘의 메뉴",
+          "url": "https://www.kookmin.ac.kr/user/unLvlh/lvlhSpor/todayMenu/index.do"
+        },
+        {
+          "doc_id": "campus_life_transport_parking",
+          "source": "student_support",
+          "title": "국민대학교 통학버스/주차 안내",
+          "url": "https://www.kookmin.ac.kr/comm/menu/user/640df1d2662a8972d4b32237c68f9e42/content/index.do"
+        }
+      ],
+      "updated_documents": 2
+    },
     "course_registration": {
       "completed_at": "2026-05-29T14:23:59.753570+00:00",
       "documents_seen": 3,

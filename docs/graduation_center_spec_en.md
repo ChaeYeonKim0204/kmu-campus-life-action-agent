@@ -204,6 +204,42 @@ Backend returns structured JSON; the frontend renders the dashboard from it. `re
 `node_trace`: ordered step events `{node, status, summary}` for the Dify-style workflow visualization
 (`요람 로딩 → 데이터 검증 → 갭 계산 → 로드맵 플래닝 → 검증/repair → 리스크 산정`).
 
+**Worked example (internally consistent — use as a fixture).** total gap == sum of per-area gaps == sum of roadmap credits == 6.
+```jsonc
+{
+  "context": { "admission_year": 2024, "program_id": "ai_bigdata_convergence_management",
+    "majors": ["본전공", "데이터과학 부전공"], "remaining_semesters": 2,
+    "seasonal_semester_allowed": false, "max_courses_per_term": 5,
+    "preferences": ["데이터분석"] },
+  "audit": {
+    "total_required": 130, "total_earned": 124, "total_gap": 6,
+    "gaps": [
+      { "area": "major_required", "required": 18, "earned": 18, "gap": 0 },
+      { "area": "major_elective", "required": 30, "earned": 24, "gap": 6 },
+      { "area": "liberal_total",  "required": 40, "earned": 40, "gap": 0 }
+    ],
+    "missing_required_course_ids": []
+  },
+  "risk": { "grade": "B", "label": "주의", "score": 78,
+    "reasons": [ { "factor": "전공선택", "detail": "6학점 부족, 정규 2학기 내 해결 가능", "severity": 12 },
+                 { "factor": "개설시점", "detail": "'데이터마이닝' 2학기만 개설", "severity": 8 } ] },
+  "roadmap": {
+    "feasible": true,
+    "terms": [
+      { "term": "2026-2", "courses": [ { "course_id": "2024-AIBIZ-ELEC-DM", "name_ko": "데이터마이닝",
+          "credits": 3, "satisfies": "major_elective", "reason": "2학기만 개설", "source_ids": ["G3"] } ],
+        "term_credits": 3 },
+      { "term": "2027-1", "courses": [ { "course_id": "2024-AIBIZ-ELEC-ML", "name_ko": "머신러닝",
+          "credits": 3, "satisfies": "major_elective", "reason": "선수과목(데이터마이닝) 이수 후", "source_ids": ["G2"] } ],
+        "term_credits": 3 } ],
+    "why_this_plan": "머신러닝은 데이터마이닝이 선수과목이라 다음 학기에 배치, 데이터마이닝은 2학기만 개설되어 2026-2에 먼저 수강.",
+    "blocked_reason": null, "relaxation_hint": null,
+    "assumptions": ["계절학기 미사용", "최대 5과목/학기"]
+  },
+  "sources": [ { "id": "G2", "page": 311 }, { "id": "G3", "page": 312 } ]
+}
+```
+
 ---
 
 ## 9. Report / dashboard sections

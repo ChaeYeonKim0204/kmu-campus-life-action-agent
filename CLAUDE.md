@@ -2,20 +2,36 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> ⚠️ **재설계 진행 중 (branch `feat/agentic-redesign-kcy`).** 교수 피드백 반영으로 방향을 전환했다: 캠퍼스라이프 `/ask` 곁다리 기능을 걷어내고 **졸업센터(졸업사정 컨설팅)를 메인 축**으로, 더 **agentic(ReAct)** 하게 재구성한다. 아래 문서에서 "현재"는 코드에 실재하는 것, "목표/계획"은 이 브랜치에서 만들어 갈 것이다. `main` 브랜치는 옛 구조 그대로 보존돼 있으니 옛 동작을 보려면 `git switch main`. 자세한 제거 범위·근거는 `docs/second_topic_workflow_candidates.md` 및 codex 2차 검토(아래 *재설계 개요*)를 따른다.
+
 ## What this project is
 
-A grounded-RAG agent that answers Kookmin University (KMU) campus-life questions in Korean and drafts the next-step paperwork (출석인정신청서, 휴학/복학 체크리스트, 문의문 etc.). It also runs a deeper, transcript-based graduation analysis subsystem (졸업센터). User-facing strings are Korean; keep them Korean unless told otherwise.
+국민대(KMU) 학생의 **졸업 요건을 분석해 컨설팅 보고서**를 내주는 grounded 에이전트다. 업로드한 성적표를 sanitize한 비식별 요약으로 만들고, 공식 요람·규정을 RAG로 근거 삼아, 학생 **개인 데이터**에 기반한 졸업 진단·대체경로·학기별 액션플랜을 **결정론적 보고서** 형태로 제시한다. 여기에 졸업센터(RAG)와 **다른 워크플로우 archetype을 가진 두 번째 주제** 1개를 더해 "학교생활 도우미" 틀을 채운다(주제 미정 — `docs/second_topic_workflow_candidates.md` 참고). 사용자 노출 문자열은 한국어; 따로 지시 없으면 한국어 유지.
+
+차별점(왜 상용 LLM이 아니라 이걸 써야 하나)을 코드로 증명하는 게 목표다: ① 공식 요람·규정 grounding(환각 차단) ② 상용 LLM이 못 보는 **개인 DB(성적표·학적)** ③ 결정론적 보고서 산출 ④ ReAct로 *도구를 골라 쓰는* 에이전트적 동작.
 
 This is a course **team project**; the professor's grading rubric below is a binding design constraint — build to it and self-evaluate against it (presentation 2026-06-09, ≤15 min incl. live prototype demo).
 
 ## 평가 기준 = 설계 제약 (build & self-evaluate against this)
 
-- **워크플로우 노드 분절** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. (현재 `guard→classify→retrieve→plan→build→validate` 파이프라인이 이 기준에 부합 — 이 구조를 유지·강화하고, LLM은 노드를 *대체*하지 말고 노드 사이에 *보조*로만 끼운다. 그래서 `generate()`로 답변을 통째로 생성하는 방향은 루브릭에 역행한다.)
-- **데이터 관리** — 사용자 입력 양식을 구체적으로 정의(`student_context`, action `ACTION_SCHEMAS`의 슬롯)하고, 노드 간 데이터 흐름이 또렷할 것(앞 노드 출력이 뒤 노드에서 실제로 쓰이고 `tool_logs`로 추적 가능).
-- **결과의 정형성·품질** — 출력이 즉시 업무에 쓸 수 있는 수준일 것(섹션형 답변 + citation, 액션 문서 초안). LLM 출력의 무작위성을 통제해(결정론적 조립·구조화 출력·낮은 temperature) 매번 일관된 결과를 낼 것 — 교수가 구두로 강조한 포인트.
-- **실무 유용성·문제 해결력** — 실제 업무/고객 경험 개선에 기여하는가.
+- **워크플로우 노드 분절** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. **재설계 방향:** 졸업센터를 `parse → structured_check → 요람 RAG → (ReAct controller) → report build → validate` 노드로 구성한다. ReAct를 도입하되 **LLM은 "다음에 어떤 도구를 쓸지"만 추론**(Thought→Action 선택)하고, 실행(Action)은 **결정론적 도구 노드**가 한다. LLM이 답변·보고서를 통째로 생성하는 방향은 루브릭에 역행한다. (→ *ReAct 가드레일* 절)
+- **데이터 관리** — 사용자 입력 양식을 구체적으로 정의하고(성적표 → `TranscriptSummary`, 과제별 입력 슬롯), 노드 간 데이터 흐름이 또렷할 것(앞 노드 출력이 뒤 노드에서 실제로 쓰이고 추적 가능). 개인 DB를 쓸수록 프라이버시 가드(아래)를 더 강하게.
+- **결과의 정형성·품질** — 출력이 즉시 업무에 쓸 수 있는 수준일 것: 텍스트 나열이 아니라 **섹션형 컨설팅 보고서**(현황진단 / 부족요건 / 대체경로 시나리오 / 학기별 액션플랜 / 근거) + citation. LLM 출력의 무작위성을 통제해(결정론적 조립·구조화 출력·낮은 temperature) 매번 일관된 결과를 낼 것 — 교수가 구두로 강조한 포인트.
+- **실무 유용성·문제 해결력** — 실제 학생 경험 개선에 기여하는가. 상용 LLM 대비 필요성이 드러나는가.
 
 새 기능이나 추가 LLM 사용을 설계할 때 위 4개 기준에 비춰 판단한다.
+
+## 재설계 개요 (제거 범위 + 순서)
+
+곁다리(캠퍼스라이프 `/ask` 파이프라인)와 메인 축(졸업센터)을 분리해 3티어로 정리한다. codex 2차 검토 반영:
+
+- **티어1 — 제거 대상 (곁다리, 졸업센터 미사용):** `agent/`, `tools/`, `llm_client.py`, `app.py`의 `/ask`·`/actions/*` 라우트와 관련 헬퍼(~850줄), 그리고 그 테스트 19종.
+- **티어2 — 동결 (코드·데이터 보존 + 제품 노출만 제거):** `crawler/`, `ingestion/`, `retriever/`, `/ingest/*`·`/sources` 라우트, `data/raw·processed·vector·state`. 두 번째 주제가 무엇이 되든 공식 일정·규정 수집/검색 인프라는 재필요할 확률이 높다. **삭제하지 말고** 라우트/UI 노출만 끄거나 flag로 격리한다.
+- **티어3 — 유지 (메인 축):** `graduation_center/`, `data/graduation/`, `/graduation/*`, `/health`, `/`(정적), `tests/test_graduation_*`.
+
+**선행 의존 이관 (중요):** `graduation_center/service.py:_official_policy_sources()`가 `data/processed/chunks.jsonl`(티어2 데이터)을 **직접 읽는다**(early_graduation·credit_drop 공식 근거용). 졸업센터는 import 레벨에선 독립이지만 이 **런타임 파일 의존**이 있으므로, 티어2 데이터를 건드리기 전에 해당 정책 chunk를 `data/graduation/policies.json`으로 이관하고 이 함수를 고쳐야 근거가 조용히 빠지지 않는다.
+
+**권장 순서:** ① 위 chunks.jsonl 의존 이관 → ② `app.py`를 졸업센터 전용으로 슬림화(`/ask`·`/actions`·일반 `/ingest`·`/sources` 제거 or flag) → ③ (프론트 파트) 첫 화면을 졸업센터 중심으로, 기존 채팅/퀘스트/Admin ingest 숨김 → ④ `graduation_center`에 ReAct controller 추가 → ⑤ 두 번째 주제 확정 후 티어2 재사용 vs 삭제 결정. **프론트는 `/ask`·`/actions/start`·`/ingest/run`에 강결합돼 있어, 백엔드만 지우면 데모 첫 화면이 깨진다 — 프론트 정보구조 전환과 함께 진행할 것.**
 
 ## Commands
 
@@ -24,9 +40,9 @@ Backend (FastAPI):
 pip install -r requirements.txt
 uvicorn app:app --reload --port 8001   # frontend dev expects the API on 8001
 ```
-The frontend dev build hardcodes the API base as `http://127.0.0.1:8001` (`frontend/src/App.jsx`), so run the backend on `--port 8001` when developing against the Vite dev server. Bare `uvicorn app:app --reload` listens on 8000, which the served-from-dist deployment uses (it calls `window.location.origin`).
+The frontend dev build hardcodes the API base as `http://127.0.0.1:8001` (`frontend/src/App.jsx`), so run the backend on `--port 8001` when developing against the Vite dev server. Bare `uvicorn app:app --reload` listens on 8000, which the served-from-dist deployment uses (it calls `window.location.origin`). 실행 환경은 conda `kmu-agent`(3.11).
 
-Frontend (Vite + React, served separately during dev):
+Frontend (Vite + React):
 ```bash
 cd frontend && npm install && npm run dev   # http://127.0.0.1:5173
 cd frontend && npm run build                # builds frontend/dist; FastAPI serves dist/index.html at / and mounts dist/assets at /assets when present
@@ -34,90 +50,62 @@ cd frontend && npm run build                # builds frontend/dist; FastAPI serv
 
 Tests:
 ```bash
-pytest                            # runs all tests; tests/conftest.py injects repo root onto sys.path
-pytest tests/test_actions.py -k attendance   # single test
+pytest                                       # tests/conftest.py injects repo root onto sys.path
+pytest tests/test_graduation_center.py       # 졸업센터 단위 테스트
 ```
-
-`tests/` (plural) is the real pytest suite for the running app. `test/` (singular) is a **separate, standalone graduation-RAG prototype** with its own `requirements.txt`, `.env`, and scripts (`0_extract_structured_data.py`, `1_build_index.py`, …) — it is not part of the app's test run and predates the `graduation_center/` package that productized it. Don't conflate the two.
+`tests/` (plural) is the real pytest suite. 재설계 중 티어1 테스트(`test_actions`, `test_classifier`, `test_retriever` 등 19종)는 제거 대상이고, `tests/test_graduation_*` 3종이 메인 축 회귀 테스트다. `test/` (singular, 단수) is a **separate, standalone graduation-RAG prototype** with its own `requirements.txt`/`.env`/scripts — not part of the app's test run and predates the `graduation_center/` package that productized it. Don't conflate the two.
 
 There is no linter or formatter wired into the repo.
 
 ## Architecture
 
-The `/ask` request pipeline is the spine — most files are nodes in it.
+### Graduation center (졸업센터) — 메인 축
 
-```
-POST /ask question
-  → agent.guard.inspect_privacy        # regex-block 학번/주민/연락처/PW/성적
-  → agent.classifier.classify_issue    # rule-based, returns issue_type
-  → llm_client.expand_search_query     # OPTIONAL (env-gated); else passthrough
-  → ingestion.live_refresh.refresh_sources_for_issue  # OPTIONAL (live_check=true)
-  → retriever.HybridRetriever.search   # vector (Chroma) + keyword JSONL, merged by chunk_id
-  → llm_client.rerank_chunks           # OPTIONAL (env-gated); else identity
-  → agent.guard.require_sources        # block if no chunks
-  → agent.planner.suggest_actions      # propose next-step actions by issue_type + chunk.actions
-  → agent.answer_builder.build_final_answer
-        ├── tools.checklist.generate_checklist
-        ├── tools.contact_router.route_contact
-        ├── tools.deadline (extract_event_date + calculate_deadline)
-        └── agent.citation (S1/S2 labels + cite())
-  → llm_client.polish_answer           # OPTIONAL (env-gated); else deterministic text
-  → agent.answer_validator             # final output guard; reverts to deterministic answer on failure
-```
+`graduation_center/`는 자체 `/graduation/*` 엔드포인트를 가진 독립 서브시스템이다(`/graduation/status`, `/transcript/parse`, `/audit`, `/substitute-courses`, `/micro-degree`, `/post-graduation-checklist`, `/career-translator`, `/early-graduation`, `/customized-major`, `/credit-drop`).
 
-`app.py` is the FastAPI server holding all routes plus the retrieval-shaping helpers (`_prefer_issue_matched_chunks`, `_curated_fallback_chunks`, `_query_relevance_score`, …). The `_curated_fallback_chunks` path lets the API answer from each crawler's `SourcePage.fallback_text` even before any ingest run has indexed chunks — useful to know when retrieval "works" on a fresh checkout.
+**현재 흐름:** 업로드한 성적표 PDF → **sanitize된 비식별 `TranscriptSummary`**(`graduation_center/parser.py`) → `compute_structured_check`(`data/graduation/graduation_requirements.json` 대조) → 요람 RAG(자체 Chroma `data/graduation/chroma`) → GPT 분석(`service._call_llm`) → `_sanitize_sensitive_output`가 학번/주민번호/전화/GPA를 마스킹한 뒤 반환. 출력 보고서는 `G1`/`G2` citation 체계를 쓴다(`service._build_answer`).
 
-`agent/student_context.py` normalizes the optional non-sensitive `student_context` (status/term/concern) used to personalize answers; `agent/student_playbook.py` holds `STUDENT_TERM_ALIASES` (이캠→eCampus, 과사→학과사무실, 종정시→포털 …) and per-issue playbooks. Term aliasing feeds both query relevance scoring and answer "학생 경험 팁" sections — it is deliberately separate from official-source retrieval.
+**전제조건:** 졸업센터는 `/ask`와 달리 OpenAI + 인덱싱된 요람 Chroma를 **요구**한다. 없으면 keyword-only로 degrade하지 않고 `GraduationServiceUnavailable`을 던지며 `app.py`가 HTTP 503으로 매핑한다. 이 서브시스템에서 성적표 원문·GPA 수치·과목별 성적을 절대 반환하지 말 것(`status().privacy`가 계약을 문서화).
 
-### Action drafting flow
+**의존 주의:** `_official_policy_sources()`(service.py)가 `data/processed/chunks.jsonl`을 직접 읽는다 — *재설계 개요*의 선행 이관 참고.
 
-A separate two-step flow with its own state machine:
-`POST /actions/start` → `agent.action_state.start_action` returns required slot questions →
-`POST /actions/continue` → re-runs `inspect_privacy` over slot values → `tools.document_drafter.draft_action_document` writes a grounded draft, then `agent.answer_validator.validate_output_privacy` guards the returned text. Slot schemas live in `tools/document_drafter.py:ACTION_SCHEMAS`. The graduation-audit and course-plan actions dispatch from `document_drafter` into `tools.graduation.audit_graduation_requirements` (an MVP credit-gap calculator) and `tools.course_planner.recommend_course_plan` — those tools are reached only through the action flow, not through `/ask`, and are distinct from the `graduation_center/` subsystem below.
+**목표 (이 브랜치에서 구축):**
+- 직선 파이프라인 → **ReAct controller** 도입. LLM이 갭을 보고 *필요한 도구만 골라 반복 호출*(compute_check / 요람 RAG / 대체과목·마이크로디그리 탐색 / 학점 갭 계산).
+- 출력을 **섹션형 컨설팅 보고서**로(현황진단·부족요건·대체경로 시나리오·학기별 액션플랜·근거).
 
-### Graduation center (졸업센터)
+### 두 번째 주제 — 미정 (RAG와 다른 workflow)
 
-`graduation_center/` is a separate, deeper subsystem with its own `/graduation/*` endpoints (`/graduation/status`, `/transcript/parse`, `/audit`, `/substitute-courses`, `/micro-degree`, `/post-graduation-checklist`, `/career-translator`, `/early-graduation`, `/customized-major`, `/credit-drop`). Flow: parse an uploaded transcript PDF into a **sanitized, non-identifying** `TranscriptSummary` (`graduation_center/parser.py`) → `compute_structured_check` against `data/graduation/graduation_requirements.json` → 요람 RAG over its own Chroma collection at `data/graduation/chroma` → GPT analysis (`service._call_llm`) → `_sanitize_sensitive_output` masks any student ID / 주민번호 / phone / GPA before returning.
+졸업센터(RAG=검색·근거제시)와 **대비되는 워크플로우 archetype** 1개. 후보: 플래닝/최적화형(제약충족), 능동·상태형(event-driven), what-if 시뮬형. 비교·다이어그램은 `docs/second_topic_workflow_candidates.md`. 팀 확정 후 본 문서에 구조를 채운다.
 
-Unlike the main `/ask` pipeline, the graduation center **requires** OpenAI + an indexed 요람 Chroma collection. When prerequisites are missing it raises `GraduationServiceUnavailable`, which `app.py` maps to HTTP 503 — it does not degrade to keyword-only. Never return raw transcript text, GPA numbers, or per-course grades from this subsystem (`status().privacy` documents the contract).
+### 제거 대상 (옛 `/ask` 파이프라인 — 티어1)
 
-### Optional LLM assist
+> 아래는 `main`에 남아있는 옛 구조이며 이 브랜치에서 걷어내는 중이다. 참고용으로만 둔다.
 
-LLM use is **off by default and fails closed** to the deterministic path. `llm_client.GuardedLLMClient` reads `OPENAI_ENABLED` (query expansion + reranking) and `OPENAI_POLISH_ENABLED` (answer polishing); both also need `OPENAI_API_KEY`. The course supplies a **per-team OpenAI key** (distributed via the team leader); set `OPENAI_MODEL=gpt-5-mini` (code default is `gpt-4o-mini`) and prefer the small model when it suffices — cost is shared/limited. The legacy `generate()` method is still a hard stub returning `""` — the answer is assembled deterministically in `answer_builder`. The three live helpers are retrieval/presentation-only and grounded:
+`app.py`의 `POST /ask`가 `guard.inspect_privacy → classifier.classify_issue → (llm_client.expand) → (live_refresh) → retriever.HybridRetriever.search → (llm_client.rerank) → guard.require_sources → planner.suggest_actions → answer_builder.build_final_answer(checklist/contact_router/deadline/citation) → (llm_client.polish) → answer_validator` 순으로 돌던 캠퍼스라이프 Q&A 파이프라인. `/actions/start`·`/actions/continue`는 `document_drafter`로 문서를 초안하던 별도 상태머신. 이들과 `agent/`, `tools/`, `llm_client.py`가 티어1 제거 대상이다.
 
-- `expand_search_query` — adds official KMU synonyms to the retrieval query; never adds facts.
-- `rerank_chunks` — reorders *already-retrieved* chunks via a `chunk_id` enum schema; cannot introduce new sources.
-- `polish_answer` — rewrites prose between section headers only; `_polish_rejection_reason` rejects the result if citation markers, section headers, or the `[근거]` block change, or if it grows too long.
+## ReAct 가드레일 (도입 시 필수)
 
-Even when polish succeeds, `agent.answer_validator` re-checks the final text and reverts to the deterministic `built["answer"]` if the citation contract or output-privacy check fails. If you wire any further model use, it must consume only retrieved chunks and preserve citation markers.
+ReAct를 잘못 잡으면 "노드 분절·결정론" 루브릭과 정면 충돌한다. controller를 추가할 때 다음을 반드시 지킨다(codex 검토 반영):
 
-### Data plane
-
-`data/processed/chunks.jsonl` is the **source of truth** for `/ask` retrieval, written by `ingestion.pipeline.run_ingestion` from raw crawler output in `data/raw/`. Chroma at `data/vector/chroma` is an optional accelerator indexed in the same pipeline — `VectorRetriever` degrades silently (sets `available=False`, populates `.error`) and the keyword path keeps serving answers. Do not gate `/ask` features on Chroma being up. (The `graduation_center/` Chroma at `data/graduation/chroma` is a *different* store with the opposite policy — it is required, not optional.) After ingest, `HybridRetriever.reload()` must be called so the in-memory keyword index picks up new chunks (the `/ingest/run` and live-refresh handlers do this).
-
-Chunk metadata is rich and load-bearing: `source_tier` (1=규정 … 8=SWELL, sorted lower-tier-wins ties), `issue_types`, `keywords`, `search_hints`, `application_path`, `required_documents`, `submit_to`, `contacts`, `schedule`, `deadline_rule`, `actions`. The retriever, planner, checklist, contact router, deadline calculator, and `_curated_fallback_chunks` all read different subsets of these fields, so when adding a new chunk shape make sure every downstream consumer can still find what it needs.
-
-### Crawl/ingest
-
-`POST /ingest/run` → `ingestion.pipeline.run_ingestion` (full crawl). `POST /ingest/live-refresh` and the `live_check=true` flag on `/ask` and `/actions/continue` → `ingestion.live_refresh.refresh_sources_for_issue`, a narrower per-issue refresh that only touches pages relevant to the classified issue and rewrites chunks only when a network fetch actually succeeds (its own `_LIVE_REFRESH_LOCK` + 60s cooldown). The crawler base in `crawler/base.py` enforces school-server-protection rules that must not be relaxed:
-
-- per-host random delay (`min_delay_seconds`/`max_delay_seconds`, default 8–18s)
-- `max_pages_per_run` cap (default 3) and `INGEST_COOLDOWN_SECONDS = 300` between runs
-- module-level `_INGEST_LOCK` prevents concurrent ingest
-- `If-None-Match` / `If-Modified-Since` from stored `ETag`/`Last-Modified` for conditional GET
-- if network fails or is empty, the curated `SourcePage.fallback_text` is used and the chunk is tagged `used_fallback: true`; the API response always exposes `network_success`/`fallback_used`/`network_failed`/`failed_urls` so callers see the real fetch status
-
-Crawler state lives in `data/state/crawler_state.json` (per-doc content_hash + cache headers, plus `last_live_refresh` per issue). Each `BaseCrawler` subclass is essentially `source_type` + `pages: list[SourcePage]`.
+- **LLM은 `next_tool`만 고른다** — 답변·보고서 본문을 LLM이 생성하지 않는다. 최종 보고서는 결정론적 builder가 조립한다.
+- **tool allowlist** — 호출 가능한 도구를 명시적으로 제한. 임의 코드/네트워크 금지.
+- **구조화 출력(JSON schema)** — controller의 매 step 출력은 schema 강제(도구명 enum + 인자).
+- **max step budget** — 무한 루프 방지 상한.
+- **deterministic tool execution** — 도구 자체는 결정론적 노드(낮은 temp·고정 로직).
+- **observation sanitization** — 도구 결과를 LLM에 다시 넣기 전 민감정보 마스킹.
+- **final report validator** — 최종 보고서의 citation 계약·output 프라이버시를 재검증, 실패 시 안전 출력으로 폴백.
+- **citation coverage check** — 모든 사실 줄에 근거 마커.
+- **Thought 원문 비노출** — 추론 원문을 로그/화면에 그대로 드러내지 않는다(개인정보·환각 설명 누출 위험).
 
 ## Guardrails that must hold
 
 These are project requirements, not preferences — see `project_plan.md` §7:
 
-- Never collect or echo back: 학번, 주민번호, 연락처, 성적표 원본, 포털 ID/PW. `PRIVACY_PATTERNS` in `agent/guard.py` is the canonical input list (`/ask` and `/actions/continue` run `inspect_privacy`); `agent/answer_validator.OUTPUT_PRIVACY_PATTERNS` guards the *output*, and `graduation_center` masks sensitive values in its own `_sanitize_sensitive_output`.
-- Never fabricate procedural advice without an official chunk backing it — `require_sources` blocks the answer if retrieval returns nothing.
-- Never auto-crawl post-login portals (ON국민, SWELL personal screens) or 에브리타임. Only the public sources tier-listed in the README.
-- LLM assist is optional, env-gated, and grounded (see *Optional LLM assist*). The deterministic `answer_builder` output is the source of truth; the final `answer_validator` guard reverts any LLM-polished answer that breaks the citation contract or output-privacy check.
+- Never collect or echo back: 학번, 주민번호, 연락처, 성적표 원본, 포털 ID/PW. `graduation_center`는 입력·출력 모두 자체 `SENSITIVE_PATTERNS`/`_sanitize_sensitive_output`로 마스킹한다(개인 DB를 쓰는 메인 축이므로 가장 엄격히 적용). 티어1의 `agent/guard.py:PRIVACY_PATTERNS`·`answer_validator.OUTPUT_PRIVACY_PATTERNS`는 제거와 함께 사라지므로, 재사용할 패턴이 있으면 졸업센터 쪽으로 흡수할 것.
+- Never fabricate procedural advice without an official chunk backing it — 근거 없는 절차 안내 금지(요람·규정 RAG 또는 정책 데이터로 뒷받침).
+- Never auto-crawl post-login portals (ON국민, SWELL personal screens) or 에브리타임. Only the public sources tier-listed in the README. (티어2 크롤러를 동결·재사용하더라도 이 규칙과 `crawler/base.py`의 학교서버 보호 규칙 — 8~18s 딜레이, `max_pages_per_run`, `INGEST_COOLDOWN_SECONDS`, 조건부 GET, `_INGEST_LOCK` — 은 절대 완화 금지.)
+- LLM 사용은 grounded·결정론 우선. 보고서 본문은 결정론적 builder가 source of truth이고, LLM 산출은 final validator가 citation/프라이버시 위반 시 되돌린다.
 
 ## Citation contract
 
-`agent/citation.build_citations` assigns `S1`, `S2`, … to each unique retrieved chunk and `cite()` produces the `[S1]` markers embedded in the answer text. Anywhere you add a procedural claim to the answer, append `cite(chunk, labels)` for the chunk that supports it — readers, the `answer_validator` (which flags `unresolved_citation_marker` / `missing_inline_citation_marker`), and tests all rely on every factual line carrying a marker that resolves to a citation in the `[근거]` block. The graduation center uses a parallel `G1`/`G2` scheme (`graduation_center/service.py:_build_answer`).
+졸업센터는 `G1`/`G2` 체계를 쓴다(`graduation_center/service.py:_build_answer`): 유니크 근거마다 `G1`, `G2`, … 라벨을 부여하고 보고서 본문의 사실 줄마다 해당 마커를 단다. 절차적·요건 주장에는 반드시 그것을 뒷받침하는 근거 마커를 붙이고, `[근거]` 블록에서 해소되게 한다 — validator와 테스트가 마커 해소를 검사한다. (옛 `/ask`는 `S1`/`S2` 체계를 썼고 `agent/citation.py`에 있었으나 티어1과 함께 제거된다.)

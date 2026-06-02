@@ -12,6 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a course **team project**; the professor's grading rubric below is a binding design constraint — build to it and self-evaluate against it (presentation 2026-06-09, ≤15 min incl. live prototype demo).
 
+**범위 = 프로토타입 (교수 명시):** 프로덕션 수준의 견고함(전체 라이브 크롤·스케일·모든 학과/엣지케이스 커버·운영 안정성)은 **목표가 아니다.** 발표 데모에서 매끄럽게 돌아가는 **happy path를 정형성 있게** 보여주면 된다. 구체적 함의: ① 데이터는 준비된 **seed/canned**로 충분 — 티어2 라이브 크롤 파이프라인을 새로 돌릴 필요 없음(동결 유지가 더 정당). ② 졸업센터 ReAct·컨설팅 보고서와 두 번째 주제는 **시연 가능한 좁은 슬라이스**로 구현(모든 케이스 X). ③ 단 "프로토타입 = 대충"이 아니다 — 위 루브릭(정형성·품질·결정론)은 그대로 적용되니 **좁되 매끄럽게**. 새 작업의 범위를 잡을 때 "이게 데모를 좋게 만드는가, 아니면 프로덕션 견고함에 과투자하는가"를 먼저 따진다.
+
 ## 평가 기준 = 설계 제약 (build & self-evaluate against this)
 
 - **워크플로우 노드 분절** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. **재설계 방향:** 졸업센터를 `parse → structured_check → 요람 RAG → (ReAct controller) → report build → validate` 노드로 구성한다. ReAct를 도입하되 **LLM은 "다음에 어떤 도구를 쓸지"만 추론**(Thought→Action 선택)하고, 실행(Action)은 **결정론적 도구 노드**가 한다. LLM이 답변·보고서를 통째로 생성하는 방향은 루브릭에 역행한다. (→ *ReAct 가드레일* 절)

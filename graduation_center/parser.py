@@ -60,11 +60,18 @@ def parse_transcript_bytes(
                 message="Vision OCR을 사용하려면 OPENAI_API_KEY가 필요합니다.",
                 warnings=["openai_api_key_missing"],
             )
-        img_b64 = _extract_pdf_image_b64(tmp_path)
-        if not img_b64:
+        try:
+            images = _extract_pdf_images_b64(tmp_path)
+        except Exception:
+            return TranscriptParseResponse(
+                status="failed",
+                message="PDF에서 OCR용 이미지를 추출하지 못했습니다. PDF를 이미지로 저장해 다시 시도해 주세요.",
+                warnings=["image_extraction_failed"],
+            )
+        if not images:
             return TranscriptParseResponse(status="failed", message="PDF에서 OCR용 이미지를 추출할 수 없습니다.")
         try:
-            data = _parse_transcript_vision(img_b64, openai_api_key, model)
+            data = _parse_transcript_vision(images, openai_api_key, model)
         except Exception:
             return TranscriptParseResponse(
                 status="failed",
@@ -139,43 +146,78 @@ def _parse_transcript_text(full_text: str, parse_method: str = "text") -> Transc
     )
 
 
-def _extract_pdf_image_b64(path: Path) -> str | None:
+def _encode_image_b64(image) -> str:
+    """Encode a PIL image as base64 JPEG for the Vision request."""
+    from io import BytesIO
+
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=85)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
+def _extract_pdf_images_b64(path: Path, max_pages: int = 6) -> list[str]:
+    """Rasterize each PDF page to a full-page image for Vision OCR.
+
+    스캔 성적증명서는 한 페이지가 여러 이미지 조각(타일/스트립)으로 저장되기도 해서,
+    embedded 이미지 XObject 중 하나만 골라 보내면 헤더(이름·학번·학과·입학연도)가 든
+    조각이 빠져 GPT가 해당 필드를 못 읽는다. pypdfium2로 페이지를 통째로 렌더링하면
+    조각 구성과 무관하게 페이지 전체가 한 장에 담긴다. pypdfium2가 없으면 pypdf의
+    page.images(필터 자동 디코딩) 추출로 폴백한다.
+    """
     try:
-        import numpy as np
+        import pypdfium2 as pdfium
+    except Exception:
+        pdfium = None
+
+    if pdfium is not None:
+        rendered: list[str] = []
+        pdf = pdfium.PdfDocument(str(path))
+        try:
+            for index in range(min(len(pdf), max_pages)):
+                pil_image = pdf[index].render(scale=2.5).to_pil()
+                rendered.append(_encode_image_b64(pil_image))
+        finally:
+            pdf.close()
+        if rendered:
+            return rendered
+
+    # 폴백: 페이지별 최대 면적 embedded 이미지
+    try:
         import pypdf
-        from PIL import Image
+        from PIL import Image  # noqa: F401 - pillow가 이미지 디코딩에 필요
     except Exception as exc:  # pragma: no cover - depends on optional runtime packages
-        raise RuntimeError("Vision OCR에 필요한 pypdf, pillow, numpy 패키지가 설치되어 있지 않습니다.") from exc
+        raise RuntimeError("Vision OCR에 필요한 pypdf, pillow 패키지가 설치되어 있지 않습니다.") from exc
 
     reader = pypdf.PdfReader(str(path))
+    images: list[str] = []
     for page in reader.pages:
-        resources = page.get("/Resources", {})
-        xobjects = resources.get("/XObject", {})
-        for _, obj in xobjects.items():
-            xobj = obj.get_object()
-            if xobj.get("/Subtype") != "/Image":
+        if len(images) >= max_pages:
+            break
+        try:
+            page_images = list(page.images)
+        except Exception:
+            continue
+        best_image = None
+        best_area = 0
+        for image_file in page_images:
+            try:
+                image = image_file.image
+            except Exception:
                 continue
-            width = int(xobj["/Width"])
-            height = int(xobj["/Height"])
-            data = xobj.get_data()
-            color_space = xobj.get("/ColorSpace", "/DeviceRGB")
-            if color_space == "/DeviceRGB":
-                arr = np.frombuffer(data, dtype=np.uint8).reshape((height, width, 3))
-                image = Image.fromarray(arr, "RGB")
-            elif color_space == "/DeviceGray":
-                arr = np.frombuffer(data, dtype=np.uint8).reshape((height, width))
-                image = Image.fromarray(arr, "L").convert("RGB")
-            else:
+            if image is None:
                 continue
-            from io import BytesIO
+            area = image.width * image.height
+            if area > best_area:
+                best_area = area
+                best_image = image
+        if best_image is not None:
+            images.append(_encode_image_b64(best_image))
+    return images
 
-            buffer = BytesIO()
-            image.save(buffer, format="JPEG", quality=85)
-            return base64.b64encode(buffer.getvalue()).decode("utf-8")
-    return None
 
-
-def _parse_transcript_vision(img_b64: str, api_key: str, model: str) -> dict:
+def _parse_transcript_vision(images: list[str], api_key: str, model: str) -> dict:
     try:
         from openai import OpenAI
     except Exception as exc:  # pragma: no cover - depends on optional runtime package
@@ -183,6 +225,8 @@ def _parse_transcript_vision(img_b64: str, api_key: str, model: str) -> dict:
 
     client = OpenAI(api_key=api_key)
     prompt = """국민대학교 성적증명서 이미지에서 졸업 진단에 필요한 정보만 JSON으로 추출하세요.
+이미지가 여러 장이면 한 성적증명서의 연속된 페이지이니 모두 종합해 추출하세요.
+이름·학번·학부(전공)·입학연도는 보통 첫 페이지 상단 학생 정보란에 있으니 반드시 확인하세요.
 민감정보도 파싱에는 필요하지만, 응답 JSON 외 다른 텍스트는 절대 쓰지 마세요.
 
 반환 형식:
@@ -202,17 +246,14 @@ def _parse_transcript_vision(img_b64: str, api_key: str, model: str) -> dict:
 - 학번은 학생 정보란의 숫자만 사용하고 증명서번호와 혼동하지 마세요.
 - 과목목록에는 교과목명, 학점, 성적, 이수구분을 원본 그대로 추출하세요.
 - JSON만 반환하세요."""
+    content = [
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"}}
+        for b64 in images
+    ]
+    content.append({"type": "text", "text": prompt})
     response = client.chat.completions.create(
         model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}", "detail": "high"}},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": content}],
         max_tokens=4096,
         temperature=0,
     )

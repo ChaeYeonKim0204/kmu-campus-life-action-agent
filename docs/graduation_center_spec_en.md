@@ -31,7 +31,9 @@ Given a student's verified course-registration data + their admission-year/major
 - Multi-path comparison (substitute vs seasonal vs early-grad vs micro-degree A/B/C scenarios)
 
 **OUT (non-goals):**
-- OCR transcript-PDF path, ON국민 download onboarding guide (later if time), Excel format validation/error UX, automatic F/retake detection, all-departments/all-years, free-form tool-choosing ReAct, external actions (no calendar/email/notion — that's the *other* team topic).
+- OCR transcript-PDF path, full Excel error-handling UX, automatic F/retake detection, all-departments/all-years, free-form tool-choosing ReAct, external actions (no calendar/email/notion — that's the *other* team topic).
+
+**STRETCH (only if time):** ON국민 download onboarding guide; constraint-toggle re-plan (§9). Required even in LEAN: a **minimal fail-fast column check** on the uploaded Excel (correct columns present) — not full error UX.
 
 **Demo scope**: one department (AI빅데이터융합경영학과), 1–2 admission years, happy path, pre-loaded clean data.
 
@@ -46,11 +48,11 @@ Excel parse
   → match_courses_to_catalog()        [deterministic]
   → user verification (HITL)           → VerifiedTranscript
   → compute_audit()                    [deterministic]  → AuditResult
-  → compute_risk()                     [deterministic]  → RiskAssessment
   → plan_roadmap()                     [LLM]            → RoadmapPlan (proposed)
   → validate_roadmap()                 [deterministic]  → ValidationReport
         if invalid → repair_roadmap()  [LLM, 1 pass max] → re-validate
         if still invalid → honest failure (no fabricated plan)
+  → compute_risk()                     [deterministic]  → RiskAssessment   (after validation — feasibility/offering risk now known)
   → assemble_report()                  [deterministic JSON-first; LLM only drafts prose narrative]
 ```
 
@@ -63,8 +65,8 @@ Excel parse
 | Module | Responsibility | Det / LLM |
 |---|---|---|
 | `parser_excel.py` | Read ON국민 registration Excel → raw course lines (merge multiple semesters) | Det |
-| `catalog.py` | Load catalog; `match_course(line, catalog)` by code → name → alias → fuzzy | Det |
-| `verification.py` | Build editable verification table; apply user edits (exclude 폐강, mark F/retake) → `VerifiedTranscript` | Det |
+| `catalog.py` | Load catalog; `match_course(line, catalog)` by **exact 교과목코드** (authoritative). Name/alias used only to flag unresolved rows — no fuzzy auto-classification. | Det |
+| `verification.py` | Build editable verification table; apply user edits (exclude 폐강 rows, exclude F/non-passing attempts, for retakes keep the latest passed attempt) → `VerifiedTranscript` | Det |
 | `requirements.py` | `assemble_requirement_profile(context)` — compose admission-year × major(+minor) rules | Det |
 | `audit.py` | `compute_audit(verified, profile)` → per-area gaps, missing required courses | Det |
 | `risk.py` | `compute_risk(audit, context)` → grade + reason components | Det |
@@ -72,6 +74,8 @@ Excel parse
 | `report.py` | Assemble JSON-first response; LLM drafts only the narrative prose | Det(+LLM prose) |
 
 Keep the redesigned core **independent of Chroma/vector search** — it must work from structured JSON. (Current `status()` gates on Chroma; relax that.)
+
+> The Excel `이수구분`/`영역` columns are **hints only** — the authoritative requirement area comes from the **catalog/requirements JSON** (joined by 교과목코드). If a code isn't in the catalog, keep the row's original text and flag `unresolved` for user confirmation (never auto-classify).
 
 ---
 
@@ -123,7 +127,7 @@ StudentContext        # admission_year, program_id, second_major_ids[], minor_id
                       # remaining_semesters, seasonal_semester_allowed, max_courses_per_term, preferences[]
 CatalogCourse         # mirrors course_catalog.json
 CourseMatch           # original_line, matched_course_id|None, status, confidence
-VerifiedTranscript    # confirmed_courses[] (after 폐강/F/retake exclusion), unresolved[]
+VerifiedTranscript    # confirmed_courses[] (폐강 excluded · F/non-passing excluded · retake → latest passed kept), unresolved[]
 RequirementProfile    # composed rules for this student
 AuditResult           # gaps[{area, required, earned, gap}], missing_required_course_ids[], total_gap
 RiskAssessment        # grade, label, score, reasons[{factor, detail, severity}]
@@ -138,24 +142,26 @@ ValidationReport      # ok, errors[{code, detail, course_id?}]
 **LLM input** (everything is *given as data* — the LLM relies on nothing from memory):
 ```jsonc
 {
-  "student_context": { "admission_year": 2024, "remaining_semesters": 2,
-    "seasonal_semester_allowed": false, "max_courses_per_term": 5,
+  "student_context": { "admission_year": 2024, "current_term": "2026-1",
+    "remaining_semesters": 2, "seasonal_semester_allowed": false, "max_courses_per_term": 5,
     "preferences": ["데이터분석", "정규학기 우선", "최소 과부하"] },
-  "audit_result": { "gaps": [...], "missing_required_course_ids": [...], "total_gap": 12 },
+  "audit_result": { "gaps": [...], "missing_required_course_ids": [...], "total_gap": 6 },
   "candidate_courses": [ /* CatalogCourse subset eligible to fill the gaps, with prerequisites, offered_terms, credits, requirement_area, source */ ],
   "sources": [ { "id": "G2", "page": 311 }, ... ]
 }
+// Term format: "YYYY-1"|"YYYY-2" (regular), "YYYY-S"|"YYYY-W" (seasonal).
+// Planning starts at the first term after current_term; roadmap length ≤ remaining_semesters.
 ```
 
-**LLM output schema (strict JSON):**
+**LLM output schema (strict JSON) — this IS `RoadmapPlan`; the §8 response nests it under `"roadmap"`:**
 ```jsonc
 {
   "feasible": true,
-  "roadmap": [
+  "terms": [
     { "term": "2026-2",
-      "courses": [ { "course_id": "...", "credits": 3, "satisfies": "major_required",
+      "courses": [ { "course_id": "...", "credits": 3, "satisfies": "major_elective",
                      "reason": "...", "source_ids": ["G2"] } ],
-      "term_credits": 15, "term_risk": "low|medium|high", "notes": [] }
+      "term_credits": 3, "term_risk": "low|medium|high", "notes": [] }
   ],
   "why_this_plan": "string (preference-aware rationale)",
   "blocked_reason": null,            // if !feasible: e.g. "2학기 내 불가: 전공필수 2과목이 같은 학기에만 개설"
@@ -168,10 +174,10 @@ ValidationReport      # ok, errors[{code, detail, course_id?}]
 - every `course_id` ∈ `candidate_courses`
 - no course placed in a term not in its `offered_terms`
 - prerequisites appear in an earlier verified term or earlier roadmap term
-- `term_credits` ≤ load cap; respects `max_courses_per_term`; `seasonal_semester_allowed`
-- planned credits **close every gap** in `audit_result`
+- `len(courses)` ≤ `max_courses_per_term` per term (credit cap only if a separate `max_credits_per_term` is configured); no seasonal term unless `seasonal_semester_allowed`
+- **per-area accounting**: planned credits close **each** area gap in `audit_result` (not just the total); every `missing_required_course_ids` is included; no already-complete area is treated as missing; credits are not double-counted across areas (unless a rule allows); surplus credits allowed, not required
 - every `source_id` exists; no invented courses/requirements/credits/terms
-- roadmap length ≤ `remaining_semesters`
+- number of terms ≤ `remaining_semesters`
 
 **On failure**: pass `errors` back once → `repair_roadmap()`. If still invalid → return `feasible:false` with a deterministic `blocked_reason` + `relaxation_hint`. **Never render a roadmap that failed validation.**
 
@@ -181,7 +187,7 @@ ValidationReport      # ok, errors[{code, detail, course_id?}]
 
 ## 7. Risk grading (deterministic)
 
-Inputs: `total_gap`, max single-area gap, missing-required-course count, unresolved/unconfirmed credits, remaining semesters, GPA-min status (yes/no/unknown), offering-availability risk (required course offered once/year).
+Inputs: `total_gap`, max single-area gap, missing-required-course count, unresolved/unconfirmed credits, remaining semesters, **roadmap feasibility** (from validation), offering-availability risk (required course offered once/year), and an **optional user-declared** `gpa_min_met` (yes/no/unknown). The registration Excel has **no grades**, so never parse GPA — `gpa_min_met` defaults to `unknown` unless the user states it.
 
 | Grade | Label | Criteria (example) |
 |---|---|---|
@@ -191,6 +197,8 @@ Inputs: `total_gap`, max single-area gap, missing-required-course count, unresol
 | D | 졸업불가 가능성 | gap > 15, GPA below min, or remaining semesters insufficient |
 
 Return `{grade, label, score, reasons:[{factor, detail, severity}]}` — never a bare label.
+
+**Deterministic rule (reproducible):** `grade` = the worst hard trigger met (D > C > B > A). `score = clamp(100 − Σ severity, 0, 100)` (display only). If `roadmap.feasible == false` → grade ≥ C. `gpa_min_met == "no"` → grade ≥ C; `== "unknown"` → add a "확인 필요" reason but do **not** downgrade.
 
 ---
 
@@ -216,7 +224,8 @@ Backend returns structured JSON; the frontend renders the dashboard from it. `re
     "gaps": [
       { "area": "major_required", "required": 18, "earned": 18, "gap": 0 },
       { "area": "major_elective", "required": 30, "earned": 24, "gap": 6 },
-      { "area": "liberal_total",  "required": 40, "earned": 40, "gap": 0 }
+      { "area": "liberal_total",  "required": 40, "earned": 40, "gap": 0 },
+      { "area": "minor_data_science", "required": 21, "earned": 21, "gap": 0 }
     ],
     "missing_required_course_ids": []
   },
@@ -236,9 +245,13 @@ Backend returns structured JSON; the frontend renders the dashboard from it. `re
     "blocked_reason": null, "relaxation_hint": null,
     "assumptions": ["계절학기 미사용", "최대 5과목/학기"]
   },
-  "sources": [ { "id": "G2", "page": 311 }, { "id": "G3", "page": 312 } ]
+  "sources": [
+    { "id": "G2", "doc": "2024 요람", "page": 311, "source_type": "requirement_rule", "rule_id": "major_elective" },
+    { "id": "G3", "doc": "2024 요람", "page": 312, "source_type": "catalog_course", "course_id": "2024-AIBIZ-ELEC-DM" }
+  ]
 }
 ```
+> Citation rule: `G1/G2/...` are assigned to each unique source (requirement rule or catalog course) actually used; every factual line carries a `source_ids` marker that resolves here. Generated & validated internally even though the dashboard collapses them by default.
 
 ---
 
@@ -253,13 +266,13 @@ Backend returns structured JSON; the frontend renders the dashboard from it. `re
 7. Next-step checklist
 8. Citations `G1/G2` — generated & validated, **collapsed by default**, "근거 보기" toggle
 
-Cheap demo strengtheners: assumptions panel, citation toggle, risk badge, `node_trace` visualization, constraint-toggle re-plan (the demo "wow": toggle `remaining_semesters` / `max_courses_per_term` / `seasonal_semester_allowed` → roadmap re-plans, all grounded).
+Cheap demo strengtheners: assumptions panel, citation toggle, risk badge, `node_trace` visualization. **Optional stretch — constraint-toggle re-plan**: toggle one constraint (`remaining_semesters` / `max_courses_per_term` / `seasonal_semester_allowed`) → the SAME single plan re-runs under the new constraint (a single-plan re-run, **not** multi-scenario comparison, which is deferred), all grounded.
 
 ---
 
 ## 10. Privacy (minimal)
 
-Input is a registration Excel with **no resident-registration number**. Show the student their own data (needed for verification). Mask only **student-ID trailing digits**. Do not persist; do not transmit to third parties. Demo with own/dummy data. → Strip the old heavy masking in `parser.py`/`service.py` and the reflexive "확인 필요 / 학과사무실 확인" hedging; adopt "assertive when grounded, 'unknown' only when genuinely uncertain."
+Input is a registration Excel with **no resident-registration number**. Show the student their own course/status data in the verification UI. Mask only **student-ID trailing digits**. Do not persist. **The LLM planner receives only minimized facts** — gaps, eligible course IDs, constraints, preferences — never student ID, name, or raw grades (so "no raw PII to third parties" holds even with an external LLM). Demo with own/dummy data. → Strip the old heavy masking in `parser.py`/`service.py` and the reflexive "확인 필요 / 학과사무실 확인" hedging; adopt "assertive when grounded, 'unknown' only when genuinely uncertain."
 
 ---
 

@@ -18,9 +18,15 @@ from dotenv import load_dotenv
 from agent.action_state import continue_action, start_action
 from agent.answer_builder import build_final_answer
 from agent.citation import build_citations
+from tools.menu_parser import is_menu_chunk, is_menu_query
 from agent.answer_validator import validate_answer_contract, validate_output_privacy
 from agent.classifier import classify_issue
 from agent.guard import inspect_privacy, require_sources
+from agent.intent_scope import (
+    build_out_of_scope_answer,
+    detect_out_of_scope,
+    suggested_questions,
+)
 from agent.planner import suggest_actions
 from agent.student_playbook import detect_student_terms
 from graduation_center import GraduationCenterService
@@ -402,6 +408,55 @@ def ask(request: AskRequest) -> dict:
     issue_type = classification["issue_type"]
     tool_logs.append("classify_issue 호출됨")
 
+    scope = detect_out_of_scope(request.question)
+    tool_logs.append("intent_scope.detect_out_of_scope 호출됨")
+    if scope["out_of_scope"]:
+        suggestions = suggested_questions()
+        _record_agent_usage(
+            {
+                "issue_type": "out_of_scope",
+                "status": "out_of_scope",
+                "safety_flags": ["out_of_scope"],
+                "chunk_count": 0,
+                "citation_count": 0,
+                "privacy_blocked": False,
+                "no_source": False,
+                "output_privacy_ok": True,
+                "citation_validation_ok": True,
+                "live_check_attempted": False,
+                "live_check_success": False,
+                "llm_query_expansion_used": False,
+                "llm_rerank_used": False,
+                "llm_polish_used": False,
+                "llm_fallback": False,
+                "latency_ms": round((time.perf_counter() - start) * 1000, 2),
+            }
+        )
+        return {
+            "answer": build_out_of_scope_answer(scope["category"], suggestions),
+            "issue_type": "out_of_scope",
+            "classification": {
+                "issue_type": "out_of_scope",
+                "confidence": 1.0,
+                "scores": classification.get("scores", {}),
+            },
+            "tool_logs": tool_logs,
+            "sources": [],
+            "citations": [],
+            "next_actions": [],
+            "safety_flags": ["out_of_scope"],
+            "answer_validation": dict(_EMPTY_ANSWER_VALIDATION),
+            "output_privacy": dict(_EMPTY_OUTPUT_PRIVACY),
+            "llm": {"used": False, "reason": "out_of_scope"},
+            "live_check": {"attempted": False, "reason": "out_of_scope"},
+            "scope": {
+                "out_of_scope": True,
+                "category": scope["category"],
+                "matched_terms": scope["matched_terms"],
+                "suggested_questions": suggestions,
+            },
+        }
+
     search_query = _augment_query_with_context(request.question, request.student_context)
     llm_metadata: dict[str, Any] = {
         "enabled": llm_client.enabled,
@@ -433,6 +488,8 @@ def ask(request: AskRequest) -> dict:
 
     chunks = retriever.search(search_query, issue_type=issue_type, limit=8)
     chunks = _prefer_issue_matched_chunks(chunks, issue_type, search_query)
+    if issue_type == "campus_facility" and is_menu_query(search_query):
+        chunks = _merge_menu_doc_fragments(chunks, search_query)
     tool_logs.append("search_official_sources 호출됨")
 
     if request.llm_assist and llm_client.enabled and chunks:
@@ -683,6 +740,37 @@ def _truthy_form_value(value) -> bool:
     if isinstance(value, bool):
         return value
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _merge_menu_doc_fragments(chunks: list[dict], query: str) -> list[dict]:
+    """Give the menu chunk the full menu text for 학식/메뉴 questions.
+
+    The 오늘의 메뉴 page is stored as many chunks sharing one doc_id, but
+    `_unique_chunks_by_doc_id` collapses them to a single (often nav-only) fragment
+    before answer assembly — so menu_parser only sees part of the menu, or none.
+    Here we concatenate every fragment of that doc (from the full index) into the one
+    retrieved menu chunk so the parser sees the complete menu. Citations stay clean
+    (still one menu source). No new facts are introduced — all fragments are the same
+    official page already in the index.
+    """
+    all_sources = retriever.all_sources()
+    # 메뉴 텍스트를 품은 doc(생활관/도서관/오늘의 메뉴는 한 doc_id에 섞임)을 식별한다.
+    # 검색이 같은 doc의 비-메뉴 조각(예: 도서관 안내)만 물어왔어도 doc_id로 잡아낸다.
+    menu_doc_ids = {chunk.get("doc_id") for chunk in all_sources if is_menu_chunk(chunk) and chunk.get("doc_id")}
+    if not menu_doc_ids:
+        return chunks
+    target_idx = next((i for i, chunk in enumerate(chunks) if chunk.get("doc_id") in menu_doc_ids), None)
+    if target_idx is None:
+        return chunks
+    doc_id = chunks[target_idx].get("doc_id")
+    fragments = [chunk for chunk in all_sources if chunk.get("doc_id") == doc_id]
+    if len(fragments) <= 1:
+        return chunks
+    merged_text = "\n".join(fragment.get("text") or "" for fragment in fragments)
+    merged_chunk = {**chunks[target_idx], "text": merged_text}
+    new_chunks = list(chunks)
+    new_chunks[target_idx] = merged_chunk
+    return new_chunks
 
 
 def _prefer_issue_matched_chunks(chunks: list[dict], issue_type: str | None, query: str = "") -> list[dict]:

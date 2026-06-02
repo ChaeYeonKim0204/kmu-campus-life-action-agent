@@ -447,3 +447,58 @@ def test_agent_usage_log_never_stores_raw_question(tmp_path, monkeypatch):
     assert "question" not in record
     assert record["status"] == "privacy_blocked"
     assert record["privacy_blocked"] is True
+
+
+# --- out-of-scope intent (casual / non-academic queries) ---
+
+
+def test_ask_out_of_scope_returns_friendly_redirect_with_common_fields():
+    client = TestClient(app_module.app)
+
+    response = client.post("/ask", json={"question": "오늘 점심 뭐먹을까?", "llm_assist": False})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["issue_type"] == "out_of_scope"
+    assert data["classification"]["issue_type"] == "out_of_scope"
+    assert "out_of_scope" in data["safety_flags"]
+    assert data["sources"] == []
+    assert data["citations"] == []
+    assert data["next_actions"] == []
+    assert data["scope"]["out_of_scope"] is True
+    assert data["scope"]["suggested_questions"]
+    assert "intent_scope.detect_out_of_scope 호출됨" in data["tool_logs"]
+    for field in _ACTION_COMMON_FIELDS:
+        assert field in data, f"missing common field: {field}"
+
+
+def test_ask_out_of_scope_skips_retrieval_path(monkeypatch):
+    """An out-of-scope query must not exercise the retriever or LLM path."""
+    called = {"search": 0}
+
+    def fake_search(*args, **kwargs):
+        called["search"] += 1
+        return []
+
+    monkeypatch.setattr(app_module.retriever, "search", fake_search)
+    client = TestClient(app_module.app)
+
+    response = client.post("/ask", json={"question": "안녕", "llm_assist": True})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["issue_type"] == "out_of_scope"
+    assert called["search"] == 0
+    assert data["llm"]["used"] is False
+    assert data["llm"]["reason"] == "out_of_scope"
+
+
+def test_ask_academic_food_query_is_not_blocked():
+    """Queries with academic override terms must still run normal retrieval."""
+    client = TestClient(app_module.app)
+
+    response = client.post("/ask", json={"question": "오늘 학식 메뉴 어디서 확인해?", "llm_assist": False})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["issue_type"] != "out_of_scope"

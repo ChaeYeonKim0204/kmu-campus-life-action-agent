@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from datetime import date
 
-from agent.citation import build_citations, cite
+from agent.citation import build_citations, cite, clean_source_text
 from agent.student_context import student_context_guidance
 from agent.student_playbook import get_student_playbook
 from tools.checklist import generate_checklist
 from tools.contact_router import route_contact
 from tools.deadline import calculate_deadline, extract_event_date
+from tools.menu_parser import is_menu_query, parse_menu
+
+
+def _clean_excerpt(text: str, limit: int = 140) -> str:
+    """Trim an (already chrome-stripped) source text to a short [근거] preview."""
+    excerpt = clean_source_text(text)
+    if len(excerpt) > limit:
+        excerpt = excerpt[: limit - 1] + "…"
+    return excerpt
 
 
 def _first_chunk(chunks: list[dict], predicate) -> dict | None:
@@ -72,9 +81,14 @@ def build_final_answer(
     lines = [
         "[답변 요약]",
         summary,
-        "",
-        "[해야 할 일]",
     ]
+    lines.extend(_menu_section(query, issue_type, chunks, labels))
+    lines.extend(
+        [
+            "",
+            "[해야 할 일]",
+        ]
+    )
     lines.extend([f"{idx}. {task}" for idx, task in enumerate(checklist["tasks"], 1)])
 
     lines.extend(["", "[학생 경험 팁]"])
@@ -136,10 +150,9 @@ def build_final_answer(
 
     lines.extend(["", "[근거]"])
     for source in citations:
-        excerpt = (source.get("text") or "").strip()
-        if len(excerpt) > 140:
-            excerpt = excerpt[:137] + "..."
-        lines.append(f"- [{source['id']}] {source['title']} / {source['url']} / {excerpt}")
+        excerpt = _clean_excerpt(source.get("text") or "")
+        suffix = f" / {excerpt}" if excerpt else ""
+        lines.append(f"- [{source['id']}] {source['title']} / {source['url']}{suffix}")
 
     lines.extend(
         [
@@ -158,6 +171,57 @@ def build_final_answer(
         "contacts": contacts,
         "deadline": deadline,
     }
+
+
+def _menu_group_label(corner: str | None, meal: str | None) -> str:
+    if corner and meal:
+        return f"{corner} [{meal}]"
+    if corner:
+        return corner
+    if meal:
+        return f"[{meal}]"
+    return "메뉴"
+
+
+def _menu_section(query: str, issue_type: str, chunks: list[dict], labels: dict[str, str]) -> list[str]:
+    """Build a structured [오늘의 학식] section for cafeteria-menu questions.
+
+    Only runs for campus_facility 학식/식단 질문. Falls back to nothing (so the generic
+    campus_facility answer stands) when no menu items can be extracted, keeping the
+    citation contract intact: each rendered line carries the source chunk's marker.
+    """
+    if issue_type != "campus_facility" or not is_menu_query(query):
+        return []
+    parsed = parse_menu(chunks)
+    if not parsed["found"]:
+        return []
+
+    marker = cite(parsed["source_chunks"][0], labels)
+    section = [
+        "",
+        "[오늘의 학식]",
+        f"※ 크롤 시점 기준 최근 확인된 메뉴이며 당일 변동될 수 있습니다. 정확한 운영은 식당 현장/공지를 확인하세요.{marker}",
+    ]
+
+    grouped: dict[tuple[str | None, str | None], list[str]] = {}
+    order: list[tuple[str | None, str | None]] = []
+    for item in parsed["items"]:
+        key = (item["corner"], item["meal"])
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        try:
+            price = f"￦{int(item['price']):,}"
+        except ValueError:
+            price = f"￦{item['price']}"
+        grouped[key].append(f"{item['name']} {price}")
+
+    for key in order:
+        shown = grouped[key][:10]
+        more = len(grouped[key]) - len(shown)
+        suffix = f" 외 {more}개" if more > 0 else ""
+        section.append(f"- {_menu_group_label(*key)}: " + " · ".join(shown) + f"{suffix}{marker}")
+    return section
 
 
 def _build_summary(query: str, issue_type: str, chunks: list[dict], labels: dict[str, str], deadline: dict | None) -> str:

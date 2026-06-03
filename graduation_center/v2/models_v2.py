@@ -177,6 +177,7 @@ class ValidationError(BaseModel):
 class ValidationReport(BaseModel):
     ok: bool = True
     errors: list[ValidationError] = Field(default_factory=list)
+    repair_attempted: bool = False
 
 
 # ---------- 근거 / 응답 ----------
@@ -192,6 +193,8 @@ class NodeTraceEvent(BaseModel):
     node: str
     status: Literal["ok", "warn", "skip", "fail"] = "ok"
     summary: str = ""
+    kind: Literal["tool", "llm", "hitl", "validator", "branch"] = "tool"
+    branch_taken: str | None = None      # 실행된 분기(예: 통과 / repair 1회 / blocked / 갭없음)
 
 
 class AuditPipelineResponse(BaseModel):

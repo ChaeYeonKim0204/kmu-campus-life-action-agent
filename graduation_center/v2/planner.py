@@ -294,14 +294,17 @@ def run_planner(
         return plan, ValidationReport(ok=True), ctx
 
     report = validate_roadmap(plan, ctx, context)
+    repaired = False
     if not report.ok:
         # 1회 repair
+        repaired = True
         ctx_with_errors = dict(ctx, validation_errors=[e.model_dump() for e in report.errors])
         try:
             plan = plan_roadmap(ctx_with_errors, client=client)
             report = validate_roadmap(plan, ctx, context)
         except Exception:
             pass
+    report.repair_attempted = repaired
     if not report.ok:
         # 정직한 실패 (가짜 계획 금지)
         plan = RoadmapPlan(status="blocked", feasible=False,

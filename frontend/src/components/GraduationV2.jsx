@@ -1,4 +1,5 @@
 import React from "react";
+import WorkflowGraph from "./WorkflowGraph.jsx";
 
 // 졸업센터 v2 — 수강내역 엑셀 → 검증(HITL) → 졸업사정 컨설팅 대시보드
 const GRADE_COLOR = { A: "#10B981", B: "#F59E0B", C: "#EF4444", D: "#B91C1C" };
@@ -34,6 +35,12 @@ export default function GraduationV2({ apiBase }) {
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
   const [showSources, setShowSources] = React.useState(false);
+
+  // 워크플로우 그래프용 trace — verify/audit가 바뀔 때만 새 배열(재생 애니메이션 불필요 재시작 방지)
+  const workflowTrace = React.useMemo(
+    () => [...(verify?.node_trace || []), ...(audit?.node_trace || [])],
+    [verify, audit],
+  );
 
   React.useEffect(() => {
     fetch(`${apiBase}/graduation/v2/status`).then((r) => r.json())
@@ -219,14 +226,9 @@ export default function GraduationV2({ apiBase }) {
           {audit.roadmap.why_this_plan && audit.roadmap.terms.length > 0 && <p style={{ fontSize: 12 }}>왜 이 계획: {audit.roadmap.why_this_plan}</p>}
           {audit.roadmap.assumptions?.length > 0 && <p style={{ fontSize: 11, color: "#6b7280" }}>가정: {audit.roadmap.assumptions.join(" / ")}</p>}
 
-          {/* node_trace */}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "10px 0", fontSize: 11 }}>
-            {audit.node_trace.map((e, i) => (
-              <span key={i} style={{ padding: "2px 8px", borderRadius: 12,
-                background: e.status === "fail" ? "#fee2e2" : e.status === "warn" ? "#fef3c7" : "#dcfce7" }}>
-                {e.node}
-              </span>
-            ))}
+          {/* Dify식 워크플로우 실행 그래프 (verify+audit trace 합산) */}
+          <div style={{ margin: "12px 0", padding: 10, border: "1px solid #e5e7eb", borderRadius: 10 }}>
+            <WorkflowGraph trace={workflowTrace} />
           </div>
 
           <button onClick={() => setShowSources((s) => !s)} style={{ fontSize: 12 }}>

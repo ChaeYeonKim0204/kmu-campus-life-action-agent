@@ -21,11 +21,15 @@ def run_verify(files: list[tuple[bytes, str]], context: dict) -> dict:
     ctx = StudentContext.model_validate(context)
     lines, retakes = parse_many(files)
     table, unresolved, retakes = build_verification_table(lines, ctx.program_id, retakes)
+    matched_n = sum(1 for t in table if t.course_id and not t.aggregate_only)
+    agg_n = sum(1 for t in table if t.aggregate_only)
     trace = [
-        NodeTraceEvent(node="요람 로딩", summary=f"{ctx.program_id} 카탈로그·요건 로드"),
-        NodeTraceEvent(node="데이터 수집", summary=f"{len(files)}개 학기 파일 · {len(lines)}개 수강행"),
-        NodeTraceEvent(node="코드 매칭",
-                       summary=f"매칭 {sum(1 for t in table if t.course_id)} · 집계 {sum(1 for t in table if t.aggregate_only)} · 미해소 {len(unresolved)}"),
+        NodeTraceEvent(node="요람 로딩", kind="tool", summary=f"{ctx.program_id} 카탈로그·요건 로드"),
+        NodeTraceEvent(node="데이터 수집", kind="tool",
+                       summary=f"{len(files)}개 학기 파일 · {len(lines)}개 수강행", branch_taken=f"{len(files)}개 학기 병합"),
+        NodeTraceEvent(node="코드 매칭", kind="tool",
+                       summary=f"매칭 {matched_n} · 집계 {agg_n} · 미해소 {len(unresolved)}",
+                       branch_taken=("미해소 있음" if unresolved else "전부 분류")),
     ]
     return {
         "context": ctx.model_dump(),
@@ -51,15 +55,28 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
     risk = compute_risk(audit, ctx, roadmap_feasible=feasible)
     sources = [Source.model_validate(s) for s in pctx.get("sources", [])]
 
+    conv_n = len(audit.convergence_checks)
+    plan_branch = {"generated": "로드맵 생성", "not_generated": "미생성(LLM 없음)", "blocked": "실현불가(blocked)"}.get(plan.status, plan.status)
+    if plan.status == "generated" and not plan.terms:
+        plan_branch = "갭 없음(이미 충족)"
     trace = [
-        NodeTraceEvent(node="데이터 검증", summary=f"확정 {len(verified.confirmed_courses)} · 제외 {len(verified.excluded)} · {verified.total_earned}학점"),
-        NodeTraceEvent(node="갭 계산", summary=f"총 부족 {audit.total_gap} · 필수누락 {len(audit.missing_required_course_ids)}"),
-        NodeTraceEvent(node="로드맵 플래닝",
+        NodeTraceEvent(node="데이터 검증", kind="hitl",
+                       summary=f"확정 {len(verified.confirmed_courses)} · 제외 {len(verified.excluded)} · {verified.total_earned}학점",
+                       branch_taken="사용자 확정"),
+        NodeTraceEvent(node="갭 계산", kind="tool",
+                       summary=f"총 부족 {audit.total_gap} · 필수누락 {len(audit.missing_required_course_ids)} · 연계융합 {conv_n}건",
+                       branch_taken=(f"연계융합 {conv_n}개 검사" if conv_n else ("부족 있음" if audit.total_gap > 0 else "충족"))),
+        NodeTraceEvent(node="로드맵 플래닝", kind="llm",
                        status="ok" if plan.status == "generated" else ("warn" if plan.status == "not_generated" else "fail"),
-                       summary=f"status={plan.status} feasible={plan.feasible}"),
-        NodeTraceEvent(node="검증/repair", status="ok" if vrep.ok else "warn",
-                       summary="통과" if vrep.ok else f"{len(vrep.errors)}건 → repair/blocked"),
-        NodeTraceEvent(node="리스크 산정", summary=f"{risk.grade} {risk.label} ({risk.score})"),
+                       summary=plan.why_this_plan or plan.blocked_reason or "", branch_taken=plan_branch),
+        NodeTraceEvent(node="검증/repair", kind="validator",
+                       status=("ok" if (vrep.ok and not vrep.repair_attempted) else ("fail" if not vrep.ok else "warn")),
+                       summary=("통과" if vrep.ok else f"{len(vrep.errors)}건 오류"),
+                       branch_taken=("blocked" if plan.status == "blocked"
+                                     else ("repair 후 통과" if vrep.repair_attempted and vrep.ok
+                                           else ("repair 실패" if vrep.repair_attempted else "통과")))),
+        NodeTraceEvent(node="리스크 산정", kind="tool",
+                       summary=f"{risk.grade} {risk.label} ({risk.score})", branch_taken=f"{risk.grade} {risk.label}"),
     ]
     md = _markdown(ctx, profile, audit, risk, plan)
     return AuditPipelineResponse(

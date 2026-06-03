@@ -414,17 +414,30 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     confirmed_pref = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
     reqs: list[dict] = []
 
-    # 1) 미이수 필수(이름) — 전부 이수 필요. 요람 메타로 학점·개설학기 반영
+    # 1) 미이수 필수(이름) — 전부 이수 필요. 학점·개설학기·코드·선수를 요람메타→카탈로그 순으로 보강.
     if audit.missing_required_names:
         rmeta = _required_meta(profile.program_id, profile.admission_year)
         items = []
         for n in audit.missing_required_names:
             m = rmeta.get(normalize_name(n), {})
-            terms = m.get("terms") or []
-            items.append({"name_ko": n, "credits": m.get("credits", 3.0), "satisfies": "필수지정",
-                          "offered_terms": terms or ["1", "2"],
-                          "confidence": "catalog_verified" if terms else "name_only",
-                          "manual": not terms})
+            terms = list(m.get("terms") or [])
+            credits = m.get("credits")
+            cid, prereqs = "", []
+            # 카탈로그 매칭으로 누락분 보강(특히 연도메타 없는 학과 — ai_bigdata 등)
+            hit = cat["by_norm"].get(normalize_name(n)) if cat.get("by_norm") else None
+            if hit:
+                cc = cat["by_code"].get(hit[0])
+                if cc:
+                    cid = cc.course_id
+                    if credits is None:
+                        credits = cc.credits
+                    if not terms:
+                        terms = list(cc.offered_terms or [])
+                    prereqs = list(cc.prerequisites or [])
+            known = bool(terms)
+            items.append({"name_ko": n, "course_id": cid, "credits": (credits if credits is not None else 3.0),
+                          "satisfies": "필수지정", "offered_terms": terms or ["1", "2"], "prerequisites": prereqs,
+                          "confidence": "catalog_verified" if known else "name_only", "manual": not known})
         reqs.append({"label": "필수지정 미이수", "area": "전공", "priority": 1, "need": None, "items": items})
     # 2) 연계융합 부족 — 총 또는 '그룹별 최저' 미충족 시. 부족 그룹 우선 미이수 융합과목
     for cc in audit.convergence_checks:
@@ -474,6 +487,13 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     if free_gap > 0:
         reqs.append({"label": "자유교양", "area": "자유교양", "priority": 4, "need": free_gap,
                      "pool": _slot_chunks("자유교양 선택", free_gap, "자유교양")})
+    # 7) 총학점(일반선택) 부족 — 영역 floor를 다 채워도 졸업최저에 모자란 잔여를 일반선택 슬롯으로.
+    #    (이게 없으면 '영역 충족인데 총학점 부족'인 학생이 로드맵상 거짓 '충족'으로 표시됨)
+    area_floor_gap = round(sum(g.gap for g in audit.area_gaps if g.gap > 0), 1)
+    general_need = round(max(0.0, audit.total_gap - area_floor_gap), 1)
+    if general_need > 0:
+        reqs.append({"label": "총학점(일반선택)", "area": "일반선택", "priority": 5, "need": general_need,
+                     "pool": _slot_chunks("일반선택 과목", general_need, "일반선택")})
 
     # 요건 → 후보 선택(quota 충족까지). 이름 중복 제거(필수지정이 전공부족 후보와 겹침 방지)
     selected: list[dict] = []

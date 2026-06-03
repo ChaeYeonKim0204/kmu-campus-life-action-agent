@@ -153,17 +153,11 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
                       if c.course_id and c.course_id[:5] in conv_prefixes and c.requirement_area not in GYO]
         earned = round(sum(c.credits for c in designated), 1)
         gap = max(0.0, round(req - earned, 1))
-        # 그룹별 최저(다전공 12 / 부전공 6) 체크
+        # 그룹별 최저(다전공 12 / 부전공 6). group_checks는 '배정 확정' 후 산출(아래) — 융합에
+        # 실제 산입되는 과목만 그룹 충족으로 카운트해 총량(fusion_effective)과 분모를 일치시킨다.
         rules = (cat.get("group_rules") or {}).get(track, {})
         per_group_min = float(rules.get("per_group_min", 12 if track == "다전공" else 6))
         all_groups = sorted({g for g in prefix_to_group.values() if g})
-        group_earned = {g: 0.0 for g in all_groups}
-        for c in designated:
-            g = prefix_to_group.get(c.course_id[:5])
-            if g:
-                group_earned[g] = round(group_earned.get(g, 0) + c.credits, 1)
-        group_checks = [{"group": g, "earned": group_earned[g], "required": per_group_min,
-                         "gap": max(0.0, round(per_group_min - group_earned[g], 1))} for g in all_groups]
         # 그중 제1전공/다른 다전공과 겹치는 과목 = 중복인정 가능 후보(최대 cap까지 양쪽 동시 인정)
         overlap = sorted([c for c in designated if c.course_id[:5] in other_prefixes], key=lambda x: -x.credits)
         overlap_cr = round(sum(c.credits for c in overlap), 1)
@@ -210,34 +204,53 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             else:
                 c["assignment"], c["selectable"] = "중복인정", True   # 기본 중복인정, 사용자 변경 가능
         # 고정분: 겹침을 제외한 나머지. 제1전공 non-overlap / 융합전용. 겹침은 전부 사용자 배정 풀.
-        primary_base = round(primary_major_earned - overlap_cr, 1)    # 제1전공 non-overlap (예: 43)
-        fusion_base = round(earned - overlap_cr, 1)                   # 융합전용 (예: 18)
+        primary_base = max(0.0, round(primary_major_earned - overlap_cr, 1))   # 제1전공 non-overlap (예: 43)
+        fusion_base = max(0.0, round(earned - overlap_cr, 1))                  # 융합전용 (예: 18)
         overlap_courses = [{"name_ko": c.name_ko, "credits": c.credits,
                             "group": prefix_to_group.get(c.course_id[:5]) or "",
                             "primary_required": c.course_id[:5] in required_prefixes}
                            for c in overlap]
-        group_short = [gc for gc in group_checks if gc["gap"] > 0]
-        # 기본 배정(결정론, 프론트 3-way 기본값과 동일): 중복인정(한도까지, 전공필수 우선) →
-        # 한도초과 겹침은 제1전공 요건을 먼저 채우고 나머지는 융합. 이로써 백엔드가 산출하는
-        # 융합 earned/gap·제1전공 effective가 프론트 StatBox와 일치(이중집계 모순 제거).
+        # 기본 배정(결정론, 프론트 3-way 기본값과 동일): 과목 단위로 중복인정(한도까지·전공필수 우선)
+        # → 한도초과 겹침은 제1전공 요건 먼저, 나머지 융합. 융합 산입 과목으로 group/총량을 일관 산출.
         ov_sorted = sorted(overlap, key=lambda c: (c.course_id[:5] not in required_prefixes, -c.credits))
-        dup_cr, dup_ids = 0.0, set()
+        alloc = {}                                       # id(course) → 'dup'/'primary'/'fusion'
+        dup_cr = 0.0
         for c in ov_sorted:
             if dup_cr + c.credits <= cap + 0.01:
-                dup_ids.add(id(c)); dup_cr = round(dup_cr + c.credits, 1)
-        flex = [c for c in ov_sorted if id(c) not in dup_ids]
+                alloc[id(c)] = "dup"; dup_cr = round(dup_cr + c.credits, 1)
+        flex = [c for c in ov_sorted if id(c) not in alloc]
         p_need = max(0.0, primary_major_required - primary_base - dup_cr)
-        to_primary, acc_p = 0.0, 0.0
+        acc_p = 0.0
         for c in flex:
-            if acc_p >= p_need:
-                break
-            to_primary = round(to_primary + c.credits, 1); acc_p += c.credits
-        to_fusion = round(sum(c.credits for c in flex) - to_primary, 1)
-        fusion_eff = round(fusion_base + dup_cr + to_fusion, 1)
+            if acc_p < p_need:
+                alloc[id(c)] = "primary"; acc_p += c.credits
+            else:
+                alloc[id(c)] = "fusion"
+        to_primary = round(sum(c.credits for c in flex if alloc[id(c)] == "primary"), 1)
+        to_fusion = round(sum(c.credits for c in flex if alloc[id(c)] == "fusion"), 1)
+        # 융합에 실제 산입되는 과목 = 융합전용(non-overlap) + 중복인정(dup) + 융합배정 겹침
+        fusion_courses = [c for c in designated if c.course_id[:5] not in other_prefixes] \
+            + [c for c in overlap if alloc.get(id(c)) in ("dup", "fusion")]
+        fusion_eff = round(sum(c.credits for c in fusion_courses), 1)
         primary_eff = round(primary_base + dup_cr + to_primary, 1)
         gap_eff = max(0.0, round(req - fusion_eff, 1))
+        # 그룹 충족 = 융합 산입 과목 기준(배정 반영). Σgroup_earned == fusion_eff 보장.
+        group_earned = {g: 0.0 for g in all_groups}
+        for c in fusion_courses:
+            g = prefix_to_group.get(c.course_id[:5])
+            if g:
+                group_earned[g] = round(group_earned.get(g, 0.0) + c.credits, 1)
+        group_checks = [{"group": g, "earned": group_earned[g], "required": per_group_min,
+                         "gap": max(0.0, round(per_group_min - group_earned[g], 1))} for g in all_groups]
+        group_short = [gc for gc in group_checks if gc["gap"] > 0]
+        # courses_view 기본 이수구분 라벨을 배정에 맞춰(중복인정/제1전공/융합전공) — 프론트 기본값과 동일
+        alloc_by_pfx = {c.course_id[:5]: alloc[id(c)] for c in overlap}
+        for cvv in courses_view:
+            if cvv["taken"] and cvv["overlap"]:
+                a = alloc_by_pfx.get(cvv["course_id"][:5], "dup")
+                cvv["assignment"] = {"dup": "중복인정", "primary": "제1전공", "fusion": "융합전공"}[a]
         note = (f"제1전공과 겹치는 {overlap_cr:.0f}학점 중 중복인정(양쪽 동시) {dup_cr:.0f}/{cap:.0f}. "
-                f"한도 초과 {len(flex)*3 if False else round(sum(c.credits for c in flex),0):.0f}학점은 기본배정상 "
+                f"한도 초과 {round(sum(c.credits for c in flex), 0):.0f}학점은 기본배정상 "
                 f"제1전공 {to_primary:.0f}·{('연계' if is_yeonge else '융합')} {to_fusion:.0f} (3-way로 조정 가능).")
         out.append({
             "program_id": pid, "name": name, "track": track,
@@ -266,7 +279,7 @@ def compute_audit(
                                       profile.program_id, float(profile.area_min.get("전공", 0)),
                                       float(earned.get("전공", 0)))
     to_fusion_total = round(sum(cc.get("to_fusion_credits", 0.0) for cc in conv_checks), 1)
-    major_effective = round(float(earned.get("전공", 0)) - to_fusion_total, 1)
+    major_effective = max(0.0, round(float(earned.get("전공", 0)) - to_fusion_total, 1))
 
     # 핵심교양 영역별 최저(별표5 단과대 override 반영 — 예: 미래모빌리티 소통 5)
     gen = load_gen_ed().get("core_liberal", {})

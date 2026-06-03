@@ -118,9 +118,14 @@ def test_planner_fake_client_generates_valid_roadmap():
                     output_text = json.dumps(fake, ensure_ascii=False)
                 return R()
 
-    resp = pipeline.run_audit(payload, client=Fake())
-    assert resp.roadmap.status == "generated"
-    assert resp.roadmap.feasible is True
+    resp = pipeline.run_audit(payload)  # 결정론 플래너(client 무시)
+    # 결정론 통합 플래너 정합: status↔feasible↔report 일치. 합성 학생은 총학점 부족이 커서
+    # blocked(초과학기)일 수 있고, 그 경우 overflow가 있어야 한다(거짓 충족 금지).
+    assert resp.roadmap.status in ("generated", "blocked")
+    if resp.roadmap.status == "blocked":
+        assert resp.roadmap.feasible is False and resp.roadmap.overflow is not None
+    else:
+        assert resp.roadmap.feasible is True
 
 
 def test_validator_rejects_invented_course():

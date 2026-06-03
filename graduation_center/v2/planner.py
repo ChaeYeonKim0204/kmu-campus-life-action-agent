@@ -95,6 +95,7 @@ def build_planning_context(
             "total_gap": audit.total_gap,
             "gaps": [{"area": g.area, "gap": g.gap} for g in audit.area_gaps if g.gap > 0],
             "missing_required_course_ids": audit.missing_required_course_ids,
+            "missing_required_names": audit.missing_required_names,
         },
         "completed_ids": sorted(confirmed_ids),
         "candidate_courses": candidates,
@@ -225,9 +226,11 @@ def validate_roadmap(plan: RoadmapPlan, ctx: dict, context: StudentContext) -> V
             first_regular = t.term
             break
 
-    if len(plan.terms) > context.remaining_semesters:
+    # 잔여학기 상한은 '정규학기' 수 기준(계절학기는 _allowed_terms에서 별도 허용·6학점 cap)
+    regular_count = sum(1 for t in plan.terms if _term_sem(t.term) in ("1", "2"))
+    if regular_count > context.remaining_semesters:
         errors.append(ValidationError(code="too_many_terms",
-                      detail=f"학기 수 {len(plan.terms)} > 잔여 {context.remaining_semesters}"))
+                      detail=f"정규학기 수 {regular_count} > 잔여 {context.remaining_semesters}"))
 
     for t in plan.terms:
         sem = _term_sem(t.term)
@@ -297,11 +300,24 @@ def run_planner(
 ) -> tuple[RoadmapPlan, ValidationReport, dict]:
     ctx = build_planning_context(audit, profile, context, verified)
 
-    # 갭 없음 → 이미 졸업요건 충족
-    if audit.total_gap <= 0 and not any(g["area"] in MAJOR_AREAS for g in ctx["audit_result"]["gaps"]) \
-            and not audit.missing_required_course_ids:
+    no_credit_gap = audit.total_gap <= 0 and not any(g["area"] in MAJOR_AREAS for g in ctx["audit_result"]["gaps"])
+
+    # 학점·영역·필수 모두 충족 → 추가 계획 불필요
+    if no_credit_gap and not audit.missing_required_course_ids and not audit.missing_required_names:
         plan = RoadmapPlan(status="generated", feasible=True, terms=[],
                            why_this_plan="졸업요건을 모두 충족했습니다. 추가 수강 계획이 필요 없습니다.")
+        if ctx["non_major_gap_areas"]:
+            plan.assumptions.append(f"교양 영역({', '.join(ctx['non_major_gap_areas'])})은 직접 확인 필요")
+        return plan, ValidationReport(ok=True), ctx
+
+    # 학점·영역은 충족인데 '이름 기준'(학번 요람) 필수지정만 미이수 → 코드가 없어 자동계획 불가
+    # → 정직하게 직접 수강 안내(완전 충족으로 오판 금지). 학점 갭이 따로 있으면 아래 일반 경로로.
+    if no_credit_gap and audit.missing_required_names and not ctx["candidate_courses"]:
+        plan = RoadmapPlan(
+            status="generated", feasible=True, terms=[],
+            why_this_plan="졸업학점·영역 요건은 충족했으나 필수지정 과목 미이수: "
+                          + ", ".join(audit.missing_required_names)
+                          + ". 잔여 학기에 직접 수강 신청이 필요합니다.")
         if ctx["non_major_gap_areas"]:
             plan.assumptions.append(f"교양 영역({', '.join(ctx['non_major_gap_areas'])})은 직접 확인 필요")
         return plan, ValidationReport(ok=True), ctx

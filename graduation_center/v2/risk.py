@@ -8,6 +8,7 @@ from __future__ import annotations
 from graduation_center.v2.models_v2 import (
     AuditResult, RiskAssessment, RiskReason, StudentContext,
 )
+from graduation_center.v2.catalog import PREV_GPA_BONUS, SEASONAL_TERM_CAP
 
 GRADE_RANK = {"A": 0, "B": 1, "C": 2, "D": 3}
 LABELS = {"A": "안전", "B": "주의", "C": "위험", "D": "졸업불가 가능성"}
@@ -23,7 +24,8 @@ def compute_risk(
     reasons: list[RiskReason] = []
     grade = "A"
     gap = audit.total_gap
-    missing = len(audit.missing_required_course_ids)
+    # 미이수 필수는 이름 기준(학번 요람) 경로·코드 경로 모두 names를 채우므로 names로 카운트
+    missing = len(audit.missing_required_names)
     max_area_gap = max((g.gap for g in audit.area_gaps), default=0.0)
     core_missing = [g for g in audit.core_area_gaps if g.gap > 0]
 
@@ -55,8 +57,14 @@ def compute_risk(
         grade = _worse(grade, "B")
         reasons.append(RiskReason(factor="영역", detail=f"이수구분 영역 {max_area_gap:.0f}학점 부족", severity=8))
 
-    # 잔여학기 수용량(결정론): 부족분이 남은 학기 정원으로 소화 가능한가
-    capacity = context.remaining_semesters * context.max_courses_per_term * 3
+    # 잔여학기 수용량(결정론): 학사규정 제32조 학기당 이수학점 상한 기반
+    # (계절학기 허용 시 6학점, 직전 3.75↑면 +3 한 번)
+    term_cap = float(context.max_credits_per_term or 18)
+    capacity = context.remaining_semesters * term_cap
+    if context.prev_term_gpa_ge_375:
+        capacity += PREV_GPA_BONUS
+    if context.seasonal_semester_allowed:
+        capacity += SEASONAL_TERM_CAP
     if gap > 0 and capacity > 0 and gap > capacity:
         grade = _worse(grade, "D")
         reasons.append(RiskReason(factor="잔여학기",

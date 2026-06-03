@@ -64,7 +64,7 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
                        summary=f"확정 {len(verified.confirmed_courses)} · 제외 {len(verified.excluded)} · {verified.total_earned}학점",
                        branch_taken="사용자 확정"),
         NodeTraceEvent(node="갭 계산", kind="tool",
-                       summary=f"총 부족 {audit.total_gap} · 필수누락 {len(audit.missing_required_course_ids)} · 연계융합 {conv_n}건",
+                       summary=f"총 부족 {audit.total_gap} · 필수누락 {len(audit.missing_required_names)} · 연계융합 {conv_n}건",
                        branch_taken=(f"연계융합 {conv_n}개 검사" if conv_n else ("부족 있음" if audit.total_gap > 0 else "충족"))),
         NodeTraceEvent(node="로드맵 플래닝", kind="llm",
                        status="ok" if plan.status == "generated" else ("warn" if plan.status == "not_generated" else "fail"),

@@ -46,10 +46,19 @@ def _required_names_for_year(program_id: str, year: int | None) -> list[str] | N
 
 
 def _required_aliases(program_id: str) -> dict:
-    """요람 필수명 → 수강내역 동치명(같은 교과목코드, 명칭 드리프트). 정규화 키로 반환."""
+    """명칭 드리프트 동치(같은 교과목코드, 요람명↔수강내역명). 양방향 그룹으로 반환.
+
+    데이터는 한 방향만 적어도(예: 미래모빌리티실험→모빌리티실험및실습) 양쪽 모두
+    매칭되도록 정규화 키별로 동치 집합을 만든다.
+    """
     p = V2_DIR / "required_names_by_year.json"
     raw = (json.loads(p.read_text(encoding="utf-8")).get("aliases", {}) if p.exists() else {}).get(program_id, {})
-    return {normalize_name(k): [normalize_name(v) for v in vs] for k, vs in raw.items()}
+    groups: dict[str, set] = {}
+    for k, vs in raw.items():
+        members = {normalize_name(k)} | {normalize_name(v) for v in vs}
+        for m in members:
+            groups.setdefault(m, set()).update(members - {m})
+    return {k: sorted(v) for k, v in groups.items()}
 
 
 def _admission_year(profile: RequirementProfile, verified: VerifiedTranscript) -> int | None:

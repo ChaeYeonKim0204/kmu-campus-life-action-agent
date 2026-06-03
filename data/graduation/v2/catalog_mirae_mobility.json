@@ -178,15 +178,10 @@
       "credits": 3.0,
       "requirement_area": "전공",
       "is_required": true,
-      "prerequisites": [],
-      "prereq_external": [
-        "공",
-        "학",
-        "기",
-        "초",
-        "수",
-        "학"
+      "prerequisites": [
+        "0533411"
       ],
+      "prereq_external": [],
       "grade_level": 1,
       "offered_terms": [
         "2"

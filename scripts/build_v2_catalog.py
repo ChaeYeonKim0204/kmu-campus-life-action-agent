@@ -150,6 +150,8 @@ def build_program(prog: dict, rows: list[tuple], report: dict) -> dict:
                 unresolved_required.append(f"code:{code}")
         # prerequisites: name → code
         for course_name, prereqs in (ov.get("prerequisites") or {}).items():
+            if isinstance(prereqs, str):       # 단일 선수 문자열 → 1원소 리스트(글자 단위 분해 방지)
+                prereqs = [prereqs]
             nn = normalize_name(course_name)
             hits = by_norm.get(nn, [])
             if len(hits) != 1:

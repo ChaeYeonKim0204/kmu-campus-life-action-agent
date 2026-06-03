@@ -7,6 +7,7 @@ import SourcePanel from "./components/SourcePanel.jsx";
 import ToolLogPanel from "./components/ToolLogPanel.jsx";
 import CampusMap, { BUILDINGS } from "./components/CampusMap.jsx";
 import GraduationCenter from "./components/GraduationCenter.jsx";
+import GraduationV2 from "./components/GraduationV2.jsx";
 import QuestBoard from "./components/QuestBoard.jsx";
 import RPGMessageConsole from "./components/RPGMessageConsole.jsx";
 import "./styles.css";
@@ -1186,4 +1187,6 @@ function App() {
 
 const container = document.getElementById("root");
 const root = createRoot(container);
-root.render(<App />);
+// 재설계: 졸업센터가 메인 축 — v2 컨설팅 대시보드를 첫 화면으로.
+// 옛 캠퍼스라이프 RPG UI(<App/>)는 코드 보존만, 데모에선 비노출.
+root.render(<GraduationV2 apiBase={API_BASE} />);

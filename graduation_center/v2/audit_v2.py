@@ -9,12 +9,56 @@ total_gap(졸업 최저합계 대비)을 전체 구속으로 본다.
 """
 from __future__ import annotations
 
+import json
+import re
+from functools import lru_cache
+
 from graduation_center.v2.models_v2 import (
     AreaGap, AuditResult, RequirementProfile, VerifiedTranscript,
 )
-from graduation_center.v2.catalog import load_catalog, load_gen_ed
+from graduation_center.v2.catalog import V2_DIR, load_catalog, load_gen_ed
+from graduation_center.v2.text_norm import normalize_name
 
 HARD_AREAS = ["전공", "기초교양", "핵심교양", "자유교양"]  # 일반선택 제외
+
+
+@lru_cache(maxsize=1)
+def _required_year_data() -> dict:
+    """학번(입학연도)별 요람 필수 과목명. 코드 무관 — 이름 기준 체크용."""
+    p = V2_DIR / "required_names_by_year.json"
+    return json.loads(p.read_text(encoding="utf-8")).get("programs", {}) if p.exists() else {}
+
+
+def _required_names_for_year(program_id: str, year: int | None) -> list[str] | None:
+    """해당 학번에 적용할 요람의 필수 과목명 + 실제 적용 연도. 없으면 (None, None)."""
+    by_year = _required_year_data().get(program_id)
+    if not by_year:
+        return None, None
+    avail = sorted(int(y) for y in by_year)
+    if year is None:
+        pick = avail[-1]
+    elif str(year) in by_year:
+        pick = year
+    else:  # 입학연도 이하의 가장 가까운 요람(없으면 가장 이른 것)
+        le = [y for y in avail if y <= year]
+        pick = (le[-1] if le else avail[0])
+    return by_year[str(pick)], pick
+
+
+def _required_aliases(program_id: str) -> dict:
+    """요람 필수명 → 수강내역 동치명(같은 교과목코드, 명칭 드리프트). 정규화 키로 반환."""
+    p = V2_DIR / "required_names_by_year.json"
+    raw = (json.loads(p.read_text(encoding="utf-8")).get("aliases", {}) if p.exists() else {}).get(program_id, {})
+    return {normalize_name(k): [normalize_name(v) for v in vs] for k, vs in raw.items()}
+
+
+def _admission_year(profile: RequirementProfile, verified: VerifiedTranscript) -> int | None:
+    """입학연도 — context.admission_year 우선, 없으면 수강내역 최초 학기 연도에서 추정."""
+    if profile.admission_year:
+        return int(profile.admission_year)
+    years = [int(m.group(1)) for c in verified.confirmed_courses
+             if (m := re.search(r"(20\d{2})", c.term_label or ""))]
+    return min(years) if years else None
 
 
 # TODO(동시배정 최적화 — 미구현): 겹침 과목을 제1전공/다전공 vs 융합전공 중 어디에 산입할지
@@ -114,19 +158,41 @@ def compute_audit(
             continue
         area_gaps.append(AreaGap(area=area, required=req, earned=got, gap=max(0.0, req - got)))
 
-    # 핵심교양 영역별(인문Ⅰ.. 각 3학점)
+    # 핵심교양 영역별(인문Ⅰ.. 각 3학점, 단 별표5 단과대 override 적용 — 예: 미래모빌리티 소통 5)
     gen = load_gen_ed().get("core_liberal", {})
     core_min = float(profile.core_area_min or 3)
+    overrides = profile.core_area_min_overrides or {}
     core_gaps: list[AreaGap] = []
     for area in gen.get("areas", []):
+        req = float(overrides.get(area, core_min))
         got = float(verified.core_area_earned.get(area, 0))
-        core_gaps.append(AreaGap(area=area, required=core_min, earned=got, gap=max(0.0, core_min - got)))
+        core_gaps.append(AreaGap(area=area, required=req, earned=got, gap=max(0.0, req - got)))
 
-    # 필수과목 누락 (카탈로그 코드 기준)
+    # 필수과목 누락 — 학번(입학연도) 요람 기준 '이름' 매칭(코드 무관 → 연도별 현황 엑셀 불필요).
+    # 교육과정은 해마다 개편돼 명칭·코드가 바뀌므로, 학생 학번에 맞는 요람의 필수명과
+    # 학생 수강내역 과목명을 정규화해 대조한다. 연도 데이터가 없으면 카탈로그 코드 prefix로 폴백.
     cat = load_catalog(profile.program_id)
-    confirmed_ids = {c.course_id for c in verified.confirmed_courses if c.course_id}
-    missing_ids = [cid for cid in profile.required_course_ids if cid not in confirmed_ids]
-    missing_names = [cat["by_code"][cid].name_ko for cid in missing_ids if cid in cat["by_code"]]
+    year = _admission_year(profile, verified)
+    req_names, applied_year = _required_names_for_year(profile.program_id, year)
+    if req_names:
+        confirmed_norm = {normalize_name(c.name_ko) for c in verified.confirmed_courses}
+        aliases = _required_aliases(profile.program_id)
+
+        def _taken(rn: str) -> bool:
+            nn = normalize_name(rn)
+            if nn in confirmed_norm:
+                return True
+            return any(a in confirmed_norm for a in aliases.get(nn, []))  # 명칭 드리프트 동치
+        missing_names = [rn for rn in req_names if not _taken(rn)]
+        missing_ids = []                       # 이름 기준 — 코드 없음
+        required_available = True
+        if applied_year:
+            profile.applied_yoram = f"{applied_year} 요람 (학번 {year} 기준)" if year else f"{applied_year} 요람"
+    else:
+        confirmed_prefixes = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
+        missing_ids = [cid for cid in profile.required_course_ids if cid[:5] not in confirmed_prefixes]
+        missing_names = [cat["by_code"][cid].name_ko for cid in missing_ids if cid in cat["by_code"]]
+        required_available = bool(profile.required_course_ids)
 
     total_req = float(profile.total_credits_min or 0)
     total_earned = float(verified.total_earned)
@@ -140,7 +206,7 @@ def compute_audit(
         core_area_gaps=core_gaps,
         missing_required_course_ids=missing_ids,
         missing_required_names=missing_names,
-        required_check_available=bool(profile.required_course_ids),
+        required_check_available=required_available,
         convergence_checks=_convergence_checks(verified, convergence_program_ids, convergence_tracks,
                                                profile.program_id),
         unresolved_credits=unresolved_credits,

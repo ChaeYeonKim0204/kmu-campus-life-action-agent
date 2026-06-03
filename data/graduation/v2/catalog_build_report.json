@@ -30,10 +30,35 @@
         "7159803"
       ]
     },
-    "required_marked": 0,
+    "required_marked": 19,
     "unresolved_required": [],
     "ambiguous_override": [],
-    "unresolved_prereq": [],
+    "unresolved_prereq": [
+      {
+        "owner": "공학수학Ⅰ",
+        "prereq": "공"
+      },
+      {
+        "owner": "공학수학Ⅰ",
+        "prereq": "학"
+      },
+      {
+        "owner": "공학수학Ⅰ",
+        "prereq": "기"
+      },
+      {
+        "owner": "공학수학Ⅰ",
+        "prereq": "초"
+      },
+      {
+        "owner": "공학수학Ⅰ",
+        "prereq": "수"
+      },
+      {
+        "owner": "공학수학Ⅰ",
+        "prereq": "학"
+      }
+    ],
     "group_unmatched": [],
     "grouped": 0
   },

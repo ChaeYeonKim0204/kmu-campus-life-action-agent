@@ -120,15 +120,32 @@ def parse_file(content: bytes, filename: str) -> list[RawLine]:
     return lines
 
 
+# 학사규정상 반복수강이 허용돼 매 학기 이수분이 각각 인정되는 과목(재수강 아님).
+# 동일 코드가 여러 학기 나와도 '재수강 의심'으로 표시하지 않고 전부 포함한다.
+REPEATABLE_COURSE_KEYWORDS = ("사제동행세미나",)
+
+
+def _is_repeatable(name: str) -> bool:
+    n = (name or "").replace(" ", "")
+    return any(k.replace(" ", "") in n for k in REPEATABLE_COURSE_KEYWORDS)
+
+
 def parse_many(files: list[tuple[bytes, str]]) -> tuple[list[RawLine], list[dict]]:
-    """여러 학기 파일 → 병합 RawLine + possible_retakes(동일 코드 복수 학기)."""
+    """여러 학기 파일 → 병합 RawLine + possible_retakes(동일 코드 복수 학기).
+
+    반복수강 허용 과목(사제동행세미나 등)은 재수강 후보에서 제외 — 매 이수분 인정.
+    """
     all_lines: list[RawLine] = []
     for content, filename in files:
         all_lines.extend(parse_file(content, filename))
     seen: dict[str, list[str]] = {}
+    repeatable_codes: set[str] = set()
     for ln in all_lines:
         if ln.course_code:
             seen.setdefault(ln.course_code, []).append(ln.term_label)
+            if _is_repeatable(ln.course_name):
+                repeatable_codes.add(ln.course_code)
     retakes = [{"course_code": code, "term_labels": terms}
-               for code, terms in seen.items() if len(terms) > 1]
+               for code, terms in seen.items()
+               if len(terms) > 1 and code not in repeatable_codes]
     return all_lines, retakes

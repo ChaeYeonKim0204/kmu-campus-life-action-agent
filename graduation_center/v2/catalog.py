@@ -40,6 +40,36 @@ def load_programs() -> dict:
     return json.loads(p.read_text(encoding="utf-8"))["programs"] if p.exists() else {}
 
 
+# 학사규정 제32조(학기당 이수학점): 졸업 최저이수학점 → 정규학기 상한.
+SEASONAL_TERM_CAP = 6.0          # 제32조 ④ 계절학기 6학점
+PREV_GPA_BONUS = 3.0             # 제32조 ①-4 직전학기 평점평균 3.75 이상 → +3학점
+
+
+def regular_term_cap(total_credits_min: float) -> float:
+    """졸업 최저이수학점 → 학기당 정규 이수학점 상한(제32조 ①)."""
+    t = float(total_credits_min or 0)
+    if t >= 136:
+        return 19.0
+    if t >= 130:
+        return 18.0
+    if t >= 120:
+        return 17.0
+    return 18.0                   # 미상 시 보수적 기본값
+
+
+def program_total_min(program_id: str) -> float | None:
+    """프로그램의 졸업 최저이수학점(요건 데이터). 연계·융합전공(키 없음)은 None."""
+    progs = load_programs()
+    key = progs.get(program_id, {}).get("requirements_key")
+    if not key:
+        return None
+    try:
+        req = json.loads(GRAD_REQ.read_text(encoding="utf-8"))["departments"][key]
+        return float(req.get("졸업_최저합계", 0)) or None
+    except Exception:
+        return None
+
+
 @lru_cache(maxsize=1)
 def load_gen_ed() -> dict:
     p = V2_DIR / "gen_ed_catalog.json"
@@ -91,6 +121,7 @@ def assemble_requirement_profile(context: StudentContext) -> RequirementProfile:
         area_min=area_min,
         required_course_ids=required_ids,
         core_area_min=float(gen.get("area_min_credits", 3)),
+        core_area_min_overrides={k: float(v) for k, v in (req.get("핵심교양_영역최저") or {}).items()},
         core_total_min=float(gen.get("total_min_credits", 15)),
     )
 

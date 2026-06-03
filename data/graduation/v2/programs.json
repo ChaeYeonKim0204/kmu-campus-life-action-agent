@@ -12,7 +12,7 @@
       "name_ko": "미래모빌리티학과",
       "requirements_key": "자동차융합대학_미래모빌리티학과",
       "catalog_file": "catalog_mirae_mobility.json",
-      "yoram_page": null,
+      "yoram_page": 772,
       "track_type": "primary",
       "convergence_required": null
     },

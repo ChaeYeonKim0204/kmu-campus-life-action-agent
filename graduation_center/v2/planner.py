@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import os
 
-from graduation_center.v2.catalog import load_catalog
+from graduation_center.v2.catalog import (
+    PREV_GPA_BONUS, SEASONAL_TERM_CAP, load_catalog, regular_term_cap,
+)
 from graduation_center.v2.models_v2 import (
     AuditResult, RequirementProfile, RoadmapPlan, RoadmapTerm, Source,
     StudentContext, ValidationError, ValidationReport, VerifiedTranscript,
@@ -71,13 +73,24 @@ def build_planning_context(
             })
     # 비-major(교양) 갭은 후보 카탈로그가 없어 자동계획 불가 → 별도 표기
     non_major_gap_areas = sorted(gap_areas - MAJOR_AREAS)
+    # 학사규정 제32조: 정규학기 상한(사용자 override 우선), 계절 6학점, 직전 3.75↑ → 첫 학기 +3
+    term_cap = float(context.max_credits_per_term or regular_term_cap(profile.total_credits_min))
+    caps = {
+        "regular_term_credits": term_cap,
+        "seasonal_term_credits": SEASONAL_TERM_CAP,
+        "first_term_bonus": PREV_GPA_BONUS if context.prev_term_gpa_ge_375 else 0.0,
+        "prev_term_gpa_ge_375": context.prev_term_gpa_ge_375,
+    }
     return {
         "student_context": {
             "current_term": context.current_term, "remaining_semesters": context.remaining_semesters,
             "seasonal_semester_allowed": context.seasonal_semester_allowed,
-            "max_courses_per_term": context.max_courses_per_term,
+            "max_credits_per_term": term_cap,
+            "seasonal_credit_cap": SEASONAL_TERM_CAP,
+            "first_regular_term_extra_credits": caps["first_term_bonus"],
             "preferences": context.preferences,
         },
+        "caps": caps,
         "audit_result": {
             "total_gap": audit.total_gap,
             "gaps": [{"area": g.area, "gap": g.gap} for g in audit.area_gaps if g.gap > 0],
@@ -119,8 +132,10 @@ _SCHEMA = {
 }
 
 _SYS = ("너는 졸업 로드맵 플래너다. 제공된 candidate_courses와 사실만 사용해 남은 학기에 들을 "
-        "과목을 배치한다. 새 과목·학점·요건을 지어내지 마라. 선수과목 순서·개설학기·학기당 과목수 "
-        "상한을 지키고, 학생 선호를 반영한다. 출력은 스키마 JSON만.")
+        "과목을 배치한다. 새 과목·학점·요건을 지어내지 마라. 선수과목 순서·개설학기를 지키고, "
+        "학기당 이수학점 상한(student_context.max_credits_per_term, 계절학기는 seasonal_credit_cap, "
+        "첫 정규학기는 first_regular_term_extra_credits만큼 추가 허용)을 넘기지 마라. "
+        "학생 선호를 반영한다. 출력은 스키마 JSON만.")
 
 
 def _get_client():
@@ -199,6 +214,17 @@ def validate_roadmap(plan: RoadmapPlan, ctx: dict, context: StudentContext) -> V
     seen_terms: set[str] = set()
     planned_by_area: dict[str, float] = {}
 
+    caps = ctx.get("caps", {})
+    reg_cap = float(caps.get("regular_term_credits", 19.0))
+    seasonal_cap = float(caps.get("seasonal_term_credits", SEASONAL_TERM_CAP))
+    first_bonus = float(caps.get("first_term_bonus", 0.0))
+    # 직전학기 3.75↑ 보너스는 첫 '정규학기'에만 — 계획상 가장 이른 정규학기 식별
+    first_regular = None
+    for t in sorted(plan.terms, key=lambda x: _term_key(x.term)):
+        if _term_sem(t.term) in ("1", "2"):
+            first_regular = t.term
+            break
+
     if len(plan.terms) > context.remaining_semesters:
         errors.append(ValidationError(code="too_many_terms",
                       detail=f"학기 수 {len(plan.terms)} > 잔여 {context.remaining_semesters}"))
@@ -211,8 +237,13 @@ def validate_roadmap(plan: RoadmapPlan, ctx: dict, context: StudentContext) -> V
         if allowed is not None and t.term not in allowed:
             errors.append(ValidationError(code="term_out_of_range",
                           detail=f"{t.term}은 허용 학기({sorted(allowed)}) 밖"))
-        if len(t.courses) > context.max_courses_per_term:
-            errors.append(ValidationError(code="over_course_cap", detail=f"{t.term} 과목수 초과"))
+        # 학사규정 제32조 학기당 이수학점 상한(정규/계절 + 첫 정규학기 보너스)
+        is_seasonal = sem in ("S", "W")
+        term_cap = seasonal_cap if is_seasonal else (reg_cap + (first_bonus if t.term == first_regular else 0.0))
+        term_credit_total = sum(float(c.credits) for c in t.courses)
+        if term_credit_total > term_cap + 0.01:
+            errors.append(ValidationError(code="over_credit_cap",
+                          detail=f"{t.term} 이수학점 {term_credit_total:.0f} > 상한 {term_cap:.0f}"))
         if sem in ("S", "W") and not context.seasonal_semester_allowed:
             errors.append(ValidationError(code="seasonal_not_allowed", detail=f"{t.term} 계절학기 불가"))
         cur_term_ids = []

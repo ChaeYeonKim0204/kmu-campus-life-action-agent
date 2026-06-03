@@ -47,7 +47,7 @@ PROGRAMS = [
      "req_key": "경영대학_AI빅데이터", "name_ko": "AI빅데이터융합경영학과", "yoram_page": 693,
      "track_type": "primary"},
     {"program_id": "mirae_mobility", "yoram_dept": "미래모빌리티학과",
-     "req_key": "자동차융합대학_미래모빌리티학과", "name_ko": "미래모빌리티학과", "yoram_page": None,
+     "req_key": "자동차융합대학_미래모빌리티학과", "name_ko": "미래모빌리티학과", "yoram_page": 772,
      "track_type": "primary"},
     # 연계·융합전공 (다전공) — 최저 36학점 (요람 p.814). 주전공에 오버레이로 체크.
     {"program_id": "dsci_convergence", "yoram_dept": "데이터사이언스융합전공",
@@ -132,7 +132,7 @@ def build_program(prog: dict, rows: list[tuple], report: dict) -> dict:
         for code, names in (ov.get("aliases") or {}).items():
             if code in courses:
                 courses[code]["aliases"].extend(names)
-        # required
+        # required (이름 매칭)
         for rn in ov.get("required_names", []):
             nn = normalize_name(rn)
             hits = by_norm.get(nn, [])
@@ -142,6 +142,12 @@ def build_program(prog: dict, rows: list[tuple], report: dict) -> dict:
                 unresolved_required.append(rn)
             else:
                 ambiguous.append({"name": rn, "codes": hits})
+        # required (코드 직접 지정 — 이름 모호 해소용)
+        for code in ov.get("required_codes", []):
+            if code in courses:
+                courses[code]["is_required"] = True
+            else:
+                unresolved_required.append(f"code:{code}")
         # prerequisites: name → code
         for course_name, prereqs in (ov.get("prerequisites") or {}).items():
             nn = normalize_name(course_name)

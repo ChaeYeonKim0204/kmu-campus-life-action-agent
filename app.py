@@ -248,8 +248,15 @@ def graduation_credit_drop(request: CreditDropRequest) -> dict:
 def graduation_v2_status() -> dict:
     """v2 준비 상태 (프로그램 목록·LLM 키 유무). Chroma와 무관."""
     import os
+    from graduation_center.v2.catalog import program_total_min, regular_term_cap
+    progs = load_programs()
+    # 학사규정 제32조 학기당 이수학점 상한을 프로그램별로 미리 계산해 노출(프론트 기본값).
+    for pid, p in progs.items():
+        total = program_total_min(pid)
+        p["total_credits_min"] = total
+        p["max_credits_per_term"] = regular_term_cap(total) if total else None
     return {
-        "programs": load_programs(),
+        "programs": progs,
         "openai_api_key_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
         "note": "엑셀 수강내역 업로드 기반. 결정론 진단/리스크는 키 없이도 동작, 로드맵만 LLM 사용.",
     }

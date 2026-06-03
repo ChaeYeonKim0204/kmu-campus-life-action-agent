@@ -22,7 +22,8 @@ class StudentContext(BaseModel):
     remaining_semesters: int = Field(default=2, ge=0, le=12)
     seasonal_semester_allowed: bool = False
     max_courses_per_term: int = Field(default=6, ge=1, le=12)
-    max_credits_per_term: float | None = None
+    max_credits_per_term: float | None = None        # 사용자 override; None이면 학사규정 제32조로 산출
+    prev_term_gpa_ge_375: bool = False               # 직전학기 평점 3.75↑ → 첫 학기 +3학점(제32조)
     preferences: list[str] = Field(default_factory=list)
     gpa_min_met: GpaMinStatus = "unknown"            # 엑셀에 성적 없음 → 사용자 선언
     convergence_program_ids: list[str] = Field(default_factory=list)  # 연계·융합전공 — 사용자 입력
@@ -101,6 +102,7 @@ class RequirementProfile(BaseModel):
     area_min: dict[str, float] = Field(default_factory=dict)      # {전공,기초교양,핵심교양,자유교양,일반선택}
     required_course_ids: list[str] = Field(default_factory=list)
     core_area_min: float = 3.0
+    core_area_min_overrides: dict[str, float] = Field(default_factory=dict)  # 별표5 영역별 override(예: 소통 5)
     core_total_min: float = 15.0
     applied_yoram: str = "2025 요람"
 

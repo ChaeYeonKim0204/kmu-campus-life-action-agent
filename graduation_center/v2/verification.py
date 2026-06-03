@@ -62,7 +62,7 @@ def build_verification_table(
             if _term_order(ln.term_label) == latest[code] and code not in used_latest:
                 used_latest.add(code)
             else:
-                included, reason = False, "재수강 — 최신 이수만 반영(확인 필요)"
+                included, reason = False, "재수강(이전 이수)"
         table.append(VerifiedCourse(
             # 실제 엑셀 교과목코드를 항상 보존(제1전공 카탈로그 밖 과목도 융합전공 코드매칭 가능하도록).
             course_id=ln.course_code or m.matched_course_id,
@@ -75,6 +75,8 @@ def build_verification_table(
             exclude_reason=reason,
             aggregate_only=(m.status == "aggregate_only"),
         ))
+    # 학기 오름차순(과거→최신) 정렬 — 화면 표시·검토 순서
+    table.sort(key=lambda vc: _term_order(vc.term_label))
     return table, unresolved, retakes
 
 

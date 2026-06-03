@@ -87,7 +87,10 @@ function ConvergenceBlock({ cc, C, first }) {
       (ov[j].primary_required - ov[i].primary_required) || (ov[j].credits - ov[i].credits));
     const s = {}; let dup = 0;
     for (const i of order) { if (dup + ov[i].credits <= cap) { s[i] = "dup"; dup += ov[i].credits; } }
-    let pneed = Math.max(0, (cc.primary_required || 0) - (cc.primary_base || 0) - dup);
+    // 전공필수 겹침은 융합 전용 이동 불가 → dup 아니면 제1전공 고정 (백엔드 기본배정과 동일)
+    let reqP = 0;
+    for (const i of order) { if (!s[i] && ov[i].primary_required) { s[i] = "primary"; reqP += ov[i].credits; } }
+    let pneed = Math.max(0, (cc.primary_required || 0) - (cc.primary_base || 0) - dup - reqP);
     for (const i of order) {
       if (s[i]) continue;
       if (pneed > 0) { s[i] = "primary"; pneed -= ov[i].credits; } else s[i] = "fusion";
@@ -180,12 +183,13 @@ function ConvergenceBlock({ cc, C, first }) {
                     <span style={{ display: "inline-flex", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
                       {SEL3.map(([key, lbl, col, bg, bd]) => {
                         const on = sel[ovIdx] === key;
-                        // 중복인정은 한도(cap) 초과하면 선택 불가
-                        const wouldExceed = key === "dup" && !on && (dupCr + ov[ovIdx].credits > cap);
+                        // 중복인정은 한도(cap) 초과 시, 융합전공은 전공필수 과목이면 선택 불가
+                        const wouldExceed = (key === "dup" && !on && (dupCr + ov[ovIdx].credits > cap))
+                          || (key === "fusion" && ov[ovIdx].primary_required);
                         return (
                           <button key={key} disabled={wouldExceed}
                             onClick={() => !wouldExceed && setSel((s) => ({ ...s, [ovIdx]: key }))}
-                            title={wouldExceed ? `중복인정 한도 ${cap}학점 초과` : ""}
+                            title={wouldExceed ? (key === "fusion" ? "전공필수 과목은 융합 전용으로 이동 불가" : `중복인정 한도 ${cap}학점 초과`) : ""}
                             style={{ fontSize: 10, fontWeight: 700, padding: "3px 6px",
                               cursor: wouldExceed ? "not-allowed" : "pointer", border: "none",
                               borderLeft: key !== "dup" ? `1px solid ${C.border}` : "none",
@@ -584,6 +588,14 @@ export default function GraduationV2({ apiBase }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
                 {audit.audit.area_gaps.map((g, i) => <Gauge key={i} label={g.area} earned={g.earned} required={g.required} gap={g.gap} />)}
               </div>
+              {(() => {
+                const tf = (audit.audit.convergence_checks || []).reduce((s, c) => s + (c.to_fusion_credits || 0), 0);
+                return tf > 0 ? (
+                  <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0" }}>
+                    ※ 전공 이수 학점 중 {tf}학점은 연계·융합전공 인정으로 배정되어 전공 게이지에서 제외됨 (중복인정 한도 초과분 — 총학점에는 포함)
+                  </p>
+                ) : null;
+              })()}
               {audit.audit.core_area_gaps?.length > 0 && (
                 <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>핵심교양 영역별 (각 최저 학점 · 소통은 단과대 규정 반영)</div>

@@ -58,8 +58,10 @@ def compute_risk(
         reasons.append(RiskReason(factor="영역", detail=f"이수구분 영역 {max_area_gap:.0f}학점 부족", severity=8))
 
     # 잔여학기 수용량(결정론): 학사규정 제32조 학기당 이수학점 상한 기반
-    # (계절학기 허용 시 6학점, 직전 3.75↑면 +3 한 번)
-    term_cap = float(context.max_credits_per_term or 18)
+    # 사용자 override는 법정 상한(졸업학점 기반) 이내로 클램프 (계절 6, 직전 3.75↑ +3 한 번)
+    from graduation_center.v2.catalog import regular_term_cap
+    legal = regular_term_cap(audit.total_required)
+    term_cap = min(float(context.max_credits_per_term or legal), legal)
     capacity = context.remaining_semesters * term_cap
     if context.prev_term_gpa_ge_375:
         capacity += PREV_GPA_BONUS

@@ -219,24 +219,31 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             if dup_cr + c.credits <= cap + 0.01:
                 alloc[id(c)] = "dup"; dup_cr = round(dup_cr + c.credits, 1)
         flex = [c for c in ov_sorted if id(c) not in alloc]
-        p_need = max(0.0, primary_major_required - primary_base - dup_cr)
-        acc_p = 0.0
+        # 제1전공/다전공 '전공필수' 겹침은 융합 전용 이동 불가(사용자 확정 규칙) → dup 아니면 primary 고정
         for c in flex:
+            if c.course_id[:5] in required_prefixes:
+                alloc[id(c)] = "primary"
+        req_primary_cr = round(sum(c.credits for c in flex if alloc.get(id(c)) == "primary"), 1)
+        rest = [c for c in flex if id(c) not in alloc]
+        p_need = max(0.0, primary_major_required - primary_base - dup_cr - req_primary_cr)
+        acc_p = 0.0
+        for c in rest:
             if acc_p < p_need:
                 alloc[id(c)] = "primary"; acc_p += c.credits
             else:
                 alloc[id(c)] = "fusion"
         to_primary = round(sum(c.credits for c in flex if alloc[id(c)] == "primary"), 1)
         to_fusion = round(sum(c.credits for c in flex if alloc[id(c)] == "fusion"), 1)
-        # 융합에 실제 산입되는 과목 = 융합전용(non-overlap) + 중복인정(dup) + 융합배정 겹침
+        # 융합 '총량 인정' = 융합전용(non-overlap) + 중복인정(dup) + 융합배정 겹침 (제77조 한도 반영)
         fusion_courses = [c for c in designated if c.course_id[:5] not in other_prefixes] \
             + [c for c in overlap if alloc.get(id(c)) in ("dup", "fusion")]
         fusion_eff = round(sum(c.credits for c in fusion_courses), 1)
         primary_eff = round(primary_base + dup_cr + to_primary, 1)
         gap_eff = max(0.0, round(req - fusion_eff, 1))
-        # 그룹 충족 = 융합 산입 과목 기준(배정 반영). Σgroup_earned == fusion_eff 보장.
+        # 그룹별 최저 = '이수 커버리지' 기준(designated 전체) — 요람: "각 영역별로 최소 N학점 선택 이수".
+        # 중복인정 한도/배정은 총량(36·18) 인정에만 적용되고 그룹 최저 판정과는 별개(라운드3 검증).
         group_earned = {g: 0.0 for g in all_groups}
-        for c in fusion_courses:
+        for c in designated:
             g = prefix_to_group.get(c.course_id[:5])
             if g:
                 group_earned[g] = round(group_earned.get(g, 0.0) + c.credits, 1)
@@ -326,8 +333,13 @@ def compute_audit(
         if applied_year:
             profile.applied_yoram = f"{applied_year} 요람 (학번 {year} 기준)" if year else f"{applied_year} 요람"
     else:
-        confirmed_prefixes = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
-        missing_ids = [cid for cid in profile.required_course_ids if cid[:5] not in confirmed_prefixes]
+        # 코드 폴백은 7자리 전체 비교(5자리 절단 시 S-TEAM 0365007↔사제동행 0365008 충돌) +
+        # 이름 매칭 보조(분반 등 코드 변형 흡수)
+        confirmed_full = {c.course_id for c in verified.confirmed_courses if c.course_id}
+        confirmed_norm2 = {normalize_name(c.name_ko) for c in verified.confirmed_courses}
+        missing_ids = [cid for cid in profile.required_course_ids
+                       if cid not in confirmed_full
+                       and not (cid in cat["by_code"] and normalize_name(cat["by_code"][cid].name_ko) in confirmed_norm2)]
         missing_names = [cat["by_code"][cid].name_ko for cid in missing_ids if cid in cat["by_code"]]
         required_available = bool(profile.required_course_ids)
 

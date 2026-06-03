@@ -217,17 +217,39 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
                             "primary_required": c.course_id[:5] in required_prefixes}
                            for c in overlap]
         group_short = [gc for gc in group_checks if gc["gap"] > 0]
-        note = (f"제1전공과 겹치는 {overlap_cr:.0f}학점은 중복인정(양쪽 동시) 최대 {cap:.0f}까지. "
-                f"한도 초과·미선택분은 제1전공 또는 {('연계' if is_yeonge else '융합')}전공 한쪽에만 인정돼 양쪽 학점이 달라집니다.")
+        # 기본 배정(결정론, 프론트 3-way 기본값과 동일): 중복인정(한도까지, 전공필수 우선) →
+        # 한도초과 겹침은 제1전공 요건을 먼저 채우고 나머지는 융합. 이로써 백엔드가 산출하는
+        # 융합 earned/gap·제1전공 effective가 프론트 StatBox와 일치(이중집계 모순 제거).
+        ov_sorted = sorted(overlap, key=lambda c: (c.course_id[:5] not in required_prefixes, -c.credits))
+        dup_cr, dup_ids = 0.0, set()
+        for c in ov_sorted:
+            if dup_cr + c.credits <= cap + 0.01:
+                dup_ids.add(id(c)); dup_cr = round(dup_cr + c.credits, 1)
+        flex = [c for c in ov_sorted if id(c) not in dup_ids]
+        p_need = max(0.0, primary_major_required - primary_base - dup_cr)
+        to_primary, acc_p = 0.0, 0.0
+        for c in flex:
+            if acc_p >= p_need:
+                break
+            to_primary = round(to_primary + c.credits, 1); acc_p += c.credits
+        to_fusion = round(sum(c.credits for c in flex) - to_primary, 1)
+        fusion_eff = round(fusion_base + dup_cr + to_fusion, 1)
+        primary_eff = round(primary_base + dup_cr + to_primary, 1)
+        gap_eff = max(0.0, round(req - fusion_eff, 1))
+        note = (f"제1전공과 겹치는 {overlap_cr:.0f}학점 중 중복인정(양쪽 동시) {dup_cr:.0f}/{cap:.0f}. "
+                f"한도 초과 {len(flex)*3 if False else round(sum(c.credits for c in flex),0):.0f}학점은 기본배정상 "
+                f"제1전공 {to_primary:.0f}·{('연계' if is_yeonge else '융합')} {to_fusion:.0f} (3-way로 조정 가능).")
         out.append({
             "program_id": pid, "name": name, "track": track,
             "conv_type": "연계전공" if is_yeonge else "융합전공",
             "required": req, "double_cap": cap, "per_group_min": per_group_min,
-            "earned": earned, "gap": gap, "group_checks": group_checks,
+            # earned/gap은 배정 반영값(융합전용+중복+융합배정). designated 총합은 별도 표기.
+            "earned": fusion_eff, "gap": gap_eff, "designated_total": earned,
+            "group_checks": group_checks,
             "overlap_credits": overlap_cr, "double_recognizable": double_recognizable,
             "recommend_double_count": rec, "note": note, "courses": courses_view,
-            # 동시배정: 제1전공 = primary_base + (중복인정+제1전공 선택분), 융합 = fusion_base + (중복인정+융합 선택분)
-            "primary_base": primary_base, "fusion_base": fusion_base,
+            "primary_base": primary_base, "fusion_base": fusion_base, "double_used": dup_cr,
+            "primary_effective": primary_eff, "fusion_effective": fusion_eff, "to_fusion_credits": to_fusion,
             "primary_required": primary_major_required, "overlap_courses": overlap_courses,
         })
     return out
@@ -238,6 +260,14 @@ def compute_audit(
     convergence_program_ids=(), convergence_tracks=None,
 ) -> AuditResult:
     earned = verified.earned_by_area
+    # 연계융합 배정을 먼저 계산 — 겹침학점 중 '융합으로 배정'된 분은 제1전공(전공)에서 차감해
+    # 이중집계를 막고 전공/융합/risk를 한 배정으로 정합. (배정은 _convergence_checks가 결정론 산출)
+    conv_checks = _convergence_checks(verified, convergence_program_ids, convergence_tracks,
+                                      profile.program_id, float(profile.area_min.get("전공", 0)),
+                                      float(earned.get("전공", 0)))
+    to_fusion_total = round(sum(cc.get("to_fusion_credits", 0.0) for cc in conv_checks), 1)
+    major_effective = round(float(earned.get("전공", 0)) - to_fusion_total, 1)
+
     # 핵심교양 영역별 최저(별표5 단과대 override 반영 — 예: 미래모빌리티 소통 5)
     gen = load_gen_ed().get("core_liberal", {})
     core_min = float(profile.core_area_min or 3)
@@ -250,7 +280,8 @@ def compute_audit(
     for area in HARD_AREAS:
         # 핵심교양은 영역별 최저 합을 요건으로(학번 요람 별표5 반영)
         req = core_total_required if area == "핵심교양" else float(profile.area_min.get(area, 0))
-        got = float(earned.get(area, 0))
+        # 전공은 연계융합 '융합 배정'분 차감한 effective 값(동시이수 정합)
+        got = major_effective if area == "전공" else float(earned.get(area, 0))
         if req <= 0:
             continue
         area_gaps.append(AreaGap(area=area, required=req, earned=got, gap=max(0.0, req - got)))
@@ -301,8 +332,6 @@ def compute_audit(
         missing_required_names=missing_names,
         required_check_available=required_available,
         gen_basic_courses=_gen_basic_view(verified, profile.program_id, year),
-        convergence_checks=_convergence_checks(verified, convergence_program_ids, convergence_tracks,
-                                               profile.program_id, float(profile.area_min.get("전공", 0)),
-                                               float(earned.get("전공", 0))),
+        convergence_checks=conv_checks,
         unresolved_credits=unresolved_credits,
     )

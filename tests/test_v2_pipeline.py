@@ -210,12 +210,12 @@ def test_convergence_duplicate_credit_cap_and_exclusion():
     # primary=dsci_convergence → 모든 designated가 제1전공과 겹침 → cap(double_recognizable) 검증
     da = _convergence_checks(vt, ["dsci_convergence"], {"dsci_convergence": "다전공"}, "dsci_convergence")[0]
     assert da["required"] == 36 and da["double_cap"] == 12 and da["conv_type"] == "융합전공"
-    # 융합전공 인정 = 들은 융합 과목 전부(교양 gyo 제외) — cap이 깎지 않음
-    assert da["earned"] == total_major
+    # designated_total = 들은 융합 과목 전부(교양 gyo 제외). earned는 배정 반영값(별도).
+    assert da["designated_total"] == total_major
     assert da["double_recognizable"] == 12          # 그중 제1전공 중복인정 가능 최대 12
     bu = _convergence_checks(vt, ["dsci_convergence"], {"dsci_convergence": "부전공"}, "dsci_convergence")[0]
     assert bu["required"] == 18 and bu["double_cap"] == 6 and bu["double_recognizable"] == 6
-    assert bu["earned"] == total_major              # 부전공도 인정학점 자체는 동일
+    assert bu["designated_total"] == total_major    # 부전공도 designated 총합은 동일
 
 
 def test_gen_ed_gap_planned_as_slot():

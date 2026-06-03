@@ -10,7 +10,7 @@ import json
 import os
 
 from graduation_center.v2.catalog import (
-    PREV_GPA_BONUS, SEASONAL_TERM_CAP, load_catalog, regular_term_cap,
+    PREV_GPA_BONUS, SEASONAL_TERM_CAP, V2_DIR, load_catalog, regular_term_cap,
 )
 from graduation_center.v2.models_v2 import (
     AuditResult, RequirementProfile, RoadmapCourse, RoadmapPlan, RoadmapTerm, Source,
@@ -377,6 +377,24 @@ def _ordered_terms(context: StudentContext, reg_cap: float) -> list[list]:
     return out
 
 
+def _required_meta(program_id: str, year: int | None) -> dict:
+    """학번 요람 필수 과목의 학점·개설학기 메타 {정규화이름: {credits, terms}}."""
+    import json
+    p = V2_DIR / "required_names_by_year.json"
+    by_year = (json.loads(p.read_text(encoding="utf-8")).get("programs", {}) if p.exists() else {}).get(program_id)
+    if not by_year:
+        return {}
+    avail = sorted(int(y) for y in by_year)
+    pick = year if (year and str(year) in by_year) else (
+        [y for y in avail if not year or y <= year][-1:] or [avail[-1]])[0]
+    meta = {}
+    for it in by_year.get(str(pick), []):
+        if isinstance(it, dict):
+            meta[normalize_name(it["name"])] = {"credits": float(it.get("credits", 3.0)),
+                                                "terms": list(it.get("terms") or [])}
+    return meta
+
+
 def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                              verified: VerifiedTranscript) -> tuple[list[dict], list[dict]]:
     """남은 졸업 의무를 단일 후보 풀로 정규화(전공·필수·융합·교양). 반환 (선택후보, 요건요약)."""
@@ -385,11 +403,18 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     confirmed_pref = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
     reqs: list[dict] = []
 
-    # 1) 미이수 필수(이름) — 전부 이수 필요
+    # 1) 미이수 필수(이름) — 전부 이수 필요. 요람 메타로 학점·개설학기 반영
     if audit.missing_required_names:
-        reqs.append({"label": "필수지정 미이수", "area": "전공", "priority": 1, "need": None,
-                     "items": [{"name_ko": n, "credits": 3.0, "satisfies": "필수지정",
-                                "confidence": "name_only", "manual": True} for n in audit.missing_required_names]})
+        rmeta = _required_meta(profile.program_id, profile.admission_year)
+        items = []
+        for n in audit.missing_required_names:
+            m = rmeta.get(normalize_name(n), {})
+            terms = m.get("terms") or []
+            items.append({"name_ko": n, "credits": m.get("credits", 3.0), "satisfies": "필수지정",
+                          "offered_terms": terms or ["1", "2"],
+                          "confidence": "catalog_verified" if terms else "name_only",
+                          "manual": not terms})
+        reqs.append({"label": "필수지정 미이수", "area": "전공", "priority": 1, "need": None, "items": items})
     # 2) 연계융합 부족 — 부족 그룹 우선 미이수 융합과목
     for cc in audit.convergence_checks:
         if cc.get("gap", 0) > 0:

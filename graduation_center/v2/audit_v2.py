@@ -42,7 +42,9 @@ def _required_names_for_year(program_id: str, year: int | None) -> list[str] | N
     else:  # 입학연도 이하의 가장 가까운 요람(없으면 가장 이른 것)
         le = [y for y in avail if y <= year]
         pick = (le[-1] if le else avail[0])
-    return by_year[str(pick)], pick
+    # 항목은 문자열 또는 {name,credits,terms} — 매칭은 이름만 사용
+    names = [(it["name"] if isinstance(it, dict) else it) for it in by_year[str(pick)]]
+    return names, pick
 
 
 def _required_aliases(program_id: str) -> dict:

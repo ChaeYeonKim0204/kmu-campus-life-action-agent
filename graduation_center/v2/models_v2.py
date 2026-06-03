@@ -151,6 +151,7 @@ class RoadmapCourse(BaseModel):
     satisfies: str = ""                              # 영역/필수 (예: 필수지정, 전공 부족, 융합 A그룹)
     reason: str = ""
     assignment: str = ""                             # 융합 과목 이수구분(중복인정/제1전공/융합전공) 등
+    offered_terms: list[str] = Field(default_factory=list)   # 개설학기(아는 경우; 예: ["1"],["1","2"])
     confidence: Literal["catalog_verified", "name_only", "generic_slot"] = "catalog_verified"
     manual_check: bool = False                       # 개설학기·학점 확인 필요(이름기준/슬롯)
     source_ids: list[str] = Field(default_factory=list)

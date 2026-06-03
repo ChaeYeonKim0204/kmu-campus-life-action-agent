@@ -397,9 +397,13 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
             untaken = sorted([c for c in cc.get("courses", []) if not c["taken"]],
                              key=lambda c: (c.get("group") not in short, -c.get("credits", 0)))
             reqs.append({"label": f"{cc['name']} 부족", "area": "융합전공", "priority": 2, "need": cc["gap"],
-                         "pool": [{"name_ko": c["name_ko"], "credits": c["credits"], "assignment": "융합전공",
+                         "pool": [{"name_ko": c["name_ko"], "course_id": c.get("course_id", ""),
+                                   "credits": c["credits"], "assignment": "융합전공",
                                    "satisfies": f"{cc['name']} {c.get('group', '')}".strip(),
-                                   "confidence": "name_only", "manual": True} for c in untaken]})
+                                   "offered_terms": c.get("offered_terms") or ["1", "2"],
+                                   # 융합 카탈로그는 현황 기반 → 개설학기 known(있으면 hard-check)
+                                   "confidence": "catalog_verified" if c.get("offered_terms") else "name_only",
+                                   "manual": not c.get("offered_terms")} for c in untaken]})
     # 3) 전공 부족 — 제1전공 카탈로그 미이수
     major_gap = next((g.gap for g in audit.area_gaps if g.area == "전공"), 0.0)
     if major_gap > 0:
@@ -462,12 +466,20 @@ def plan_greedy(selected: list[dict], terms: list[list]) -> tuple[list[RoadmapTe
     unplaced = []
     for it in items:
         off = it.get("offered_terms")
+        known = it.get("confidence") == "catalog_verified"
         placed = False
-        for lab, cap in terms:
-            if off and it.get("confidence") == "catalog_verified" and _term_sem(lab) not in off:
-                continue
-            if used[lab] + it["credits"] <= cap + 0.01:
-                bucket[lab].append(it); used[lab] += it["credits"]; placed = True; break
+        # 1차: 개설학기 아는 과목은 해당 학기, 불확실 과목은 정규학기에만. 2차: 계절학기까지 허용
+        for allow_seasonal in (False, True):
+            for lab, cap in terms:
+                sem = _term_sem(lab)
+                if known and off and sem not in off:
+                    continue
+                if not known and sem in ("S", "W") and not allow_seasonal:
+                    continue            # 개설학기 불확실 과목은 정규학기 우선
+                if used[lab] + it["credits"] <= cap + 0.01:
+                    bucket[lab].append(it); used[lab] += it["credits"]; placed = True; break
+            if placed:
+                break
         if not placed:
             unplaced.append(it)
     out = []
@@ -476,7 +488,9 @@ def plan_greedy(selected: list[dict], terms: list[list]) -> tuple[list[RoadmapTe
             continue
         courses = [RoadmapCourse(course_id=it.get("course_id", "") or "", name_ko=it["name_ko"],
                                  credits=it["credits"], satisfies=it.get("satisfies", ""),
-                                 assignment=it.get("assignment", ""), confidence=it.get("confidence", "catalog_verified"),
+                                 assignment=it.get("assignment", ""),
+                                 offered_terms=(it.get("offered_terms") or []) if it.get("confidence") == "catalog_verified" else [],
+                                 confidence=it.get("confidence", "catalog_verified"),
                                  manual_check=it.get("manual", False)) for it in bucket[lab]]
         out.append(RoadmapTerm(term=lab, courses=courses, term_credits=round(used[lab], 1),
                                term_risk="medium" if used[lab] > cap - 3 else "low"))

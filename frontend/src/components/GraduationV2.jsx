@@ -633,22 +633,49 @@ export default function GraduationV2({ apiBase }) {
                   ✅ {audit.roadmap.why_this_plan}
                 </div>
               )}
+              {/* 남은 요건 요약 */}
+              {(() => {
+                const rem = [];
+                const mg = audit.audit.area_gaps.find((g) => g.area === "전공");
+                if (audit.audit.missing_required_names?.length) rem.push(`필수지정 ${audit.audit.missing_required_names.length}과목`);
+                if (mg && mg.gap > 0) rem.push(`전공 ${mg.gap}학점`);
+                (audit.audit.convergence_checks || []).forEach((cc) => { if (cc.gap > 0) rem.push(`${cc.name} ${cc.gap}학점`); });
+                (audit.audit.core_area_gaps || []).filter((g) => g.gap > 0).forEach((g) => rem.push(`핵심교양 ${g.area} ${g.gap}학점`));
+                ["기초교양", "자유교양"].forEach((a) => { const g = audit.audit.area_gaps.find((x) => x.area === a); if (g && g.gap > 0) rem.push(`${a} ${g.gap}학점`); });
+                return rem.length > 0 && audit.roadmap.terms.length > 0 ? (
+                  <div style={{ fontSize: 12, marginBottom: 10 }}>
+                    <span style={{ color: C.muted, fontWeight: 600 }}>남은 요건: </span>
+                    {rem.map((r, i) => <span key={i} style={{ display: "inline-block", background: "#fff7ed", border: "1px solid #fed7aa", color: "#b45309", borderRadius: 12, padding: "2px 8px", marginRight: 5, marginBottom: 4 }}>{r}</span>)}
+                  </div>
+                ) : null;
+              })()}
               {audit.roadmap.terms.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {audit.roadmap.terms.map((t, i) => (
                     <div key={i} style={{ display: "flex", gap: 12 }}>
-                      <div style={{ minWidth: 64, fontWeight: 700, color: C.navy, fontSize: 13.5, paddingTop: 2 }}>{t.term}</div>
-                      <div style={{ flex: 1, borderLeft: `3px solid ${C.accent}`, paddingLeft: 12 }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {t.courses.map((c, ci) => (
-                            <span key={ci} style={{ fontSize: 12.5, background: "#eef5ff", border: "1px solid #cfe1fb",
-                              borderRadius: 7, padding: "4px 9px" }}>{c.name_ko} <span style={{ color: C.muted }}>{c.credits}</span></span>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{t.term_credits}학점</div>
+                      <div style={{ minWidth: 64, fontWeight: 700, color: C.navy, fontSize: 13.5, paddingTop: 2 }}>{t.term}<div style={{ fontSize: 10.5, color: C.muted, fontWeight: 400 }}>{t.term_credits}학점</div></div>
+                      <div style={{ flex: 1, borderLeft: `3px solid ${C.accent}`, paddingLeft: 12, display: "flex", flexDirection: "column", gap: 5 }}>
+                        {t.courses.map((c, ci) => {
+                          const offered = (c.offered_terms || []).length ? `${c.offered_terms.map((x) => (x === "1" ? "1학기" : x === "2" ? "2학기" : x)).join("·")} 개설` : null;
+                          return (
+                            <div key={ci} style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", fontSize: 12.5 }}>
+                              <span style={{ fontWeight: 600 }}>{c.name_ko}</span>
+                              <span style={{ color: C.muted }}>{c.credits}학점</span>
+                              {c.satisfies && <span style={{ fontSize: 10.5, background: "#eef5ff", color: C.accent, border: "1px solid #cfe1fb", borderRadius: 5, padding: "1px 6px" }}>{c.satisfies}</span>}
+                              {c.assignment && <span style={{ fontSize: 10.5, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd", borderRadius: 5, padding: "1px 6px" }}>{c.assignment}</span>}
+                              {offered && <span style={{ fontSize: 10.5, color: "#047857" }}>· {offered}</span>}
+                              {c.manual_check && <span style={{ fontSize: 10.5, color: "#b45309", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 5, padding: "1px 6px" }}>개설학기 확인필요</span>}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {audit.roadmap.feasible === false && audit.roadmap.blocked_reason && (
+                <div style={{ fontSize: 12.5, color: "#b45309", margin: "10px 0 0", padding: "10px 12px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8 }}>
+                  ⚠️ {audit.roadmap.blocked_reason}{audit.roadmap.relaxation_hint ? ` · ${audit.roadmap.relaxation_hint}` : ""}
                 </div>
               )}
               {audit.roadmap.why_this_plan && audit.roadmap.terms.length > 0 && (

@@ -187,6 +187,8 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
                 "name_ko": cc.name_ko, "group": cc.group or "", "credits": cc.credits,
                 "taken": pfx in taken_prefixes, "overlap": pfx in other_prefixes,
                 "primary_required": pfx in required_prefixes,
+                "course_id": cc.course_id, "offered_terms": list(cc.offered_terms or []),
+                "prerequisites": list(cc.prerequisites or []),
             })
         # 중복인정 '추천' = 들은 겹침과목 중 제1전공/다전공 '전공필수' 우선(없으면 학점순), 한도(cap)까지.
         # 한도를 넘는 겹침 과목은 '후보'일 뿐(실제 중복인정 X, 한쪽에만 산입).

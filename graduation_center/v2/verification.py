@@ -52,6 +52,10 @@ def build_verification_table(
             unresolved.append(m)
             continue
         area = m.requirement_area or area_from_isugubun(ln.area_raw)
+        # 선택 전공의 교과목코드(현황)에도 이름에도 매칭 안 된 '전공선택'은 이 전공 과목이 아님
+        # → 일반선택으로 재분류(학사규정: 타과·다전공 전공과목은 일반선택). 교양은 이수구분 유지.
+        if m.status == "aggregate_only" and area == "전공":
+            area = "일반선택"
         included, reason = True, None
         code = ln.course_code
         # 폐강 자동 제외

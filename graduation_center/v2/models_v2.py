@@ -160,6 +160,17 @@ class RoadmapTerm(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class OverflowScenario(BaseModel):
+    """잔여 학기로 졸업이 불가능할 때의 초과학기 예상(결정론 산출)."""
+    shortfall_credits: float                          # 부족 학점(총 졸업학점 대비)
+    per_term_credit_cap: float                        # 학기당 이수학점 상한(제32조)
+    remaining_semesters: int                          # 현재 잔여 정규학기
+    total_semesters_needed: int                       # 졸업까지 필요한 총 정규학기
+    extra_semesters: int                              # 초과학기 수(= 필요 - 잔여)
+    projected_graduation_term: str | None = None      # 예상 졸업 학기 라벨
+    note: str = ""
+
+
 class RoadmapPlan(BaseModel):
     status: Literal["generated", "not_generated", "blocked"] = "not_generated"
     feasible: bool | None = None
@@ -168,6 +179,7 @@ class RoadmapPlan(BaseModel):
     blocked_reason: str | None = None
     relaxation_hint: str | None = None
     assumptions: list[str] = Field(default_factory=list)
+    overflow: OverflowScenario | None = None          # 잔여 학기 초과 시 예상 시나리오
 
 
 class ValidationError(BaseModel):

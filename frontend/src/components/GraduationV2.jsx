@@ -423,6 +423,25 @@ export default function GraduationV2({ apiBase }) {
                   <strong style={{ color: C.navy }}>왜 이 계획:</strong> {audit.roadmap.why_this_plan}</p>
               )}
               {audit.roadmap.assumptions?.length > 0 && <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0" }}>가정: {audit.roadmap.assumptions.join(" / ")}</p>}
+
+              {audit.roadmap.overflow && (
+                <div style={{ marginTop: 12, padding: 14, borderRadius: 10, background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                  <div style={{ fontWeight: 700, color: "#b45309", fontSize: 13.5, marginBottom: 8 }}>⏳ 초과학기 예상 시나리오</div>
+                  <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 8 }}>
+                    {[["부족 학점", `${audit.roadmap.overflow.shortfall_credits}학점`],
+                      ["학기당 상한", `${audit.roadmap.overflow.per_term_credit_cap}학점`],
+                      ["필요 총학기", `${audit.roadmap.overflow.total_semesters_needed}학기`],
+                      ["초과학기", `${audit.roadmap.overflow.extra_semesters}학기`],
+                      ["예상 졸업", audit.roadmap.overflow.projected_graduation_term || "—"]].map(([k, v]) => (
+                      <div key={k}>
+                        <div style={{ fontSize: 11, color: C.muted }}>{k}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#b45309" }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{audit.roadmap.overflow.note}</div>
+                </div>
+              )}
             </div>
 
             {/* 워크플로우 그래프 */}

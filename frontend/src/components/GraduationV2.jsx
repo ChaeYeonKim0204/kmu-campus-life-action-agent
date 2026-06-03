@@ -53,7 +53,8 @@ function Gauge({ label, earned, required, gap, sub }) {
 }
 
 const ASSIGN_STYLE = {
-  "중복인정": { bg: "#eef5ff", border: "#cfe1fb", color: "#1d6fe0" },
+  "중복인정 추천": { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
+  "중복인정 후보": { bg: "#f5f8ff", border: "#dbe7fb", color: "#7c93b8" },
   "융합전용": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
   "미이수": { bg: "#f3f4f6", border: "#e5e7eb", color: "#9aa6b8" },
 };
@@ -92,8 +93,8 @@ function ConvergenceBlock({ cc, C, first }) {
                     {c.primary_required && <span style={{ marginLeft: 5, fontSize: 9.5, color: "#b45309", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 4, padding: "0 4px" }}>전공필수</span>}
                   </span>
                   <span style={{ width: 28, textAlign: "right", color: C.muted }}>{c.credits}</span>
-                  <span style={{ width: 78, textAlign: "center", fontSize: 10.5, fontWeight: 600, color: a.color,
-                    background: a.bg, border: `1px solid ${a.border}`, borderRadius: 5, padding: "2px 0" }}>{c.assignment}</span>
+                  <span style={{ width: 92, textAlign: "center", fontSize: 10.5, fontWeight: 600, color: a.color,
+                    background: a.bg, border: `1px solid ${a.border}`, borderRadius: 5, padding: "2px 0", whiteSpace: "nowrap" }}>{c.assignment}</span>
                 </div>
               );
             })}

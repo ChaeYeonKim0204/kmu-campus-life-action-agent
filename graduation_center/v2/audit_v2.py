@@ -144,28 +144,36 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             except KeyError:
                 pass
         taken_prefixes = {c.course_id[:5] for c in designated}
-        # 교육과정 전체 과목 + 이수 강조 + 이수구분 배정(중복인정/융합전용/미이수)
+        # 교육과정 전체 과목 + 이수 강조 + 겹침/이수 여부
         courses_view = []
         for cc in cat["courses"]:
             if not cc.course_id:
                 continue
             pfx = cc.course_id[:5]
-            taken = pfx in taken_prefixes
-            is_overlap = pfx in other_prefixes
-            is_req = pfx in required_prefixes
             courses_view.append({
                 "name_ko": cc.name_ko, "group": cc.group or "", "credits": cc.credits,
-                "taken": taken, "overlap": is_overlap, "primary_required": is_req,
-                "assignment": ("미이수" if not taken else ("중복인정" if is_overlap else "융합전용")),
+                "taken": pfx in taken_prefixes, "overlap": pfx in other_prefixes,
+                "primary_required": pfx in required_prefixes,
             })
-        # 중복인정 권장 = 들은 겹침과목 중 제1전공/다전공 '전공필수' 우선(없으면 학점순), cap까지
+        # 중복인정 '추천' = 들은 겹침과목 중 제1전공/다전공 '전공필수' 우선(없으면 학점순), 한도(cap)까지.
+        # 한도를 넘는 겹침 과목은 '후보'일 뿐(실제 중복인정 X, 한쪽에만 산입).
         rec_pool = sorted([c for c in courses_view if c["taken"] and c["overlap"]],
                           key=lambda c: (not c["primary_required"], -c["credits"]))
-        rec, acc = [], 0.0
+        rec, rec_keys, acc = [], set(), 0.0
         for c in rec_pool:
             if acc >= cap:
                 break
-            rec.append(c["name_ko"]); acc += c["credits"]
+            rec.append(c["name_ko"]); rec_keys.add(id(c)); acc += c["credits"]
+        # 이수구분 배정 라벨 — 추천/후보/융합전용/미이수 구분
+        for c in courses_view:
+            if not c["taken"]:
+                c["assignment"], c["recommended"] = "미이수", False
+            elif not c["overlap"]:
+                c["assignment"], c["recommended"] = "융합전용", False
+            elif id(c) in rec_keys:
+                c["assignment"], c["recommended"] = "중복인정 추천", True
+            else:
+                c["assignment"], c["recommended"] = "중복인정 후보", False
         group_short = [gc for gc in group_checks if gc["gap"] > 0]
         note = (f"들은 융합전공 과목 {earned:.0f}학점 인정(총 {req:.0f} 필요). 그룹별 최소 {per_group_min:.0f}학점. "
                 f"제1전공과 겹치는 {overlap_cr:.0f}학점은 최대 {cap:.0f}까지 중복(동시)인정, 초과분은 한쪽만 산입(이수구분정정).")

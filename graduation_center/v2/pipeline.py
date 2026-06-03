@@ -56,9 +56,15 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
     sources = [Source.model_validate(s) for s in pctx.get("sources", [])]
 
     conv_n = len(audit.convergence_checks)
-    plan_branch = {"generated": "로드맵 생성", "not_generated": "미생성(LLM 없음)", "blocked": "실현불가(blocked)"}.get(plan.status, plan.status)
-    if plan.status == "generated" and not plan.terms:
-        plan_branch = "갭 없음(이미 충족)"
+    n_terms = len(plan.terms)
+    n_courses = sum(len(t.courses) for t in plan.terms)
+    if plan.status == "blocked":
+        plan_branch = "실현불가(초과학기 필요)"
+    elif not plan.terms:
+        plan_branch = "갭 없음(이미 충족)" if plan.feasible else "학기 배치 보류"
+    else:
+        plan_branch = f"{n_terms}학기 {n_courses}과목 배치"
+    # 결정론 통합 플래너(LLM 미사용) — 노드는 'tool', 검증은 미배치/학점상한 결정론 체크
     trace = [
         NodeTraceEvent(node="데이터 검증", kind="hitl",
                        summary=f"확정 {len(verified.confirmed_courses)} · 제외 {len(verified.excluded)} · {verified.total_earned}학점",
@@ -66,15 +72,13 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
         NodeTraceEvent(node="갭 계산", kind="tool",
                        summary=f"총 부족 {audit.total_gap} · 필수누락 {len(audit.missing_required_names)} · 연계융합 {conv_n}건",
                        branch_taken=(f"연계융합 {conv_n}개 검사" if conv_n else ("부족 있음" if audit.total_gap > 0 else "충족"))),
-        NodeTraceEvent(node="로드맵 플래닝", kind="llm",
-                       status="ok" if plan.status == "generated" else ("warn" if plan.status == "not_generated" else "fail"),
+        NodeTraceEvent(node="로드맵 배치", kind="tool",
+                       status="ok" if plan.status != "blocked" else "warn",
                        summary=plan.why_this_plan or plan.blocked_reason or "", branch_taken=plan_branch),
-        NodeTraceEvent(node="검증/repair", kind="validator",
-                       status=("ok" if (vrep.ok and not vrep.repair_attempted) else ("fail" if not vrep.ok else "warn")),
-                       summary=("통과" if vrep.ok else f"{len(vrep.errors)}건 오류"),
-                       branch_taken=("blocked" if plan.status == "blocked"
-                                     else ("repair 후 통과" if vrep.repair_attempted and vrep.ok
-                                           else ("repair 실패" if vrep.repair_attempted else "통과")))),
+        NodeTraceEvent(node="로드맵 검증", kind="validator",
+                       status="ok" if vrep.ok else "fail",
+                       summary=("통과(선수·개설학기·학점상한)" if vrep.ok else f"{len(vrep.errors)}건 미충족"),
+                       branch_taken=("통과" if vrep.ok else "미배치 → 초과학기")),
         NodeTraceEvent(node="리스크 산정", kind="tool",
                        summary=f"{risk.grade} {risk.label} ({risk.score})", branch_taken=f"{risk.grade} {risk.label}"),
     ]

@@ -395,6 +395,17 @@ def _required_meta(program_id: str, year: int | None) -> dict:
     return meta
 
 
+def _slot_chunks(name: str, total: float, satisfies: str, size: float = 3.0) -> list[dict]:
+    """교양 부족분을 학기당 배치 가능한 3학점 단위 슬롯으로 분할(단일 큰 슬롯 배치불가 방지)."""
+    out, rem, i = [], round(float(total), 1), 0
+    while rem > 0.01:
+        c = min(size, rem); i += 1
+        out.append({"name_ko": (name if total <= size else f"{name} #{i}"), "credits": round(c, 1),
+                    "satisfies": satisfies, "confidence": "generic_slot", "manual": True})
+        rem = round(rem - c, 1)
+    return out
+
+
 def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                              verified: VerifiedTranscript) -> tuple[list[dict], list[dict]]:
     """남은 졸업 의무를 단일 후보 풀로 정규화(전공·필수·융합·교양). 반환 (선택후보, 요건요약)."""
@@ -415,29 +426,35 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                           "confidence": "catalog_verified" if terms else "name_only",
                           "manual": not terms})
         reqs.append({"label": "필수지정 미이수", "area": "전공", "priority": 1, "need": None, "items": items})
-    # 2) 연계융합 부족 — 부족 그룹 우선 미이수 융합과목
+    # 2) 연계융합 부족 — 총 또는 '그룹별 최저' 미충족 시. 부족 그룹 우선 미이수 융합과목
     for cc in audit.convergence_checks:
-        if cc.get("gap", 0) > 0:
-            short = {g["group"] for g in cc.get("group_checks", []) if g["gap"] > 0}
-            untaken = sorted([c for c in cc.get("courses", []) if not c["taken"]],
-                             key=lambda c: (c.get("group") not in short, -c.get("credits", 0)))
-            reqs.append({"label": f"{cc['name']} 부족", "area": "융합전공", "priority": 2, "need": cc["gap"],
-                         "pool": [{"name_ko": c["name_ko"], "course_id": c.get("course_id", ""),
-                                   "credits": c["credits"], "assignment": "융합전공",
-                                   "satisfies": f"{cc['name']} {c.get('group', '')}".strip(),
-                                   "offered_terms": c.get("offered_terms") or ["1", "2"],
-                                   # 융합 카탈로그는 현황 기반 → 개설학기 known(있으면 hard-check)
-                                   "confidence": "catalog_verified" if c.get("offered_terms") else "name_only",
-                                   "manual": not c.get("offered_terms")} for c in untaken]})
-    # 3) 전공 부족 — 제1전공 카탈로그 미이수
+        group_gaps = {g["group"]: g["gap"] for g in cc.get("group_checks", []) if g["gap"] > 0}
+        need = max(cc.get("gap", 0.0), round(sum(group_gaps.values()), 1))
+        if need <= 0:
+            continue
+        short = set(group_gaps)
+        untaken = sorted([c for c in cc.get("courses", []) if not c["taken"]],
+                         key=lambda c: (c.get("group") not in short, -c.get("credits", 0)))
+        reqs.append({"label": f"{cc['name']} 부족", "area": "융합전공", "priority": 2, "need": need,
+                     "pool": [{"name_ko": c["name_ko"], "course_id": c.get("course_id", ""),
+                               "credits": c["credits"], "assignment": "융합전공",
+                               "satisfies": f"{cc['name']} {c.get('group', '')}".strip(),
+                               "offered_terms": c.get("offered_terms") or ["1", "2"],
+                               "prerequisites": c.get("prerequisites") or [],
+                               "confidence": "catalog_verified" if c.get("offered_terms") else "name_only",
+                               "manual": not c.get("offered_terms")} for c in untaken]})
+    # 3) 전공 부족 — 제1전공 카탈로그 미이수. 미이수 '필수(전공)' 학점은 갭에서 제외(중복선택 방지)
     major_gap = next((g.gap for g in audit.area_gaps if g.area == "전공"), 0.0)
-    if major_gap > 0:
+    req_major_credits = sum(it["credits"] for r in reqs if r.get("label") == "필수지정 미이수"
+                            for it in r.get("items", []) if r.get("area") == "전공")
+    major_gap_eff = max(0.0, round(major_gap - req_major_credits, 1))
+    if major_gap_eff > 0:
         pool = [{"name_ko": c.name_ko, "course_id": c.course_id, "credits": c.credits, "satisfies": "전공 부족",
                  "offered_terms": c.offered_terms, "prerequisites": c.prerequisites, "confidence": "catalog_verified"}
                 for c in cat["courses"]
                 if not ((c.course_id and c.course_id[:5] in confirmed_pref) or normalize_name(c.name_ko) in confirmed_norm)]
-        reqs.append({"label": "전공 부족", "area": "전공", "priority": 3, "need": major_gap, "pool": pool})
-    # 4) 기초교양 — 필수 미이수 과목명이 있으면 그것을, 없으면 영역 부족분을 슬롯으로
+        reqs.append({"label": "전공 부족", "area": "전공", "priority": 3, "need": major_gap_eff, "pool": pool})
+    # 4) 기초교양 — 필수 미이수 과목명, 또는 영역 부족분을 학기 분할 슬롯으로
     missing_basic = [g for g in (audit.gen_basic_courses or []) if not g["taken"]]
     basic_gap = next((g.gap for g in audit.area_gaps if g.area == "기초교양"), 0.0)
     if missing_basic:
@@ -446,20 +463,17 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                                 "confidence": "name_only", "manual": True} for g in missing_basic]})
     elif basic_gap > 0:
         reqs.append({"label": "기초교양", "area": "기초교양", "priority": 4, "need": basic_gap,
-                     "pool": [{"name_ko": "기초교양 선택", "credits": basic_gap, "satisfies": "기초교양",
-                               "confidence": "generic_slot", "manual": True}]})
-    # 5) 핵심교양 영역별 부족 → 영역 슬롯
+                     "pool": _slot_chunks("기초교양 선택", basic_gap, "기초교양")})
+    # 5) 핵심교양 영역별 부족 → 영역 슬롯(학기 분할)
     for g in audit.core_area_gaps:
         if g.gap > 0:
             reqs.append({"label": f"핵심교양 {g.area}", "area": "핵심교양", "priority": 4, "need": g.gap,
-                         "pool": [{"name_ko": f"핵심교양 {g.area} 선택", "credits": g.gap,
-                                   "satisfies": f"핵심교양-{g.area}", "confidence": "generic_slot", "manual": True}]})
-    # 6) 자유교양 부족 → 슬롯
+                         "pool": _slot_chunks(f"핵심교양 {g.area} 선택", g.gap, f"핵심교양-{g.area}")})
+    # 6) 자유교양 부족 → 슬롯(학기 분할)
     free_gap = next((g.gap for g in audit.area_gaps if g.area == "자유교양"), 0.0)
     if free_gap > 0:
         reqs.append({"label": "자유교양", "area": "자유교양", "priority": 4, "need": free_gap,
-                     "pool": [{"name_ko": "자유교양 선택", "credits": free_gap, "satisfies": "자유교양",
-                               "confidence": "generic_slot", "manual": True}]})
+                     "pool": _slot_chunks("자유교양 선택", free_gap, "자유교양")})
 
     # 요건 → 후보 선택(quota 충족까지). 이름 중복 제거(필수지정이 전공부족 후보와 겹침 방지)
     selected: list[dict] = []
@@ -483,30 +497,61 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     return selected, reqs
 
 
-def plan_greedy(selected: list[dict], terms: list[list]) -> tuple[list[RoadmapTerm], list[str], list[dict]]:
-    """선택 후보를 학기에 greedy 배치(우선순위·개설학기[아는 경우]·학점상한). 반환 (terms, assumptions, unplaced)."""
+def plan_greedy(selected: list[dict], terms: list[list],
+                completed: set | None = None) -> tuple[list[RoadmapTerm], list[str], list[dict]]:
+    """선택 후보를 학기에 배치. 우선순위·개설학기(아는 경우)·학점상한 + 선수과목 순서(위상).
+    선수과목은 이미 이수(completed prefix)거나 '더 이른' 학기에 배치돼야 같은/이후 학기에 둔다.
+    반환 (terms, assumptions, unplaced)."""
+    completed = set(completed or set())                 # 이수 과목 코드 앞5자리
     items = sorted(selected, key=lambda c: (c["priority"], -c.get("credits", 0)))
     used = {lab: 0.0 for lab, _ in terms}
     bucket: dict[str, list] = {lab: [] for lab, _ in terms}
-    unplaced = []
-    for it in items:
+    placed_at: dict[str, int] = {}                      # course_id(앞5자리) → term index
+    unplaced: list[dict] = []
+
+    def _try_place(it):
+        pres = [p[:5] for p in (it.get("prerequisites") or []) if p]
+        # 선수 중 selected에 있는데 아직 미배치면 보류(나중 패스)
+        sel_pref = {c.get("course_id", "")[:5] for c in items if c.get("course_id")}
+        if any(p not in completed and p not in placed_at and p in sel_pref for p in pres):
+            return None                                 # defer
+        min_idx = 0                                     # 배치된 선수보다 뒤 학기여야
+        for p in pres:
+            if p in placed_at:
+                min_idx = max(min_idx, placed_at[p] + 1)
         off = it.get("offered_terms")
         known = it.get("confidence") == "catalog_verified"
-        placed = False
-        # 1차: 개설학기 아는 과목은 해당 학기, 불확실 과목은 정규학기에만. 2차: 계절학기까지 허용
         for allow_seasonal in (False, True):
-            for lab, cap in terms:
+            for i, (lab, cap) in enumerate(terms):
+                if i < min_idx:
+                    continue
                 sem = _term_sem(lab)
                 if known and off and sem not in off:
                     continue
                 if not known and sem in ("S", "W") and not allow_seasonal:
-                    continue            # 개설학기 불확실 과목은 정규학기 우선
+                    continue
                 if used[lab] + it["credits"] <= cap + 0.01:
-                    bucket[lab].append(it); used[lab] += it["credits"]; placed = True; break
-            if placed:
-                break
-        if not placed:
-            unplaced.append(it)
+                    bucket[lab].append(it); used[lab] += it["credits"]
+                    if it.get("course_id"):
+                        placed_at[it["course_id"][:5]] = i
+                    return True
+        return False                                    # 배치 실패(용량/개설학기)
+
+    pending = list(items)
+    progress = True
+    while pending and progress:
+        progress = False
+        still = []
+        for it in pending:
+            r = _try_place(it)
+            if r is True:
+                progress = True
+            elif r is None:
+                still.append(it)                        # 선수 미배치 → 다음 패스
+            else:
+                unplaced.append(it)
+        pending = still
+    unplaced.extend(pending)                            # 교착(순환/충족불가) → 미배치
     out = []
     for lab, cap in terms:
         if not bucket[lab]:
@@ -553,24 +598,33 @@ def run_planner(
                             assumptions=["현재 학기를 입력하면 학기별 배치를 제공합니다."], overflow=overflow),
                 ValidationReport(ok=True), ctx)
 
-    placed, assumptions, unplaced = plan_greedy(selected, terms)
+    completed = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
+    placed, assumptions, unplaced = plan_greedy(selected, terms, completed)
+
+    # 결정론 검증: 학점상한 + 미배치(선수/개설/용량으로 못 넣음). 미배치 있으면 ok=False·blocked.
     errors = []
     for t in placed:
         cap = next((c for lab, c in terms if lab == t.term), reg_cap)
         if t.term_credits > cap + 0.01:
-            errors.append(ValidationError(code="over_credit_cap", detail=f"{t.term} {t.term_credits} > {cap}"))
+            errors.append(ValidationError(code="over_credit_cap", detail=f"{t.term} {t.term_credits:.0f}>{cap:.0f}"))
+    for it in unplaced:
+        errors.append(ValidationError(code="unplaced", detail=it["name_ko"], course_id=it.get("course_id") or None))
     report = ValidationReport(ok=not errors, errors=errors)
 
-    parts = [f"{s['label']}" for s in summary]
-    why = "남은 요건(" + ", ".join(parts) + ")을 잔여 학기에 배치했습니다." if parts else ""
-    plan = RoadmapPlan(status="generated", feasible=not unplaced, terms=placed,
-                       why_this_plan=why, assumptions=assumptions, overflow=overflow)
+    parts = [s["label"] for s in summary]
+    why = "남은 요건(" + ", ".join(parts) + ")을 잔여 학기에 개설학기·선수·학점상한을 지켜 배치했습니다." if parts else ""
     if unplaced:
+        # 잔여 학기로 다 배치 못함 → 정직하게 blocked + 초과학기 시나리오(없으면 생성)
         un = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in unplaced)
+        ov = overflow or project_overflow(audit, profile, context)
         hint = "잔여 학기를 늘리거나 계절학기를 활용하세요."
-        if overflow:
-            hint = overflow.note + " " + hint
-        plan.feasible = False
-        plan.blocked_reason = f"잔여 학기에 다 배치하지 못한 과목: {un}"
-        plan.relaxation_hint = hint
+        if ov:
+            hint = ov.note + " " + hint
+        plan = RoadmapPlan(status="blocked", feasible=False, terms=placed, why_this_plan=why,
+                           assumptions=assumptions, overflow=ov,
+                           blocked_reason=f"잔여 학기에 다 배치하지 못한 과목: {un}", relaxation_hint=hint)
+    else:
+        # 전부 배치됨(feasible) → 초과학기 카드는 모순이므로 표시하지 않음(단일 용량 모델)
+        plan = RoadmapPlan(status="generated", feasible=True, terms=placed,
+                           why_this_plan=why, assumptions=assumptions, overflow=None)
     return plan, report, ctx

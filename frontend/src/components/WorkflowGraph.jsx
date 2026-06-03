@@ -15,8 +15,8 @@ const NODES = [
   { key: "코드 매칭", kind: "tool" },
   { key: "데이터 검증", kind: "hitl", shape: "diamond" },
   { key: "갭 계산", kind: "tool" },
-  { key: "로드맵 플래닝", kind: "llm" },
-  { key: "검증/repair", kind: "validator", shape: "diamond" },
+  { key: "로드맵 배치", kind: "tool" },
+  { key: "로드맵 검증", kind: "validator", shape: "diamond" },
   { key: "리스크 산정", kind: "tool" },
   { key: "리포트", kind: "tool", terminal: true },
 ];
@@ -64,8 +64,6 @@ export default function WorkflowGraph({ trace, compact = false }) {
   const cx = NX + NW / 2;
   const height = TOP + NODES.length * STEP;
   const W = 460;
-  const rf = idxOf("검증/repair"), rt = idxOf("로드맵 플래닝");
-  const repairTaken = (byNode["검증/repair"]?.branch_taken || "").startsWith("repair");
   const statusStroke = (evt, base) =>
     evt?.status === "fail" ? "#EF4444" : evt?.status === "warn" ? "#D97706" : base;
 
@@ -99,7 +97,6 @@ export default function WorkflowGraph({ trace, compact = false }) {
           </filter>
           <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6" fill="#475569" /></marker>
           <marker id="arDim" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6" fill="#cbd5e1" /></marker>
-          <marker id="arP" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6" fill={repairTaken ? "#7C3AED" : "#cbd5e1"} /></marker>
         </defs>
         <g transform={`translate(${pan.x},${pan.y})`}>
         {/* 엣지 */}
@@ -108,11 +105,6 @@ export default function WorkflowGraph({ trace, compact = false }) {
           return <line key={`e${i}`} x1={cx} y1={nodeY(i) + NH} x2={cx} y2={nodeY(i + 1)}
             stroke={lit ? "#475569" : "#dbe1ea"} strokeWidth={lit ? 2.5 : 1.5} markerEnd={`url(#${lit ? "ar" : "arDim"})`} />;
         })}
-        {/* repair 루프 */}
-        <path d={`M ${NX + NW} ${nodeY(rf) + NH / 2} C ${NX + NW + 48} ${nodeY(rf)}, ${NX + NW + 48} ${nodeY(rt) + NH}, ${NX + NW} ${nodeY(rt) + NH / 2}`}
-          fill="none" stroke={repairTaken ? "#7C3AED" : "#e5e7eb"} strokeWidth={repairTaken ? 2.5 : 1.5}
-          strokeDasharray="5 4" markerEnd="url(#arP)" />
-        <text x={NX + NW + 53} y={(nodeY(rf) + nodeY(rt)) / 2 + NH / 2} fontSize="11" fill={repairTaken ? "#7C3AED" : "#9ca3af"}>repair</text>
         {/* 노드 */}
         {NODES.map((n, i) => {
           const evt = byNode[n.key];

@@ -628,9 +628,15 @@ export default function GraduationV2({ apiBase }) {
               <div style={sectionTitle}>🗺️ 추천 학기별 로드맵</div>
               {audit.roadmap.status === "not_generated" && <p style={{ color: C.muted, fontSize: 13 }}>LLM 미설정 — 결정론 진단만 제공됩니다.</p>}
               {audit.roadmap.status === "blocked" && <p style={{ color: C.danger, fontSize: 13 }}>{audit.roadmap.blocked_reason} · {audit.roadmap.relaxation_hint}</p>}
-              {audit.roadmap.status === "generated" && audit.roadmap.terms.length === 0 && (
+              {/* 진짜 충족: feasible===true & 빈 계획 → 초록 / 현재학기 미입력(feasible null) → 중립 안내 */}
+              {audit.roadmap.terms.length === 0 && audit.roadmap.feasible === true && (
                 <div style={{ padding: "14px 16px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, color: "#047857", fontSize: 13.5, fontWeight: 600 }}>
                   ✅ {audit.roadmap.why_this_plan}
+                </div>
+              )}
+              {audit.roadmap.terms.length === 0 && audit.roadmap.feasible === null && (
+                <div style={{ padding: "14px 16px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, color: "#b45309", fontSize: 13 }}>
+                  ⚠️ {audit.roadmap.why_this_plan}
                 </div>
               )}
               {/* 남은 요건 요약 */}

@@ -102,7 +102,9 @@ function ConvergenceBlock({ cc, C, first }) {
   const primaryCr = (cc.primary_base || 0) + sum((x) => x === "dup" || x === "primary");
   const fusionCr = (cc.fusion_base || 0) + sum((x) => x === "dup" || x === "fusion");
   const overCap = dupCr > cap;
-  const fits = !overCap && primaryCr >= (cc.primary_required || 0) && fusionCr >= cc.required;
+  // 그룹별 최저(다전공12/부전공6)도 충족해야 '둘 다 충족' (백엔드 배정 반영 group_checks 기준)
+  const groupsOk = (cc.group_checks || []).every((g) => g.gap <= 0);
+  const fits = !overCap && primaryCr >= (cc.primary_required || 0) && fusionCr >= cc.required && groupsOk;
 
   // 미이수 시나리오: 융합 부족 시 안 들은 융합 과목 추천(부족 그룹 우선)
   const untaken = (cc.courses || []).filter((c) => !c.taken);
@@ -133,10 +135,12 @@ function ConvergenceBlock({ cc, C, first }) {
       {overCap && <div style={{ fontSize: 11.5, color: "#dc2626", marginBottom: 6 }}>⚠️ 중복인정 {dupCr}학점 &gt; 한도 {cap}학점 — 일부를 제1전공/융합으로 바꾸세요.</div>}
       <div style={{ fontSize: 11.5, color: fits ? "#047857" : "#b45309", marginBottom: 8 }}>
         {fits
-          ? "✅ 현재 배정으로 제1전공·융합 둘 다 졸업요건 충족"
+          ? "✅ 현재 배정으로 제1전공·융합 둘 다 졸업요건 충족 (그룹별 최저 포함)"
           : (primaryCr < (cc.primary_required || 0)
             ? `⚠️ 제1전공 ${((cc.primary_required || 0) - primaryCr).toFixed(0)}학점 부족 — 겹침과목을 제1전공으로 더 돌리거나 제1전공 과목 추가 이수`
-            : `⚠️ ${cc.conv_type} ${fusionGap.toFixed(0)}학점 부족 — 아래 미이수 과목 추가 이수 필요`)}
+            : (!groupsOk
+              ? `⚠️ 그룹별 최저 미충족: ${(cc.group_checks || []).filter((g) => g.gap > 0).map((g) => `${g.group} ${g.gap}학점`).join(", ")} — 해당 그룹 과목 추가 이수 필요`
+              : `⚠️ ${cc.conv_type} ${fusionGap.toFixed(0)}학점 부족 — 아래 미이수 과목 추가 이수 필요`))}
       </div>
 
       {/* 미이수 시나리오 — 무엇을 더 들어 어떤 이수구분으로 빼면 졸업 가능 */}

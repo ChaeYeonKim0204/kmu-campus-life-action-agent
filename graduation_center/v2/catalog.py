@@ -107,8 +107,11 @@ def _requirements_by_year(program_id: str, year: int | None) -> dict | None:
     by_year = (json.loads(p.read_text(encoding="utf-8")).get("programs", {}) if p.exists() else {}).get(program_id)
     if not by_year:
         return None
-    # 정확 연도만 적용(기본값 graduation_requirements.json이 최신 요람 기준이므로 임의 근사 금지)
-    return by_year.get(str(year))
+    # 연도 선택 정책 통일(필수명·메타와 동일): 정확연도 → 입학연도 이하 가장 가까운 요람 → 없으면 None
+    if str(year) in by_year:
+        return by_year[str(year)]
+    le = [int(y) for y in by_year if int(y) <= year]
+    return by_year[str(max(le))] if le else None
 
 
 def assemble_requirement_profile(context: StudentContext) -> RequirementProfile:

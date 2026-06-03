@@ -86,8 +86,9 @@ def compute_risk(
             reasons.append(RiskReason(factor="융합전공", detail=detail, severity=14 if eff_gap >= 9 else 8))
 
     if context.gpa_min_met == "no":
-        grade = _worse(grade, "C")
-        reasons.append(RiskReason(factor="평점", detail="졸업 평점 기준 미달", severity=20))
+        # 졸업 평점(전학년 2.0) 미달은 확정적 졸업불가 → 최악 등급(D)
+        grade = _worse(grade, "D")
+        reasons.append(RiskReason(factor="평점", detail="졸업 평점 기준(2.0/4.5) 미달 — 졸업 불가", severity=30))
     elif context.gpa_min_met == "unknown":
         reasons.append(RiskReason(factor="평점", detail="평점 기준 충족 여부 확인 필요", severity=0))
 

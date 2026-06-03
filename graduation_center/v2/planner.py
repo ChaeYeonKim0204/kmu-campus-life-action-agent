@@ -395,6 +395,24 @@ def _required_meta(program_id: str, year: int | None) -> dict:
     return meta
 
 
+def _overflow_from_credits(unplaced_credits: float, context: StudentContext, profile: RequirementProfile,
+                           reg_cap: float):
+    """미배치 학점(잔여 학기에 다 못 넣은 분)으로 초과학기 시나리오 산출 — 단일 용량 모델."""
+    from graduation_center.v2.models_v2 import OverflowScenario
+    import math
+    if unplaced_credits <= 0:
+        return None
+    cap = float(reg_cap)
+    extra = int(math.ceil(unplaced_credits / cap)) if cap > 0 else 0
+    total_needed = context.remaining_semesters + extra
+    return OverflowScenario(
+        shortfall_credits=round(unplaced_credits, 1), per_term_credit_cap=cap,
+        remaining_semesters=context.remaining_semesters, total_semesters_needed=total_needed,
+        extra_semesters=extra, projected_graduation_term=_nth_regular_term(context.current_term, total_needed),
+        note=f"잔여 {context.remaining_semesters}학기에 다 배치하지 못한 {unplaced_credits:.0f}학점 → "
+             f"초과학기 약 {extra}학기 추가 필요(총 {total_needed}학기).")
+
+
 def _slot_chunks(name: str, total: float, satisfies: str, size: float = 3.0) -> list[dict]:
     """교양 부족분을 학기당 배치 가능한 3학점 단위 슬롯으로 분할(단일 큰 슬롯 배치불가 방지)."""
     out, rem, i = [], round(float(total), 1), 0
@@ -596,26 +614,33 @@ def run_planner(
 ) -> tuple[RoadmapPlan, ValidationReport, dict]:
     """결정론 통합 플래너: 남은 의무 → 단일 후보 풀 → greedy 학기배치 → 검증.
     (LLM 배치 미사용 — codex 권장. plan_roadmap 등 LLM 함수는 보존만.)"""
-    overflow = project_overflow(audit, profile, context)
     selected, reqs = build_unified_candidates(audit, profile, verified)
     summary = [{"label": r["label"], "area": r["area"],
                 "need": (r.get("need") if r.get("need") is not None else sum(i["credits"] for i in r.get("items", [])))}
                for r in reqs]
     ctx = {"sources": [], "requirements_summary": summary}
+    reg_cap = float(context.max_credits_per_term or regular_term_cap(profile.total_credits_min))
 
     if not selected:
         return (RoadmapPlan(status="generated", feasible=True, terms=[],
                             why_this_plan="졸업요건을 모두 충족했습니다. 추가 수강 계획이 필요 없습니다."),
                 ValidationReport(ok=True), ctx)
 
-    reg_cap = float(context.max_credits_per_term or regular_term_cap(profile.total_credits_min))
+    sel_credits = round(sum(it["credits"] for it in selected), 1)
     terms = _ordered_terms(context, reg_cap)
     if not terms:
-        # 현재 학기 미상 → 학기 배치 불가. 무엇을 들어야 하는지만 안내.
         names = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in selected[:12])
+        if context.current_term and context.remaining_semesters <= 0:
+            # 현재 학기는 있으나 잔여 정규학기 0 → 배치 불가 = 정직한 blocked + 초과학기
+            ov = _overflow_from_credits(sel_credits, context, profile, reg_cap)
+            return (RoadmapPlan(status="blocked", feasible=False, terms=[], overflow=ov,
+                                blocked_reason=f"잔여 학기 0 — 남은 의무 {sel_credits:.0f}학점 이수 불가.",
+                                relaxation_hint=(ov.note if ov else "초과학기가 필요합니다.")),
+                    ValidationReport(ok=False, errors=[ValidationError(code="no_terms", detail="잔여 학기 0")]), ctx)
+        # 현재 학기 미입력 → 학기 배치 보류(미상). 권장 과목만 안내.
         return (RoadmapPlan(status="generated", feasible=None, terms=[],
                             why_this_plan=f"현재 학기 미입력 — 학기 배치 생략. 추가 이수 권장: {names}",
-                            assumptions=["현재 학기를 입력하면 학기별 배치를 제공합니다."], overflow=overflow),
+                            assumptions=["현재 학기를 입력하면 학기별 배치를 제공합니다."]),
                 ValidationReport(ok=True), ctx)
 
     completed = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
@@ -634,12 +659,11 @@ def run_planner(
     parts = [s["label"] for s in summary]
     why = "남은 요건(" + ", ".join(parts) + ")을 잔여 학기에 개설학기·선수·학점상한을 지켜 배치했습니다." if parts else ""
     if unplaced:
-        # 잔여 학기로 다 배치 못함 → 정직하게 blocked + 초과학기 시나리오(없으면 생성)
+        # 잔여 학기로 다 배치 못함 → blocked + 초과학기(미배치 학점 기반, 단일 용량 모델)
         un = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in unplaced)
-        ov = overflow or project_overflow(audit, profile, context)
-        hint = "잔여 학기를 늘리거나 계절학기를 활용하세요."
-        if ov:
-            hint = ov.note + " " + hint
+        unplaced_cr = round(sum(it["credits"] for it in unplaced), 1)
+        ov = _overflow_from_credits(unplaced_cr, context, profile, reg_cap)
+        hint = (ov.note if ov else "잔여 학기를 늘리거나 계절학기를 활용하세요.")
         plan = RoadmapPlan(status="blocked", feasible=False, terms=placed, why_this_plan=why,
                            assumptions=assumptions, overflow=ov,
                            blocked_reason=f"잔여 학기에 다 배치하지 못한 과목: {un}", relaxation_hint=hint)

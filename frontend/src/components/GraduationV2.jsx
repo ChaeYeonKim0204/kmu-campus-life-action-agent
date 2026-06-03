@@ -54,7 +54,8 @@ function Gauge({ label, earned, required, gap, sub }) {
 
 const ASSIGN_STYLE = {
   "중복인정 추천": { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
-  "중복인정 후보": { bg: "#f5f8ff", border: "#dbe7fb", color: "#7c93b8" },
+  "제1전공 산입": { bg: "#ede9fe", border: "#c4b5fd", color: "#6d28d9" },
+  "융합 유지": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
   "융합전용": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
   "미이수": { bg: "#f3f4f6", border: "#e5e7eb", color: "#9aa6b8" },
 };
@@ -244,14 +245,15 @@ export default function GraduationV2({ apiBase }) {
                 {!primaryPrograms.length && <option value="ai_bigdata">AI빅데이터융합경영학과</option>}
               </select>
             </Field>
-            <Field label="현재 학기"><input style={inputStyle} value={ctx.current_term} onChange={(e) => setCtx({ ...ctx, current_term: e.target.value })} /></Field>
+            <Field label="현재 학기" hint="형식: 연도-학기 (1=1학기, 2=2학기). 예: 2026-1">
+              <input style={inputStyle} placeholder="예: 2026-1" value={ctx.current_term} onChange={(e) => setCtx({ ...ctx, current_term: e.target.value })} /></Field>
             <Field label="남은 학기" hint="현재 학기 다음부터 들을 정규학기 수 (현재 학기는 이미 수강내역에 포함 → 제외)">
               <input style={inputStyle} type="number" value={ctx.remaining_semesters} onChange={(e) => setCtx({ ...ctx, remaining_semesters: e.target.value })} /></Field>
             <Field label="한 학기 최대 수강 학점" hint="학사규정 제32조: 졸업학점 따라 17/18/19 자동 (수정 가능)">
               <input style={inputStyle} type="number" value={ctx.max_credits_per_term} onChange={(e) => setCtx({ ...ctx, max_credits_per_term: e.target.value })} /></Field>
-            <Field label="졸업 최소 평점 충족">
+            <Field label="졸업 최소 평점 충족" hint="졸업 요건: 전학년 평점평균 2.0/4.5 이상 (학사규정 제95조)">
               <select style={inputStyle} value={ctx.gpa_min_met} onChange={(e) => setCtx({ ...ctx, gpa_min_met: e.target.value })}>
-                <option value="unknown">모름</option><option value="yes">충족</option><option value="no">미달</option>
+                <option value="unknown">모름</option><option value="yes">충족 (2.0↑)</option><option value="no">미달 (2.0 미만)</option>
               </select>
             </Field>
             <label style={{ display: "flex", alignItems: "flex-end", gap: 7, fontSize: 12.5, paddingBottom: 8 }}>
@@ -401,14 +403,44 @@ export default function GraduationV2({ apiBase }) {
               </div>
             </div>
 
+            {/* 졸업 최소 평점 주의 (충족이 아닐 때) */}
+            {audit.context?.gpa_min_met !== "yes" && (
+              <div style={{ ...card, background: audit.context?.gpa_min_met === "no" ? "#fef2f2" : "#fff7ed",
+                border: `1px solid ${audit.context?.gpa_min_met === "no" ? "#fecaca" : "#fed7aa"}`,
+                color: audit.context?.gpa_min_met === "no" ? C.danger : "#b45309", fontSize: 13 }}>
+                ⚠️ {audit.context?.gpa_min_met === "no"
+                  ? "졸업 최소 평점(전학년 평점평균 2.0/4.5) 미달 — 졸업요건을 충족하지 못합니다. 평점 관리가 필요합니다."
+                  : "졸업 최소 평점(2.0/4.5) 충족 여부가 확인되지 않았습니다 — 성적표로 직접 확인하세요. (미달 시 졸업 불가)"}
+              </div>
+            )}
+
             {/* 영역별 현황 */}
             <div style={card}>
               <div style={sectionTitle}>📊 영역별 이수 현황</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
                 {audit.audit.area_gaps.map((g, i) => <Gauge key={i} label={g.area} earned={g.earned} required={g.required} gap={g.gap} />)}
               </div>
-              {audit.audit.core_area_gaps.some((g) => g.gap > 0) && (
-                <p style={{ fontSize: 12, color: "#b45309", margin: "6px 0 0" }}>핵심교양 부족 영역: {audit.audit.core_area_gaps.filter((g) => g.gap > 0).map((g) => g.area).join(", ")}</p>
+              {audit.audit.core_area_gaps?.length > 0 && (
+                <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>핵심교양 영역별 (각 최저 학점 · 소통은 단과대 규정 반영)</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {audit.audit.core_area_gaps.map((g, i) => {
+                      const ok = g.gap <= 0;
+                      const pct = g.required > 0 ? Math.min(100, Math.round((g.earned / g.required) * 100)) : 100;
+                      return (
+                        <div key={i} style={{ flex: "1 1 90px", minWidth: 90, border: `1px solid ${ok ? "#a7f3d0" : "#fed7aa"}`,
+                          borderRadius: 9, padding: "7px 9px", background: ok ? "#f0fdf4" : "#fff7ed" }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 600, color: "#334155" }}>{g.area}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: ok ? C.ok : "#b45309" }}>{g.earned}<span style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>/{g.required}</span></div>
+                          <div style={{ background: "#eef1f5", borderRadius: 5, height: 6, overflow: "hidden", marginTop: 3 }}>
+                            <div style={{ width: `${pct}%`, height: 6, background: ok ? "#10B981" : "#f59e0b" }} />
+                          </div>
+                          <div style={{ fontSize: 10, color: ok ? C.ok : "#b45309", marginTop: 2 }}>{ok ? "충족" : `${g.gap} 부족`}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
               {audit.audit.missing_required_names.length > 0 && (
                 <p style={{ color: C.danger, fontSize: 13, margin: "8px 0 0" }}>미이수 필수지정: {audit.audit.missing_required_names.join(", ")}</p>

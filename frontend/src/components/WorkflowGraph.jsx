@@ -50,6 +50,16 @@ export default function WorkflowGraph({ trace, compact = false }) {
     return () => clearInterval(id);
   }, [execKeys, replayKey]);
 
+  // 드래그(팬) — 그래프가 길어 화면 밖으로 나가면 끌어서 이동
+  const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const drag = React.useRef(null);
+  const onDown = (e) => { drag.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }; };
+  const onMove = (e) => {
+    if (!drag.current) return;
+    setPan({ x: drag.current.px + (e.clientX - drag.current.sx), y: drag.current.py + (e.clientY - drag.current.sy) });
+  };
+  const onUp = () => { drag.current = null; };
+
   const litKeys = new Set(execKeys.slice(0, active));
   const cx = NX + NW / 2;
   const height = TOP + NODES.length * STEP;
@@ -67,15 +77,22 @@ export default function WorkflowGraph({ trace, compact = false }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <strong style={{ fontSize: compact ? 13 : 15, color: "#0F3D7A" }}>워크플로우 실행 그래프</strong>
-        <button onClick={() => setReplayKey((k) => k + 1)}
-          style={{ fontSize: 12, border: "1px solid #e3e8ef", borderRadius: 7, background: "#fff", padding: "5px 11px", cursor: "pointer", fontWeight: 600, color: "#0F3D7A" }}>▶ 다시 재생</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => setPan({ x: 0, y: 0 })}
+            style={{ fontSize: 12, border: "1px solid #e3e8ef", borderRadius: 7, background: "#fff", padding: "5px 11px", cursor: "pointer", fontWeight: 600, color: "#475569" }}>⊕ 위치 초기화</button>
+          <button onClick={() => setReplayKey((k) => k + 1)}
+            style={{ fontSize: 12, border: "1px solid #e3e8ef", borderRadius: 7, background: "#fff", padding: "5px 11px", cursor: "pointer", fontWeight: 600, color: "#0F3D7A" }}>▶ 다시 재생</button>
+        </div>
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, margin: "0 0 10px" }}>
         {Object.values(KIND).filter((k) => k.label !== "분기").map((k) => (
           <span key={k.label} style={{ color: "#475569" }}><span style={{ display: "inline-block", width: 11, height: 11, background: k.color, borderRadius: 3, marginRight: 4, verticalAlign: "-1px" }} />{k.label}</span>
         ))}
       </div>
-      <svg width="100%" viewBox={`0 0 ${W} ${height}`} style={{ maxWidth: compact ? 480 : 560, display: "block", margin: "0 auto" }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${height}`}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+        style={{ maxWidth: compact ? 480 : 560, display: "block", margin: "0 auto",
+          cursor: drag.current ? "grabbing" : "grab", touchAction: "none", userSelect: "none" }}>
         <defs>
           <filter id="nshadow" x="-20%" y="-20%" width="140%" height="160%">
             <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" floodColor="#1e293b" floodOpacity="0.16" />
@@ -84,6 +101,7 @@ export default function WorkflowGraph({ trace, compact = false }) {
           <marker id="arDim" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6" fill="#cbd5e1" /></marker>
           <marker id="arP" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6" fill={repairTaken ? "#7C3AED" : "#cbd5e1"} /></marker>
         </defs>
+        <g transform={`translate(${pan.x},${pan.y})`}>
         {/* 엣지 */}
         {NODES.slice(0, -1).map((n, i) => {
           const lit = litKeys.has(n.key) && litKeys.has(NODES[i + 1].key);
@@ -137,6 +155,7 @@ export default function WorkflowGraph({ trace, compact = false }) {
             </g>
           );
         })}
+        </g>
       </svg>
     </div>
   );

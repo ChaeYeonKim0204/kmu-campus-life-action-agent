@@ -164,7 +164,10 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             if acc >= cap:
                 break
             rec.append(c["name_ko"]); rec_keys.add(id(c)); acc += c["credits"]
-        # 이수구분 배정 라벨 — 추천/후보/융합전용/미이수 구분
+        # 이수구분 배정 라벨:
+        #  - 미이수 / 융합전용(겹침X) / 중복인정 추천(한도 내, 양쪽 동시인정)
+        #  - 한도 초과 겹침 과목은 한쪽만 산입 → 융합이 이미 충족이고 그 과목을 빼도 그룹 최저가
+        #    유지되면 '제1전공 산입' 추천(융합이 안 쓰는 학점), 아니면 '융합 유지'.
         for c in courses_view:
             if not c["taken"]:
                 c["assignment"], c["recommended"] = "미이수", False
@@ -173,7 +176,9 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             elif id(c) in rec_keys:
                 c["assignment"], c["recommended"] = "중복인정 추천", True
             else:
-                c["assignment"], c["recommended"] = "중복인정 후보", False
+                g = c["group"]
+                can_move = gap <= 0 and (group_earned.get(g, 0.0) - c["credits"] >= per_group_min)
+                c["assignment"], c["recommended"] = ("제1전공 산입" if can_move else "융합 유지"), False
         group_short = [gc for gc in group_checks if gc["gap"] > 0]
         note = (f"들은 융합전공 과목 {earned:.0f}학점 인정(총 {req:.0f} 필요). 그룹별 최소 {per_group_min:.0f}학점. "
                 f"제1전공과 겹치는 {overlap_cr:.0f}학점은 최대 {cap:.0f}까지 중복(동시)인정, 초과분은 한쪽만 산입(이수구분정정).")
@@ -195,20 +200,25 @@ def compute_audit(
     convergence_program_ids=(), convergence_tracks=None,
 ) -> AuditResult:
     earned = verified.earned_by_area
+    # 핵심교양 영역별 최저(별표5 단과대 override 반영 — 예: 미래모빌리티 소통 5)
+    gen = load_gen_ed().get("core_liberal", {})
+    core_min = float(profile.core_area_min or 3)
+    overrides = profile.core_area_min_overrides or {}
+    gen_areas = gen.get("areas", [])
+    # 핵심교양 총 요건 = 영역별 최저 합(소통 override 포함). 예: 미래모빌리티 5+3+3+3+3=17
+    core_total_required = sum(float(overrides.get(a, core_min)) for a in gen_areas) or float(profile.area_min.get("핵심교양", 0))
+
     area_gaps: list[AreaGap] = []
     for area in HARD_AREAS:
-        req = float(profile.area_min.get(area, 0))
+        # 핵심교양은 영역별 최저 합을 요건으로(학번 요람 별표5 반영)
+        req = core_total_required if area == "핵심교양" else float(profile.area_min.get(area, 0))
         got = float(earned.get(area, 0))
         if req <= 0:
             continue
         area_gaps.append(AreaGap(area=area, required=req, earned=got, gap=max(0.0, req - got)))
 
-    # 핵심교양 영역별(인문Ⅰ.. 각 3학점, 단 별표5 단과대 override 적용 — 예: 미래모빌리티 소통 5)
-    gen = load_gen_ed().get("core_liberal", {})
-    core_min = float(profile.core_area_min or 3)
-    overrides = profile.core_area_min_overrides or {}
     core_gaps: list[AreaGap] = []
-    for area in gen.get("areas", []):
+    for area in gen_areas:
         req = float(overrides.get(area, core_min))
         got = float(verified.core_area_earned.get(area, 0))
         core_gaps.append(AreaGap(area=area, required=req, earned=got, gap=max(0.0, req - got)))

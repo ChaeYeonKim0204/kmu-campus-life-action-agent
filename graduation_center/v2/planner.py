@@ -67,7 +67,10 @@ def project_overflow(audit: AuditResult, profile: RequirementProfile, context: S
     capacity를 넘으면, 필요한 총 정규학기 수와 초과학기 수·예상 졸업학기를 계산한다.
     """
     from graduation_center.v2.models_v2 import OverflowScenario
-    shortfall = float(audit.total_gap)
+    # 더 채워야 하는 학점 = max(졸업최저 부족, 영역별 부족 합). 총학점은 충분해도 특정 영역
+    # (예: 전공)이 부족하면 그만큼 추가 이수가 필요하므로 영역 갭 합도 본다.
+    area_shortfall = round(sum(g.gap for g in audit.area_gaps if g.gap > 0), 1)
+    shortfall = max(float(audit.total_gap), area_shortfall)
     if shortfall <= 0:
         return None
     cap = float(context.max_credits_per_term or regular_term_cap(profile.total_credits_min))

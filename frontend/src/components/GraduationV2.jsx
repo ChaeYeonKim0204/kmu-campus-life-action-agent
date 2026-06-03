@@ -239,14 +239,20 @@ export default function GraduationV2({ apiBase }) {
     const m = String(ctx.student_id || "").match(/(20\d{2})/);
     return m ? Number(m[1]) : null;
   };
-  const contextPayload = () => ({
-    ...ctx,
-    remaining_semesters: Number(ctx.remaining_semesters),
-    max_credits_per_term: Number(ctx.max_credits_per_term),
-    admission_year: admissionYear(),
-    masked_student_id: ctx.student_id ? ctx.student_id.slice(0, 4) + "XXXX" : null,
-    preferences: ctx.preferences ? ctx.preferences.split(",").map((s) => s.trim()).filter(Boolean) : [],
-  });
+  const contextPayload = () => {
+    // 프라이버시: 입력칸은 입학연도(4자리)지만, 원본 student_id는 서버로 보내지 않는다.
+    // 연도만 추출해 admission_year로, 표시는 'YYYYXXXX' 마스킹으로 전송.
+    const { student_id, ...rest } = ctx;
+    const yr = admissionYear();
+    return {
+      ...rest,
+      remaining_semesters: Number(ctx.remaining_semesters),
+      max_credits_per_term: Number(ctx.max_credits_per_term),
+      admission_year: yr,
+      masked_student_id: yr ? `${yr}XXXX` : null,
+      preferences: ctx.preferences ? ctx.preferences.split(",").map((s) => s.trim()).filter(Boolean) : [],
+    };
+  };
 
   // 주전공 변경 시 학사규정 제32조 학기당 상한을 기본값으로 자동 채움
   const onProgramChange = (id) => {

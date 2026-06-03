@@ -54,5 +54,21 @@
       ]
     }
   },
-  "_aliases_note": "요람 명칭↔수강내역 명칭 드리프트(동일 교과목코드). 요람엔 코드가 없어 이름 매칭 보정용."
+  "_aliases_note": "요람 명칭↔수강내역 명칭 드리프트(동일 교과목코드). 요람엔 코드가 없어 이름 매칭 보정용.",
+  "gen_basic": {
+    "mirae_mobility": {
+      "2023": [
+        "College English",
+        "글로벌영어",
+        "English Conversation",
+        "글쓰기"
+      ],
+      "2025": [
+        "College English",
+        "English Conversation",
+        "글쓰기"
+      ]
+    }
+  },
+  "_gen_basic_note": "학번 요람 기초교양 필수 과목명(택1 포함). 학생 수강내역 기초교양 과목명과 부분일치로 이수 판정."
 }

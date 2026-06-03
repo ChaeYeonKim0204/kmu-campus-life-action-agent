@@ -442,6 +442,18 @@ export default function GraduationV2({ apiBase }) {
                   </div>
                 </div>
               )}
+              {audit.audit.gen_basic_courses?.length > 0 && (
+                <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 6 }}>기초교양 필수 과목</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {audit.audit.gen_basic_courses.map((c, i) => (
+                      <span key={i} style={{ fontSize: 12, padding: "3px 9px", borderRadius: 14,
+                        background: c.taken ? "#f0fdf4" : "#fff7ed", border: `1px solid ${c.taken ? "#a7f3d0" : "#fed7aa"}`,
+                        color: c.taken ? "#047857" : "#b45309" }}>{c.taken ? "✅" : "⬜"} {c.name_ko}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {audit.audit.missing_required_names.length > 0 && (
                 <p style={{ color: C.danger, fontSize: 13, margin: "8px 0 0" }}>미이수 필수지정: {audit.audit.missing_required_names.join(", ")}</p>
               )}

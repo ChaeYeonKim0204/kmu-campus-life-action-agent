@@ -61,6 +61,38 @@ def _required_aliases(program_id: str) -> dict:
     return {k: sorted(v) for k, v in groups.items()}
 
 
+def _gen_basic_names(program_id: str, year: int | None) -> list[str]:
+    """학번 요람의 기초교양 필수 과목명. 없으면 빈 리스트."""
+    p = V2_DIR / "required_names_by_year.json"
+    by_year = (json.loads(p.read_text(encoding="utf-8")).get("gen_basic", {}) if p.exists() else {}).get(program_id)
+    if not by_year:
+        return []
+    avail = sorted(int(y) for y in by_year)
+    if year is None:
+        pick = avail[-1]
+    elif str(year) in by_year:
+        pick = year
+    else:
+        le = [y for y in avail if y <= year]
+        pick = (le[-1] if le else avail[0])
+    return by_year[str(pick)]
+
+
+def _gen_basic_view(verified: VerifiedTranscript, program_id: str, year: int | None) -> list[dict]:
+    """기초교양 필수 과목 이수/미이수 — 학생 기초교양 과목명에 부분일치(정규화)."""
+    names = _gen_basic_names(program_id, year)
+    if not names:
+        return []
+    taken_norm = [normalize_name(c.name_ko) for c in verified.confirmed_courses
+                  if c.requirement_area == "기초교양"]
+    out = []
+    for nm in names:
+        key = normalize_name(nm)
+        taken = any(key in t for t in taken_norm)   # '택1'·접미사(ABEEK) 흡수 위해 부분일치
+        out.append({"name_ko": nm, "taken": taken})
+    return out
+
+
 def _admission_year(profile: RequirementProfile, verified: VerifiedTranscript) -> int | None:
     """입학연도 — context.admission_year 우선, 없으면 수강내역 최초 학기 연도에서 추정."""
     if profile.admission_year:
@@ -262,6 +294,7 @@ def compute_audit(
         missing_required_course_ids=missing_ids,
         missing_required_names=missing_names,
         required_check_available=required_available,
+        gen_basic_courses=_gen_basic_view(verified, profile.program_id, year),
         convergence_checks=_convergence_checks(verified, convergence_program_ids, convergence_tracks,
                                                profile.program_id),
         unresolved_credits=unresolved_credits,

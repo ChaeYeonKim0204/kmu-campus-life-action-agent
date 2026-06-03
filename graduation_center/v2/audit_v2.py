@@ -133,11 +133,39 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
         overlap = sorted([c for c in designated if c.course_id[:5] in other_prefixes], key=lambda x: -x.credits)
         overlap_cr = round(sum(c.credits for c in overlap), 1)
         double_recognizable = round(min(overlap_cr, cap), 1)
+        # 제1전공/다른 다전공의 '전공필수' 코드 앞5자리 — 중복인정 권장 우선순위
+        required_prefixes: set = set()
+        for ppid in prog_prefixes:
+            if ppid == pid:
+                continue
+            try:
+                required_prefixes |= {c.course_id[:5] for c in load_catalog(ppid)["courses"]
+                                      if c.course_id and c.is_required}
+            except KeyError:
+                pass
+        taken_prefixes = {c.course_id[:5] for c in designated}
+        # 교육과정 전체 과목 + 이수 강조 + 이수구분 배정(중복인정/융합전용/미이수)
+        courses_view = []
+        for cc in cat["courses"]:
+            if not cc.course_id:
+                continue
+            pfx = cc.course_id[:5]
+            taken = pfx in taken_prefixes
+            is_overlap = pfx in other_prefixes
+            is_req = pfx in required_prefixes
+            courses_view.append({
+                "name_ko": cc.name_ko, "group": cc.group or "", "credits": cc.credits,
+                "taken": taken, "overlap": is_overlap, "primary_required": is_req,
+                "assignment": ("미이수" if not taken else ("중복인정" if is_overlap else "융합전용")),
+            })
+        # 중복인정 권장 = 들은 겹침과목 중 제1전공/다전공 '전공필수' 우선(없으면 학점순), cap까지
+        rec_pool = sorted([c for c in courses_view if c["taken"] and c["overlap"]],
+                          key=lambda c: (not c["primary_required"], -c["credits"]))
         rec, acc = [], 0.0
-        for c in overlap:
+        for c in rec_pool:
             if acc >= cap:
                 break
-            rec.append(c.name_ko); acc += c.credits
+            rec.append(c["name_ko"]); acc += c["credits"]
         group_short = [gc for gc in group_checks if gc["gap"] > 0]
         note = (f"들은 융합전공 과목 {earned:.0f}학점 인정(총 {req:.0f} 필요). 그룹별 최소 {per_group_min:.0f}학점. "
                 f"제1전공과 겹치는 {overlap_cr:.0f}학점은 최대 {cap:.0f}까지 중복(동시)인정, 초과분은 한쪽만 산입(이수구분정정).")
@@ -149,7 +177,7 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             "required": req, "double_cap": cap, "per_group_min": per_group_min,
             "earned": earned, "gap": gap, "group_checks": group_checks,
             "overlap_credits": overlap_cr, "double_recognizable": double_recognizable,
-            "recommend_double_count": rec, "note": note,
+            "recommend_double_count": rec, "note": note, "courses": courses_view,
         })
     return out
 

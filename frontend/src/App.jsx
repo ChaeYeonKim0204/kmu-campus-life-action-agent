@@ -8,6 +8,7 @@ import ToolLogPanel from "./components/ToolLogPanel.jsx";
 import CampusMap, { BUILDINGS } from "./components/CampusMap.jsx";
 import GraduationCenter from "./components/GraduationCenter.jsx";
 import GraduationV2 from "./components/GraduationV2.jsx";
+import WorkflowPage from "./components/WorkflowPage.jsx";
 import QuestBoard from "./components/QuestBoard.jsx";
 import RPGMessageConsole from "./components/RPGMessageConsole.jsx";
 import "./styles.css";
@@ -1185,8 +1186,21 @@ function App() {
   );
 }
 
+// 재설계: 졸업센터가 메인 축 — v2 컨설팅 대시보드를 첫 화면으로.
+// 워크플로우 실행 그래프는 #workflow 해시로 별도 페이지(따로 띄우기).
+// 옛 캠퍼스라이프 RPG UI(<App/>)는 코드 보존만, 데모에선 비노출.
+function Root() {
+  const [hash, setHash] = React.useState(window.location.hash);
+  React.useEffect(() => {
+    const h = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", h);
+    return () => window.removeEventListener("hashchange", h);
+  }, []);
+  return hash === "#workflow"
+    ? <WorkflowPage />
+    : <GraduationV2 apiBase={API_BASE} />;
+}
+
 const container = document.getElementById("root");
 const root = createRoot(container);
-// 재설계: 졸업센터가 메인 축 — v2 컨설팅 대시보드를 첫 화면으로.
-// 옛 캠퍼스라이프 RPG UI(<App/>)는 코드 보존만, 데모에선 비노출.
-root.render(<GraduationV2 apiBase={API_BASE} />);
+root.render(<Root />);

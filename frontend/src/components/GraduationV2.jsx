@@ -1,5 +1,4 @@
 import React from "react";
-import WorkflowGraph from "./WorkflowGraph.jsx";
 
 // 졸업센터 v2 — 수강내역 엑셀 → 검증(HITL) → 졸업사정 컨설팅 대시보드
 const GRADE_COLOR = { A: "#10B981", B: "#F59E0B", C: "#EF4444", D: "#B91C1C" };
@@ -53,6 +52,59 @@ function Gauge({ label, earned, required, gap, sub }) {
   );
 }
 
+const ASSIGN_STYLE = {
+  "중복인정": { bg: "#eef5ff", border: "#cfe1fb", color: "#1d6fe0" },
+  "융합전용": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
+  "미이수": { bg: "#f3f4f6", border: "#e5e7eb", color: "#9aa6b8" },
+};
+
+function ConvergenceBlock({ cc, C, first }) {
+  const groups = [...new Set((cc.courses || []).map((c) => c.group || "기타"))].sort();
+  const taken = (cc.courses || []).filter((c) => c.taken).length;
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, background: C.soft, marginTop: first ? 0 : 12 }}>
+      <Gauge label={cc.name} sub={`${cc.track}·${cc.conv_type}`} earned={cc.earned} required={cc.required} gap={cc.gap} />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 11.5, color: C.muted, margin: "2px 0 8px" }}>
+        <span>제1전공 겹침 {cc.overlap_credits} → 중복인정 {cc.double_recognizable}/{cc.double_cap}</span>
+        {cc.group_checks?.map((gc, gi) => (
+          <span key={gi} style={{ color: gc.gap > 0 ? "#b45309" : C.ok }}>{gc.group} {gc.earned}/{gc.required}{gc.gap > 0 ? ` (${gc.gap}↓)` : " ✓"}</span>
+        ))}
+        <span>이수 {taken}/{(cc.courses || []).length}과목</span>
+      </div>
+      {cc.recommend_double_count?.length > 0 && (
+        <div style={{ fontSize: 11.5, color: C.accent, marginBottom: 8 }}>
+          💡 중복인정 신청 권장(제1전공·다전공 전공필수 우선): <strong>{cc.recommend_double_count.join(", ")}</strong>
+        </div>
+      )}
+      {/* 교육과정 전체 과목 — 그룹별, 이수 강조, 이수구분 배정 */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+        {groups.map((g) => (
+          <div key={g}>
+            <div style={{ background: C.soft, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, color: C.navy, borderTop: `1px solid ${C.border}` }}>{g}</div>
+            {(cc.courses || []).filter((c) => (c.group || "기타") === g).map((c, ci) => {
+              const a = ASSIGN_STYLE[c.assignment] || ASSIGN_STYLE["미이수"];
+              return (
+                <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", fontSize: 12,
+                  borderTop: "1px solid #f1f4f8", opacity: c.taken ? 1 : 0.5, background: c.taken ? "#fafcff" : "#fff" }}>
+                  <span style={{ width: 16 }}>{c.taken ? "✅" : "⬜"}</span>
+                  <span style={{ flex: 1, fontWeight: c.taken ? 600 : 400 }}>
+                    {c.name_ko}
+                    {c.primary_required && <span style={{ marginLeft: 5, fontSize: 9.5, color: "#b45309", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 4, padding: "0 4px" }}>전공필수</span>}
+                  </span>
+                  <span style={{ width: 28, textAlign: "right", color: C.muted }}>{c.credits}</span>
+                  <span style={{ width: 78, textAlign: "center", fontSize: 10.5, fontWeight: 600, color: a.color,
+                    background: a.bg, border: `1px solid ${a.border}`, borderRadius: 5, padding: "2px 0" }}>{c.assignment}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      {cc.note && <div style={{ fontSize: 10.5, color: C.muted, marginTop: 6, lineHeight: 1.4 }}>※ {cc.note}</div>}
+    </div>
+  );
+}
+
 export default function GraduationV2({ apiBase }) {
   const [programs, setPrograms] = React.useState({});
   const [ctx, setCtx] = React.useState({
@@ -68,12 +120,6 @@ export default function GraduationV2({ apiBase }) {
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
   const [showSources, setShowSources] = React.useState(false);
-
-  // 워크플로우 그래프용 trace — verify/audit가 바뀔 때만 새 배열(재생 애니메이션 불필요 재시작 방지)
-  const workflowTrace = React.useMemo(
-    () => [...(verify?.node_trace || []), ...(audit?.node_trace || [])],
-    [verify, audit],
-  );
 
   React.useEffect(() => {
     fetch(`${apiBase}/graduation/v2/status`).then((r) => r.json())
@@ -146,7 +192,13 @@ export default function GraduationV2({ apiBase }) {
       const r = await fetch(`${apiBase}/graduation/v2/audit`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-      setAudit(await r.json());
+      const result = await r.json();
+      setAudit(result);
+      // 워크플로우 전용 페이지(#workflow)가 읽도록 trace 저장
+      try {
+        localStorage.setItem("v2_workflow_trace",
+          JSON.stringify([...(verify?.node_trace || []), ...(result.node_trace || [])]));
+      } catch { /* storage 불가 무시 */ }
     } catch (e) { setError(String(e.message || e)); }
     setBusy("");
   };
@@ -365,28 +417,13 @@ export default function GraduationV2({ apiBase }) {
               )}
             </div>
 
-            {/* 연계·융합전공 */}
+            {/* 연계·융합전공 — 교육과정 전체 + 이수 강조 + 이수구분 배정 */}
             {audit.audit.convergence_checks?.length > 0 && (
               <div style={card}>
                 <div style={sectionTitle}>🔗 연계·융합전공 <span style={{ color: C.muted, fontWeight: 400, fontSize: 12 }}>(학점 중복인정 반영)</span></div>
-                <div style={{ display: "grid", gridTemplateColumns: convergencePrograms.length > 1 ? "1fr 1fr" : "1fr", gap: 12 }}>
-                  {audit.audit.convergence_checks.map((cc, i) => (
-                    <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, background: C.soft }}>
-                      <Gauge label={cc.name} sub={`${cc.track}·${cc.conv_type}`} earned={cc.earned} required={cc.required} gap={cc.gap} />
-                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>
-                        제1전공과 겹침 {cc.overlap_credits} 중 중복(동시)인정 {cc.double_recognizable}/{cc.double_cap}
-                      </div>
-                      {cc.group_checks?.map((gc, gi) => (
-                        <div key={gi} style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, padding: "2px 0",
-                          color: gc.gap > 0 ? "#b45309" : C.ok }}>
-                          <span>{gc.group}</span><span>{gc.earned}/{gc.required} {gc.gap > 0 ? `· ${gc.gap} 부족` : "✓"}</span>
-                        </div>
-                      ))}
-                      {cc.recommend_double_count?.length > 0 && <div style={{ fontSize: 11, color: C.accent, marginTop: 5 }}>중복인정 신청 권장: {cc.recommend_double_count.join(", ")}</div>}
-                      {cc.note && <div style={{ fontSize: 10.5, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>※ {cc.note}</div>}
-                    </div>
-                  ))}
-                </div>
+                {audit.audit.convergence_checks.map((cc, i) => (
+                  <ConvergenceBlock key={i} cc={cc} C={C} first={i === 0} />
+                ))}
               </div>
             )}
 
@@ -444,9 +481,16 @@ export default function GraduationV2({ apiBase }) {
               )}
             </div>
 
-            {/* 워크플로우 그래프 */}
-            <div style={card}>
-              <WorkflowGraph trace={workflowTrace} />
+            {/* 워크플로우 그래프 — 별도 페이지로 분리 */}
+            <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.navy }}>🔀 워크플로우 실행 그래프</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
+                  업무 노드 분절·실행 순서·분기를 별도 화면에서 시각화합니다 (방금 실행 결과 반영).
+                </div>
+              </div>
+              <button onClick={() => window.open(`${window.location.pathname}#workflow`, "_blank")}
+                style={{ ...btnGhost, whiteSpace: "nowrap" }}>워크플로우 그래프 열기 ↗</button>
             </div>
 
             {/* 근거 */}

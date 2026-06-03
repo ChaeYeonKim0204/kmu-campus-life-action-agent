@@ -207,9 +207,12 @@ export default function GraduationV2({ apiBase }) {
   const [ctx, setCtx] = React.useState({
     student_id: "", program_id: "ai_bigdata", current_term: "2026-1", remaining_semesters: 2,
     max_credits_per_term: 18, prev_term_gpa_ge_375: false,
-    seasonal_semester_allowed: false, gpa_min_met: "unknown",
+    seasonal_semester_allowed: true, gpa_min_met: "unknown",
     preferences: "", convergence_program_ids: [], convergence_tracks: {},
   });
+  const [departments, setDepartments] = React.useState([]);   // 전체 학과(검색용)
+  const [otherMajors, setOtherMajors] = React.useState([]);   // 데모 미지원 다전공/부전공(표시만)
+  const [majorQuery, setMajorQuery] = React.useState("");
   const [files, setFiles] = React.useState([]);
   const [verify, setVerify] = React.useState(null);
   const [table, setTable] = React.useState([]);
@@ -223,6 +226,7 @@ export default function GraduationV2({ apiBase }) {
       .then((d) => {
         const progs = d.programs || {};
         setPrograms(progs);
+        setDepartments(d.departments || []);
         // 초기 주전공의 학사규정 상한을 기본값으로
         setCtx((c) => {
           const cap = progs[c.program_id]?.max_credits_per_term;
@@ -248,6 +252,20 @@ export default function GraduationV2({ apiBase }) {
   const onProgramChange = (id) => {
     const cap = programs[id]?.max_credits_per_term;
     setCtx((c) => ({ ...c, program_id: id, ...(cap ? { max_credits_per_term: cap } : {}) }));
+  };
+
+  // 다전공·부전공 검색 옵션: 연계융합(분석지원) + 전체 학과(데모 미지원)
+  const majorOptions = () => {
+    const convNames = new Set(convergencePrograms.map(([, p]) => p.name_ko));
+    const conv = convergencePrograms.map(([id, p]) => ({ key: "c:" + id, id, label: p.name_ko, supported: true }));
+    const depts = departments.filter((d) => !convNames.has(d.name))
+      .map((d) => ({ key: "d:" + d.name, label: d.name, supported: false }));
+    return [...conv, ...depts];
+  };
+  const pickMajor = (o) => {
+    setMajorQuery("");
+    if (o.supported) { if (!ctx.convergence_program_ids.includes(o.id)) toggleConv(o.id); }
+    else { setOtherMajors((m) => (m.includes(o.label) ? m : [...m, o.label])); }
   };
 
   const primaryPrograms = Object.entries(programs).filter(([, p]) => (p.track_type || "primary") === "primary");
@@ -339,7 +357,10 @@ export default function GraduationV2({ apiBase }) {
         {/* 1) 학생 정보 + 업로드 */}
         <div style={card}>
           <div style={sectionTitle}>🎓 학생 정보 & 수강내역</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+
+          {/* ① 학적 정보 */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, margin: "2px 0 8px" }}>① 학적 정보</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="입학연도 (학번 앞 4자리)" hint={admissionYear() ? `→ ${admissionYear()} 요람 적용` : "입학연도 기준 요람 적용"}>
               <input style={inputStyle} placeholder="예: 2025" value={ctx.student_id} onChange={(e) => setCtx({ ...ctx, student_id: e.target.value })} /></Field>
             <Field label="주전공">
@@ -348,10 +369,69 @@ export default function GraduationV2({ apiBase }) {
                 {!primaryPrograms.length && <option value="ai_bigdata">AI빅데이터융합경영학과</option>}
               </select>
             </Field>
+          </div>
+
+          {/* 다전공·부전공 (연계융합 포함, 검색) */}
+          <div style={{ marginTop: 12 }}>
+            <span style={labelStyle}>다전공 · 부전공 (연계·융합전공 포함, 검색)</span>
+            <div style={{ position: "relative", marginTop: 4 }}>
+              <input style={inputStyle} placeholder="학과/전공 검색 후 선택 (데모 분석: 데이터사이언스융합·모빌리티데이터분석)"
+                value={majorQuery} onChange={(e) => setMajorQuery(e.target.value)} />
+              {majorQuery.trim() && (
+                <div style={{ position: "absolute", zIndex: 5, left: 0, right: 0, top: "100%", maxHeight: 190, overflow: "auto",
+                  background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, marginTop: 2, boxShadow: "0 4px 12px rgba(16,24,40,.1)" }}>
+                  {majorOptions().filter((o) => o.label.includes(majorQuery.trim())).slice(0, 30).map((o) => (
+                    <div key={o.key} onClick={() => pickMajor(o)}
+                      style={{ padding: "6px 10px", fontSize: 12.5, cursor: "pointer", borderBottom: "1px solid #f1f4f8",
+                        color: o.supported ? C.text : "#9aa6b8" }}>
+                      {o.label}{o.supported ? <span style={{ color: C.accent, fontSize: 10.5, marginLeft: 6 }}>분석지원</span>
+                        : <span style={{ fontSize: 10.5, marginLeft: 6 }}>(데모 미지원)</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* 선택된 추가전공 칩 */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+              {convergencePrograms.filter(([id]) => ctx.convergence_program_ids.includes(id)).map(([id, p]) => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 20,
+                  border: `1px solid ${C.accent}`, background: "#eef5ff", fontSize: 12.5 }}>
+                  <span style={{ fontWeight: 600 }}>{p.name_ko}</span>
+                  <select value={ctx.convergence_tracks[id] || "다전공"} onChange={(e) => setConvTrack(id, e.target.value)}
+                    style={{ border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 11.5, padding: "2px 4px" }}>
+                    <option value="다전공">다전공 · 36/중복12</option>
+                    <option value="부전공">부전공 · 18/중복6</option>
+                  </select>
+                  <span onClick={() => toggleConv(id)} style={{ cursor: "pointer", color: C.muted }}>✕</span>
+                </div>
+              ))}
+              {otherMajors.map((nm, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 20,
+                  border: `1px solid ${C.border}`, background: "#f3f4f6", fontSize: 12.5, color: "#9aa6b8" }}>
+                  {nm} (데모 미지원)
+                  <span onClick={() => setOtherMajors((o) => o.filter((x) => x !== nm))} style={{ cursor: "pointer" }}>✕</span>
+                </div>
+              ))}
+            </div>
+            {ctx.convergence_program_ids.length === 0 && otherMajors.length === 0 && (
+              <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 8, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "7px 10px" }}>
+                ※ 다전공·부전공을 모두 이수하지 않는 경우 <strong>심화전공(심화과정)</strong>을 이수해야 합니다 (학사규정 제33조).
+              </div>
+            )}
+          </div>
+
+          {/* ② 학기 */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>② 학기</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="현재 학기" hint="형식: 연도-학기 (1=1학기, 2=2학기). 예: 2026-1">
               <input style={inputStyle} placeholder="예: 2026-1" value={ctx.current_term} onChange={(e) => setCtx({ ...ctx, current_term: e.target.value })} /></Field>
-            <Field label="남은 학기" hint="현재 학기 다음부터 들을 정규학기 수 (현재 학기는 이미 수강내역에 포함 → 제외)">
+            <Field label="남은 학기" hint="현재 학기 다음부터 들을 정규학기 수 (현재 학기는 수강내역에 포함 → 제외)">
               <input style={inputStyle} type="number" value={ctx.remaining_semesters} onChange={(e) => setCtx({ ...ctx, remaining_semesters: e.target.value })} /></Field>
+          </div>
+
+          {/* ③ 수강 제약 */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>③ 수강 제약</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="한 학기 최대 수강 학점" hint="학사규정 제32조: 졸업학점 따라 17/18/19 자동 (수정 가능)">
               <input style={inputStyle} type="number" value={ctx.max_credits_per_term} onChange={(e) => setCtx({ ...ctx, max_credits_per_term: e.target.value })} /></Field>
             <Field label="졸업 최소 평점 충족" hint="졸업 요건: 전학년 평점평균 2.0/4.5 이상 (학사규정 제95조)">
@@ -359,44 +439,12 @@ export default function GraduationV2({ apiBase }) {
                 <option value="unknown">모름</option><option value="yes">충족 (2.0↑)</option><option value="no">미달 (2.0 미만)</option>
               </select>
             </Field>
-            <label style={{ display: "flex", alignItems: "flex-end", gap: 7, fontSize: 12.5, paddingBottom: 8 }}>
+            <label style={{ gridColumn: "1 / 3", display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
               <input type="checkbox" checked={ctx.prev_term_gpa_ge_375} onChange={(e) => setCtx({ ...ctx, prev_term_gpa_ge_375: e.target.checked })} />
-              직전학기 평점 3.75↑ (다음 학기 +3학점)
+              직전학기 성적우수 (평점평균 3.75↑) — 다음 학기 +3학점 추가 수강 (학사규정 제32조)
             </label>
-            <label style={{ display: "flex", alignItems: "flex-end", gap: 7, fontSize: 13, paddingBottom: 8 }}>
-              <input type="checkbox" checked={ctx.seasonal_semester_allowed} onChange={(e) => setCtx({ ...ctx, seasonal_semester_allowed: e.target.checked })} />
-              계절학기 허용 (6학점)
-            </label>
-            <div style={{ gridColumn: "1 / 4" }}>
-              <Field label="관심분야 (쉼표 구분)"><input style={inputStyle} value={ctx.preferences} placeholder="예: 데이터분석, 자율주행" onChange={(e) => setCtx({ ...ctx, preferences: e.target.value })} /></Field>
-            </div>
           </div>
-
-          {convergencePrograms.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <span style={labelStyle}>연계·융합전공 (다전공/부전공)</span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                {convergencePrograms.map(([id, p]) => {
-                  const on = ctx.convergence_program_ids.includes(id);
-                  return (
-                    <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 20,
-                      border: `1px solid ${on ? C.accent : C.border}`, background: on ? "#eef5ff" : "#fff", fontSize: 12.5 }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontWeight: on ? 600 : 400 }}>
-                        <input type="checkbox" checked={on} onChange={() => toggleConv(id)} />{p.name_ko}
-                      </label>
-                      {on && (
-                        <select value={ctx.convergence_tracks[id] || "다전공"} onChange={(e) => setConvTrack(id, e.target.value)}
-                          style={{ border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 11.5, padding: "2px 4px" }}>
-                          <option value="다전공">다전공 · 36/중복12</option>
-                          <option value="부전공">부전공 · 18/중복6</option>
-                        </select>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>※ 계절학기(6학점)는 기본 포함해 시나리오를 짭니다. 리포트 후 계절학기 불가 시 알려주시면 다시 계산합니다.</div>
 
           <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <label style={{ ...btnGhost, display: "inline-flex", alignItems: "center", gap: 6 }}>

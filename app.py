@@ -255,8 +255,23 @@ def graduation_v2_status() -> dict:
         total = program_total_min(pid)
         p["total_credits_min"] = total
         p["max_credits_per_term"] = regular_term_cap(total) if total else None
+    # 전체 학과 목록(다전공·부전공 선택 UI용 검색 목록). 데모 분석 지원은 convergence 프로그램만.
+    departments = []
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        dept = _json.loads(_Path("data/graduation/graduation_requirements.json").read_text(encoding="utf-8"))["departments"]
+        seen = set()
+        for v in dept.values():
+            nm = v.get("학과_전공명") or ""
+            if nm and nm not in seen:
+                seen.add(nm); departments.append({"name": nm, "college": v.get("대학", "")})
+        departments.sort(key=lambda d: (d["college"], d["name"]))
+    except Exception:
+        pass
     return {
         "programs": progs,
+        "departments": departments,
         "openai_api_key_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
         "note": "엑셀 수강내역 업로드 기반. 결정론 진단/리스크는 키 없이도 동작, 로드맵만 LLM 사용.",
     }

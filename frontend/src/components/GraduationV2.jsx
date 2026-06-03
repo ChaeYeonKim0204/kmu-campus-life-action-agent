@@ -123,9 +123,12 @@ function ConvergenceBlock({ cc, C, first }) {
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, background: C.soft, marginTop: first ? 0 : 14 }}>
       <div style={{ fontWeight: 700, fontSize: 14, color: C.navy, marginBottom: 8 }}>{cc.name} <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 400 }}>{cc.track}·{cc.conv_type} · 이수 {taken}/{(cc.courses || []).length}과목 · 중복인정 한도 {cap}학점</span></div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
         <StatBox label="제1전공 전공 (배정 반영)" earned={primaryCr} required={cc.primary_required || 0} C={C} />
         <StatBox label={`${cc.conv_type} 이수 (배정 반영)`} earned={fusionCr} required={cc.required} C={C} />
+      </div>
+      <div style={{ fontSize: 10.5, color: C.muted, marginBottom: 8 }}>
+        융합 과목 총 이수 {cc.designated_total ?? "-"}학점 · 중복인정 한도 {cap}학점 — 한도 초과분은 제1전공/융합 한쪽에만 인정(아래 3-way로 조정)
       </div>
       {overCap && <div style={{ fontSize: 11.5, color: "#dc2626", marginBottom: 6 }}>⚠️ 중복인정 {dupCr}학점 &gt; 한도 {cap}학점 — 일부를 제1전공/융합으로 바꾸세요.</div>}
       <div style={{ fontSize: 11.5, color: fits ? "#047857" : "#b45309", marginBottom: 8 }}>
@@ -546,7 +549,7 @@ export default function GraduationV2({ apiBase }) {
                     총 {audit.audit.total_earned} / {audit.audit.total_required} 학점
                   </div>
                   <div style={{ background: "#eef1f5", borderRadius: 6, height: 9, overflow: "hidden", marginBottom: 10 }}>
-                    <div style={{ width: `${Math.min(100, Math.round(audit.audit.total_earned / audit.audit.total_required * 100))}%`,
+                    <div style={{ width: `${audit.audit.total_required > 0 ? Math.min(100, Math.round(audit.audit.total_earned / audit.audit.total_required * 100)) : 0}%`,
                       height: 9, background: GRADE_COLOR[audit.risk.grade] }} />
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>

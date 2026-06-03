@@ -63,7 +63,9 @@ def test_audit_detects_gap_and_missing_required(monkeypatch):
     assert resp.audit.total_gap > 0
     assert "0910501" in resp.audit.missing_required_course_ids  # 인공지능수학
     assert resp.risk.grade in {"B", "C", "D"}
-    assert resp.roadmap.status == "not_generated"  # 키 없음 → 강등 아님(리스크는 갭 기반)
+    # 결정론 통합 플래너: 현재 학기 미입력 → 학기 배치는 생략하되 status는 generated(권장 과목 안내)
+    assert resp.roadmap.status == "generated"
+    assert resp.roadmap.terms == []  # current_term 없어 배치 생략
 
 
 def test_planner_fake_client_generates_valid_roadmap():
@@ -216,18 +218,19 @@ def test_convergence_duplicate_credit_cap_and_exclusion():
     assert bu["earned"] == total_major              # 부전공도 인정학점 자체는 동일
 
 
-def test_no_candidate_gives_blocked(monkeypatch):
-    # 교양만 부족 → 전공 후보 없음 → 정직한 blocked
-    monkeypatch.setattr(planner, "_get_client", lambda: None)
+def test_gen_ed_gap_planned_as_slot():
+    # 교양만 부족 → 결정론 통합 플래너가 '교양 슬롯'으로 학기에 배치(codex 설계)
     from graduation_center.v2.audit_v2 import AuditResult, AreaGap
     from graduation_center.v2.catalog import assemble_requirement_profile
     from graduation_center.v2.models_v2 import StudentContext, VerifiedTranscript
-    ctx = StudentContext(program_id="ai_bigdata", remaining_semesters=2)
+    ctx = StudentContext(program_id="ai_bigdata", current_term="2026-1", remaining_semesters=2)
     prof = assemble_requirement_profile(ctx)
     au = AuditResult(total_required=130, total_earned=128, total_gap=2,
                      area_gaps=[AreaGap(area="기초교양", required=7, earned=5, gap=2)],
                      missing_required_course_ids=[])
     vt = VerifiedTranscript(total_earned=128)
-    plan, rep, _ = planner.run_planner(au, prof, ctx, vt)
-    assert plan.status == "blocked"
-    assert plan.feasible is False
+    plan, rep, ctxd = planner.run_planner(au, prof, ctx, vt)
+    assert plan.status == "generated"
+    placed = [c for t in plan.terms for c in t.courses]
+    assert any("기초교양" in c.satisfies for c in placed)        # 교양 슬롯이 배치됨
+    assert all(c.manual_check for c in placed if c.confidence == "generic_slot")

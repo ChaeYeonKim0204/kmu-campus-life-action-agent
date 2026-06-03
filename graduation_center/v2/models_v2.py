@@ -145,11 +145,14 @@ class RiskAssessment(BaseModel):
 
 # ---------- 로드맵 ----------
 class RoadmapCourse(BaseModel):
-    course_id: str
+    course_id: str = ""                              # 슬롯/이름기준 후보는 빈 값
     name_ko: str = ""
     credits: float = 0.0
-    satisfies: str = ""                              # 영역/필수
+    satisfies: str = ""                              # 영역/필수 (예: 필수지정, 전공 부족, 융합 A그룹)
     reason: str = ""
+    assignment: str = ""                             # 융합 과목 이수구분(중복인정/제1전공/융합전공) 등
+    confidence: Literal["catalog_verified", "name_only", "generic_slot"] = "catalog_verified"
+    manual_check: bool = False                       # 개설학기·학점 확인 필요(이름기준/슬롯)
     source_ids: list[str] = Field(default_factory=list)
 
 

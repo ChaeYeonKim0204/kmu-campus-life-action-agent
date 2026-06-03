@@ -13,7 +13,7 @@ from graduation_center.v2.catalog import (
     PREV_GPA_BONUS, SEASONAL_TERM_CAP, load_catalog, regular_term_cap,
 )
 from graduation_center.v2.models_v2 import (
-    AuditResult, RequirementProfile, RoadmapPlan, RoadmapTerm, Source,
+    AuditResult, RequirementProfile, RoadmapCourse, RoadmapPlan, RoadmapTerm, Source,
     StudentContext, ValidationError, ValidationReport, VerifiedTranscript,
 )
 from graduation_center.v2.text_norm import normalize_name
@@ -353,79 +353,185 @@ def validate_roadmap(plan: RoadmapPlan, ctx: dict, context: StudentContext) -> V
     return ValidationReport(ok=not errors, errors=errors)
 
 
+# ============ 결정론 통합 플래너 (codex 설계: 후보 정규화 → greedy 배치 → 검증) ============
+def _ordered_terms(context: StudentContext, reg_cap: float) -> list[list]:
+    """허용 학기를 시간순 [[label, cap]]로. 첫 정규학기 +직전3.75 보너스, 계절=6."""
+    if not context.current_term:
+        return []
+    try:
+        y, s = context.current_term.split("-"); y = int(y); so = {"1": 1, "S": 2, "2": 3, "W": 4}[s]
+    except Exception:
+        return []
+    label = {1: "1", 2: "S", 3: "2", 4: "W"}
+    out, reg, steps, first = [], 0, 0, True
+    while reg < context.remaining_semesters and steps < 40:
+        steps += 1; so += 1
+        if so > 4:
+            so = 1; y += 1
+        lab = f"{y}-{label[so]}"
+        if so in (1, 3):
+            cap = reg_cap + (PREV_GPA_BONUS if (first and context.prev_term_gpa_ge_375) else 0.0)
+            out.append([lab, cap]); reg += 1; first = False
+        elif context.seasonal_semester_allowed:
+            out.append([lab, SEASONAL_TERM_CAP])
+    return out
+
+
+def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
+                             verified: VerifiedTranscript) -> tuple[list[dict], list[dict]]:
+    """남은 졸업 의무를 단일 후보 풀로 정규화(전공·필수·융합·교양). 반환 (선택후보, 요건요약)."""
+    cat = load_catalog(profile.program_id)
+    confirmed_norm = {normalize_name(c.name_ko) for c in verified.confirmed_courses}
+    confirmed_pref = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
+    reqs: list[dict] = []
+
+    # 1) 미이수 필수(이름) — 전부 이수 필요
+    if audit.missing_required_names:
+        reqs.append({"label": "필수지정 미이수", "area": "전공", "priority": 1, "need": None,
+                     "items": [{"name_ko": n, "credits": 3.0, "satisfies": "필수지정",
+                                "confidence": "name_only", "manual": True} for n in audit.missing_required_names]})
+    # 2) 연계융합 부족 — 부족 그룹 우선 미이수 융합과목
+    for cc in audit.convergence_checks:
+        if cc.get("gap", 0) > 0:
+            short = {g["group"] for g in cc.get("group_checks", []) if g["gap"] > 0}
+            untaken = sorted([c for c in cc.get("courses", []) if not c["taken"]],
+                             key=lambda c: (c.get("group") not in short, -c.get("credits", 0)))
+            reqs.append({"label": f"{cc['name']} 부족", "area": "융합전공", "priority": 2, "need": cc["gap"],
+                         "pool": [{"name_ko": c["name_ko"], "credits": c["credits"], "assignment": "융합전공",
+                                   "satisfies": f"{cc['name']} {c.get('group', '')}".strip(),
+                                   "confidence": "name_only", "manual": True} for c in untaken]})
+    # 3) 전공 부족 — 제1전공 카탈로그 미이수
+    major_gap = next((g.gap for g in audit.area_gaps if g.area == "전공"), 0.0)
+    if major_gap > 0:
+        pool = [{"name_ko": c.name_ko, "course_id": c.course_id, "credits": c.credits, "satisfies": "전공 부족",
+                 "offered_terms": c.offered_terms, "prerequisites": c.prerequisites, "confidence": "catalog_verified"}
+                for c in cat["courses"]
+                if not ((c.course_id and c.course_id[:5] in confirmed_pref) or normalize_name(c.name_ko) in confirmed_norm)]
+        reqs.append({"label": "전공 부족", "area": "전공", "priority": 3, "need": major_gap, "pool": pool})
+    # 4) 기초교양 — 필수 미이수 과목명이 있으면 그것을, 없으면 영역 부족분을 슬롯으로
+    missing_basic = [g for g in (audit.gen_basic_courses or []) if not g["taken"]]
+    basic_gap = next((g.gap for g in audit.area_gaps if g.area == "기초교양"), 0.0)
+    if missing_basic:
+        reqs.append({"label": "기초교양 필수", "area": "기초교양", "priority": 4, "need": None,
+                     "items": [{"name_ko": g["name_ko"], "credits": 3.0, "satisfies": "기초교양 필수",
+                                "confidence": "name_only", "manual": True} for g in missing_basic]})
+    elif basic_gap > 0:
+        reqs.append({"label": "기초교양", "area": "기초교양", "priority": 4, "need": basic_gap,
+                     "pool": [{"name_ko": "기초교양 선택", "credits": basic_gap, "satisfies": "기초교양",
+                               "confidence": "generic_slot", "manual": True}]})
+    # 5) 핵심교양 영역별 부족 → 영역 슬롯
+    for g in audit.core_area_gaps:
+        if g.gap > 0:
+            reqs.append({"label": f"핵심교양 {g.area}", "area": "핵심교양", "priority": 4, "need": g.gap,
+                         "pool": [{"name_ko": f"핵심교양 {g.area} 선택", "credits": g.gap,
+                                   "satisfies": f"핵심교양-{g.area}", "confidence": "generic_slot", "manual": True}]})
+    # 6) 자유교양 부족 → 슬롯
+    free_gap = next((g.gap for g in audit.area_gaps if g.area == "자유교양"), 0.0)
+    if free_gap > 0:
+        reqs.append({"label": "자유교양", "area": "자유교양", "priority": 4, "need": free_gap,
+                     "pool": [{"name_ko": "자유교양 선택", "credits": free_gap, "satisfies": "자유교양",
+                               "confidence": "generic_slot", "manual": True}]})
+
+    # 요건 → 후보 선택(quota 충족까지). 이름 중복 제거(필수지정이 전공부족 후보와 겹침 방지)
+    selected: list[dict] = []
+    seen: set[str] = set()
+    for r in reqs:
+        if r.get("items") is not None:
+            for it in r["items"]:
+                key = normalize_name(it["name_ko"])
+                if key in seen:
+                    continue
+                seen.add(key); selected.append({**it, "area": r["area"], "priority": r["priority"]})
+        else:
+            acc = 0.0
+            for it in r["pool"]:
+                if acc >= r["need"]:
+                    break
+                key = normalize_name(it["name_ko"])
+                if key in seen:
+                    continue
+                seen.add(key); selected.append({**it, "area": r["area"], "priority": r["priority"]}); acc += it["credits"]
+    return selected, reqs
+
+
+def plan_greedy(selected: list[dict], terms: list[list]) -> tuple[list[RoadmapTerm], list[str], list[dict]]:
+    """선택 후보를 학기에 greedy 배치(우선순위·개설학기[아는 경우]·학점상한). 반환 (terms, assumptions, unplaced)."""
+    items = sorted(selected, key=lambda c: (c["priority"], -c.get("credits", 0)))
+    used = {lab: 0.0 for lab, _ in terms}
+    bucket: dict[str, list] = {lab: [] for lab, _ in terms}
+    unplaced = []
+    for it in items:
+        off = it.get("offered_terms")
+        placed = False
+        for lab, cap in terms:
+            if off and it.get("confidence") == "catalog_verified" and _term_sem(lab) not in off:
+                continue
+            if used[lab] + it["credits"] <= cap + 0.01:
+                bucket[lab].append(it); used[lab] += it["credits"]; placed = True; break
+        if not placed:
+            unplaced.append(it)
+    out = []
+    for lab, cap in terms:
+        if not bucket[lab]:
+            continue
+        courses = [RoadmapCourse(course_id=it.get("course_id", "") or "", name_ko=it["name_ko"],
+                                 credits=it["credits"], satisfies=it.get("satisfies", ""),
+                                 assignment=it.get("assignment", ""), confidence=it.get("confidence", "catalog_verified"),
+                                 manual_check=it.get("manual", False)) for it in bucket[lab]]
+        out.append(RoadmapTerm(term=lab, courses=courses, term_credits=round(used[lab], 1),
+                               term_risk="medium" if used[lab] > cap - 3 else "low"))
+    assumptions = []
+    if any(it.get("manual") for it in selected):
+        assumptions.append("이름기준·교양 슬롯 과목은 개설학기·학점을 수강신청 전 확인하세요.")
+    return out, assumptions, unplaced
+
+
 def run_planner(
     audit: AuditResult, profile: RequirementProfile, context: StudentContext,
     verified: VerifiedTranscript, client=None,
 ) -> tuple[RoadmapPlan, ValidationReport, dict]:
-    ctx = build_planning_context(audit, profile, context, verified)
-
-    no_credit_gap = audit.total_gap <= 0 and not any(g["area"] in MAJOR_AREAS for g in ctx["audit_result"]["gaps"])
-    # 잔여 정규학기로 부족 학점을 못 채우면 초과학기 예상 시나리오(결정론). 충족이면 None.
+    """결정론 통합 플래너: 남은 의무 → 단일 후보 풀 → greedy 학기배치 → 검증.
+    (LLM 배치 미사용 — codex 권장. plan_roadmap 등 LLM 함수는 보존만.)"""
     overflow = project_overflow(audit, profile, context)
+    selected, reqs = build_unified_candidates(audit, profile, verified)
+    summary = [{"label": r["label"], "area": r["area"],
+                "need": (r.get("need") if r.get("need") is not None else sum(i["credits"] for i in r.get("items", [])))}
+               for r in reqs]
+    ctx = {"sources": [], "requirements_summary": summary}
 
-    # 학점·영역·필수 모두 충족 → 추가 계획 불필요
-    if no_credit_gap and not audit.missing_required_course_ids and not audit.missing_required_names:
-        plan = RoadmapPlan(status="generated", feasible=True, terms=[],
-                           why_this_plan="졸업요건을 모두 충족했습니다. 추가 수강 계획이 필요 없습니다.")
-        if ctx["non_major_gap_areas"]:
-            plan.assumptions.append(f"교양 영역({', '.join(ctx['non_major_gap_areas'])})은 직접 확인 필요")
-        return plan, ValidationReport(ok=True), ctx
+    if not selected:
+        return (RoadmapPlan(status="generated", feasible=True, terms=[],
+                            why_this_plan="졸업요건을 모두 충족했습니다. 추가 수강 계획이 필요 없습니다."),
+                ValidationReport(ok=True), ctx)
 
-    # 학점·영역은 충족인데 '이름 기준'(학번 요람) 필수지정만 미이수 → 코드가 없어 자동계획 불가
-    # → 정직하게 직접 수강 안내(완전 충족으로 오판 금지). 학점 갭이 따로 있으면 아래 일반 경로로.
-    if no_credit_gap and audit.missing_required_names and not ctx["candidate_courses"]:
-        plan = RoadmapPlan(
-            status="generated", feasible=True, terms=[],
-            why_this_plan="졸업학점·영역 요건은 충족했으나 필수지정 과목 미이수: "
-                          + ", ".join(audit.missing_required_names)
-                          + ". 잔여 학기에 직접 수강 신청이 필요합니다.")
-        if ctx["non_major_gap_areas"]:
-            plan.assumptions.append(f"교양 영역({', '.join(ctx['non_major_gap_areas'])})은 직접 확인 필요")
-        return plan, ValidationReport(ok=True), ctx
+    reg_cap = float(context.max_credits_per_term or regular_term_cap(profile.total_credits_min))
+    terms = _ordered_terms(context, reg_cap)
+    if not terms:
+        # 현재 학기 미상 → 학기 배치 불가. 무엇을 들어야 하는지만 안내.
+        names = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in selected[:12])
+        return (RoadmapPlan(status="generated", feasible=None, terms=[],
+                            why_this_plan=f"현재 학기 미입력 — 학기 배치 생략. 추가 이수 권장: {names}",
+                            assumptions=["현재 학기를 입력하면 학기별 배치를 제공합니다."], overflow=overflow),
+                ValidationReport(ok=True), ctx)
 
-    # 자동계획 가능한 후보가 없는데 갭이 남음(예: 교양만 부족) → 정직한 partial/blocked
-    if not ctx["candidate_courses"]:
-        areas = ctx["non_major_gap_areas"] or [g["area"] for g in ctx["audit_result"]["gaps"]]
-        hint = "교양 등 부족 영역은 직접 수강신청으로 채워야 합니다."
+    placed, assumptions, unplaced = plan_greedy(selected, terms)
+    errors = []
+    for t in placed:
+        cap = next((c for lab, c in terms if lab == t.term), reg_cap)
+        if t.term_credits > cap + 0.01:
+            errors.append(ValidationError(code="over_credit_cap", detail=f"{t.term} {t.term_credits} > {cap}"))
+    report = ValidationReport(ok=not errors, errors=errors)
+
+    parts = [f"{s['label']}" for s in summary]
+    why = "남은 요건(" + ", ".join(parts) + ")을 잔여 학기에 배치했습니다." if parts else ""
+    plan = RoadmapPlan(status="generated", feasible=not unplaced, terms=placed,
+                       why_this_plan=why, assumptions=assumptions, overflow=overflow)
+    if unplaced:
+        un = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in unplaced)
+        hint = "잔여 학기를 늘리거나 계절학기를 활용하세요."
         if overflow:
             hint = overflow.note + " " + hint
-        plan = RoadmapPlan(status="blocked", feasible=False,
-                           blocked_reason=f"자동 계획 가능한 전공 후보가 없습니다(부족 영역: {', '.join(areas) or '미상'}).",
-                           relaxation_hint=hint, overflow=overflow)
-        return plan, ValidationReport(ok=True), ctx
-
-    # LLM 계획 — 실패(예외·JSON·스키마)는 not_generated로 안전 폴백(500 방지)
-    try:
-        plan = plan_roadmap(ctx, client=client)
-    except Exception as exc:
-        return RoadmapPlan(status="not_generated", overflow=overflow,
-                           why_this_plan=f"로드맵 생성 실패 — 결정론 진단/리스크만 제공 ({type(exc).__name__})."), \
-            ValidationReport(ok=True), ctx
-    if plan.status == "not_generated":
-        plan.overflow = overflow
-        return plan, ValidationReport(ok=True), ctx
-
-    report = validate_roadmap(plan, ctx, context)
-    repaired = False
-    if not report.ok:
-        # 1회 repair
-        repaired = True
-        ctx_with_errors = dict(ctx, validation_errors=[e.model_dump() for e in report.errors])
-        try:
-            plan = plan_roadmap(ctx_with_errors, client=client)
-            report = validate_roadmap(plan, ctx, context)
-        except Exception:
-            pass
-    report.repair_attempted = repaired
-    if not report.ok:
-        # 정직한 실패 (가짜 계획 금지)
-        hint = "잔여 학기를 늘리거나 학기당 이수학점·계절학기를 조정해 보세요."
-        if overflow:
-            hint = overflow.note + " " + hint
-        plan = RoadmapPlan(status="blocked", feasible=False,
-                           blocked_reason="잔여 학기·제약 내 유효한 로드맵을 생성하지 못했습니다.",
-                           relaxation_hint=hint)
-    if ctx["non_major_gap_areas"]:
-        plan.assumptions.append(f"교양 영역({', '.join(ctx['non_major_gap_areas'])}) 부족분은 직접 선택 필요")
-    plan.overflow = overflow
+        plan.feasible = False
+        plan.blocked_reason = f"잔여 학기에 다 배치하지 못한 과목: {un}"
+        plan.relaxation_hint = hint
     return plan, report, ctx

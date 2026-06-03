@@ -340,8 +340,8 @@ export default function GraduationV2({ apiBase }) {
         <div style={card}>
           <div style={sectionTitle}>🎓 학생 정보 & 수강내역</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
-            <Field label="학번" hint="입학연도 기준 요람 적용 (예: 20231234 → 2023 요람)">
-              <input style={inputStyle} placeholder="예: 20231234" value={ctx.student_id} onChange={(e) => setCtx({ ...ctx, student_id: e.target.value })} /></Field>
+            <Field label="입학연도 (학번 앞 4자리)" hint={admissionYear() ? `→ ${admissionYear()} 요람 적용` : "입학연도 기준 요람 적용"}>
+              <input style={inputStyle} placeholder="예: 2025" value={ctx.student_id} onChange={(e) => setCtx({ ...ctx, student_id: e.target.value })} /></Field>
             <Field label="주전공">
               <select style={inputStyle} value={ctx.program_id} onChange={(e) => onProgramChange(e.target.value)}>
                 {primaryPrograms.map(([id, p]) => <option key={id} value={id}>{p.name_ko}</option>)}

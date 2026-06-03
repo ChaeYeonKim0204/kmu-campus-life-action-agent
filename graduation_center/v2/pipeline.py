@@ -95,6 +95,9 @@ def _markdown(ctx, profile, audit, risk, plan) -> str:
          f"  ·  적용 요람 {profile.applied_yoram}", "", "## 영역별 현황"]
     for g in audit.area_gaps:
         mark = "✅" if g.gap <= 0 else f"⚠️ {g.gap:.0f} 부족"
+        # 전공 '학점'은 충족이어도 필수지정 미이수가 있으면 ✅만 띄우지 않음(모순 방지)
+        if g.area == "전공" and g.gap <= 0 and audit.missing_required_names:
+            mark = f"⚠️ 학점 충족 · 필수지정 {len(audit.missing_required_names)}과목 미이수"
         L.append(f"- {g.area}: {g.earned:.0f}/{g.required:.0f} {mark}")
     if audit.convergence_checks:
         L += ["", "## 연계·융합전공 (학점 중복인정 반영)"]

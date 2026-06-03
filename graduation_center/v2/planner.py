@@ -433,16 +433,25 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     reqs: list[dict] = []
 
     # 1) 미이수 필수(이름) — 전부 이수 필요. 학점·개설학기·코드·선수를 요람메타→카탈로그 순으로 보강.
+    # 카탈로그 매칭은 alias(명칭 드리프트 동치)까지 시도 — 옛 이름으로만 계획하고 신명을 전공 풀에서
+    # 또 선택하는 '같은 물리 과목 이중 계획'을 방지(라운드5 검증).
     if audit.missing_required_names:
+        from graduation_center.v2.audit_v2 import _required_aliases
         rmeta = _required_meta(profile.program_id, profile.admission_year)
+        alias_groups = _required_aliases(profile.program_id)
         items = []
         for n in audit.missing_required_names:
-            m = rmeta.get(normalize_name(n), {})
+            nn = normalize_name(n)
+            m = rmeta.get(nn, {})
             terms = list(m.get("terms") or [])
             credits = m.get("credits")
             cid, prereqs = "", []
-            # 카탈로그 매칭으로 누락분 보강(특히 연도메타 없는 학과 — ai_bigdata 등)
-            hit = cat["by_norm"].get(normalize_name(n)) if cat.get("by_norm") else None
+            # 본명 → alias 동치명 순으로 카탈로그 매칭
+            hit = None
+            for key in [nn, *alias_groups.get(nn, [])]:
+                hit = (cat.get("by_norm") or {}).get(key)
+                if hit:
+                    break
             if hit:
                 cc = cat["by_code"].get(hit[0])
                 if cc:
@@ -455,7 +464,8 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
             known = bool(terms)
             items.append({"name_ko": n, "course_id": cid, "credits": (credits if credits is not None else 3.0),
                           "satisfies": "필수지정", "offered_terms": terms or ["1", "2"], "prerequisites": prereqs,
-                          "confidence": "catalog_verified" if known else "name_only", "manual": not known})
+                          "confidence": "catalog_verified" if known else "name_only", "manual": not known,
+                          "_alias_norms": alias_groups.get(nn, [])})
         reqs.append({"label": "필수지정 미이수", "area": "전공", "priority": 1, "need": None, "items": items})
     # 2) 연계융합 부족 — 총 또는 '그룹별 최저' 미충족 시. 그룹별 quota를 먼저 보장하도록
     #    풀을 [부족그룹별 gap만큼 → 나머지] 순으로 구성(총 need만 채우다 한 그룹만 채움 방지).
@@ -506,11 +516,14 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
         else:
             reqs.append({"label": "기초교양", "area": "기초교양", "priority": 4, "need": basic_gap,
                          "pool": _slot_chunks("기초교양 선택", basic_gap, "기초교양")})
-    # 5) 핵심교양 영역별 부족 → 영역 슬롯(학기 분할)
-    for g in audit.core_area_gaps:
-        if g.gap > 0:
-            reqs.append({"label": f"핵심교양 {g.area}", "area": "핵심교양", "priority": 4, "need": g.gap,
-                         "pool": _slot_chunks(f"핵심교양 {g.area} 선택", g.gap, f"핵심교양-{g.area}")})
+    # 5) 핵심교양 영역별 부족 → 영역 슬롯(학기 분할). 단 핵심교양 '총량'이 이미 충족이면
+    #    세부영역 부족은 과목명 미매핑(attribution 미확정)일 가능성이 높아 phantom 계획 금지.
+    core_total_gap = next((g.gap for g in audit.area_gaps if g.area == "핵심교양"), 0.0)
+    if core_total_gap > 0:
+        for g in audit.core_area_gaps:
+            if g.gap > 0:
+                reqs.append({"label": f"핵심교양 {g.area}", "area": "핵심교양", "priority": 4, "need": g.gap,
+                             "pool": _slot_chunks(f"핵심교양 {g.area} 선택", g.gap, f"핵심교양-{g.area}")})
     # 6) 자유교양 부족 → 슬롯(학기 분할)
     free_gap = next((g.gap for g in audit.area_gaps if g.area == "자유교양"), 0.0)
     if free_gap > 0:
@@ -527,7 +540,10 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                 key = normalize_name(it["name_ko"])
                 if key in seen:
                     continue
-                seen.add(key); selected.append({**it, "area": r["area"], "priority": r["priority"]})
+                seen.add(key)
+                for ak in it.get("_alias_norms", []):   # 동치 신/구명도 다른 풀에서 재선택 금지
+                    seen.add(ak)
+                selected.append({**it, "area": r["area"], "priority": r["priority"]})
         else:
             acc = 0.0
             for it in r["pool"]:
@@ -541,12 +557,13 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                     continue
                 seen.add(key); selected.append({**it, "area": r["area"], "priority": r["priority"]}); acc += it["credits"]
             if acc + 0.01 < r["need"]:
-                unfillable.append({"label": r["label"], "shortfall": round(r["need"] - acc, 1)})
+                unfillable.append({"label": r["label"], "area": r["area"], "shortfall": round(r["need"] - acc, 1)})
 
-    # 총학점(일반선택) 잔여 — 위에서 선택된 모든 후보 학점(이수 시 총학점 산입)을 차감한 뒤 산출.
-    # (필수·융합·교양 학점을 빼지 않으면 같은 부족분을 이중 계획 → 거짓 초과학기)
+    # 총학점(일반선택) 잔여 — 선택된 후보 학점 + unfillable shortfall(그 부족분도 총학점을
+    # 메우는 몫)을 차감한 뒤 산출. (안 빼면 같은 부족분 이중 계획 — 라운드5 검증)
     sel_cr = round(sum(it["credits"] for it in selected), 1)
-    general_need = round(max(0.0, audit.total_gap - sel_cr), 1)
+    uf_cr = round(sum(u["shortfall"] for u in unfillable), 1)
+    general_need = round(max(0.0, audit.total_gap - sel_cr - uf_cr), 1)
     if general_need > 0:
         gen_req = {"label": "총학점(일반선택)", "area": "일반선택", "priority": 5, "need": general_need,
                    "pool": _slot_chunks("일반선택 과목", general_need, "일반선택")}
@@ -569,6 +586,15 @@ def plan_greedy(selected: list[dict], terms: list[list],
     unplaced: list[dict] = []
 
     prereq_warn: list[str] = []
+    placed_norm: dict[str, int] = {}                    # 과목명(정규화) → 배치 term index
+    item_norms = {normalize_name(c["name_ko"]) for c in items}
+
+    def _seq_prev(it):
+        """Ⅰ/Ⅱ류 번호 시퀀스: 끝자리 숫자 n≥2면 같은 베이스의 n-1 정규화명 반환."""
+        nn = normalize_name(it["name_ko"])
+        if nn and nn[-1].isdigit() and int(nn[-1]) >= 2:
+            return nn[:-1] + str(int(nn[-1]) - 1)
+        return None
 
     def _try_place(it):
         pres = [p[:5] for p in (it.get("prerequisites") or []) if p]
@@ -576,12 +602,20 @@ def plan_greedy(selected: list[dict], terms: list[list],
         sel_pref = {c.get("course_id", "")[:5] for c in items if c.get("course_id")}
         if any(p not in completed and p not in placed_at and p in sel_pref for p in pres):
             return None                                 # defer
+        # 번호 시퀀스(캡스톤Ⅰ→Ⅱ 등): 같은 계획 안의 이전 번호보다 이른 학기 금지
+        seq_min = 0
+        prev = _seq_prev(it)
+        if prev and prev in item_norms:
+            if prev in placed_norm:
+                seq_min = placed_norm[prev] + 1
+            else:
+                return None                             # 이전 번호 미배치 → defer
         # 선수가 이수도·후보도 아님 → 배치는 하되 '선수 확인 필요' 플래그(연도 코드 드리프트로
         # 실제로는 이수했을 수 있어 하드 차단하지 않음 — 라운드4 절충)
         if any(p not in completed and p not in placed_at and p not in sel_pref for p in pres):
             it["manual"] = True
             prereq_warn.append(it["name_ko"])
-        min_idx = 0                                     # 배치된 선수보다 뒤 학기여야
+        min_idx = max(0, seq_min)                       # 배치된 선수·시퀀스 이전 번호보다 뒤 학기
         for p in pres:
             if p in placed_at:
                 min_idx = max(min_idx, placed_at[p] + 1)
@@ -600,6 +634,7 @@ def plan_greedy(selected: list[dict], terms: list[list],
                     bucket[lab].append(it); used[lab] += it["credits"]
                     if it.get("course_id"):
                         placed_at[it["course_id"][:5]] = i
+                    placed_norm[normalize_name(it["name_ko"])] = i
                     return True
         return False                                    # 배치 실패(용량/개설학기)
 
@@ -649,9 +684,10 @@ def run_planner(
                 "need": (r.get("need") if r.get("need") is not None else sum(i["credits"] for i in r.get("items", [])))}
                for r in reqs]
     ctx = {"sources": [], "requirements_summary": summary}
-    # 학기당 상한: 사용자 override는 법정 상한(제32조) 이내로 클램프(99 입력 등으로 무력화 방지)
+    # 학기당 상한: 사용자 override는 법정 상한(제32조) 이내로 클램프. 0/음수/None → 법정값.
     legal_cap = regular_term_cap(profile.total_credits_min)
-    reg_cap = min(float(context.max_credits_per_term or legal_cap), legal_cap)
+    user_cap = context.max_credits_per_term
+    reg_cap = min(float(user_cap), legal_cap) if (user_cap and user_cap > 0) else legal_cap
 
     if reqs and not selected:
         # 요건은 남았는데 채울 후보가 전혀 없음(풀 고갈) → 거짓 '충족' 금지
@@ -702,8 +738,9 @@ def run_planner(
             continue
         placed_by_area[it["area"]] = placed_by_area.get(it["area"], 0.0) + it["credits"]
     for g in audit.area_gaps:
+        # 같은 area의 unfillable(후보 고갈)로 이미 보고된 경우만 억제(이름 substring 매칭 금지)
         if g.area in MAJOR_AREAS and g.gap > 0 and placed_by_area.get(g.area, 0.0) + 0.01 < g.gap \
-                and not any(g.area in (u["label"] or "") or u["label"].startswith(g.area) for u in unfillable):
+                and not any(u.get("area") == g.area for u in unfillable):
             errors.append(ValidationError(code="gap_not_closed",
                           detail=f"{g.area} 계획 {placed_by_area.get(g.area, 0):.0f} < 부족 {g.gap:.0f}"))
     report = ValidationReport(ok=not errors, errors=errors)
@@ -726,7 +763,13 @@ def run_planner(
             reason += (" · " if reason else "") + f"수강 후보 없음(초과학기로 해결 불가, 학과 확인 필요): {uf}"
         if gap_errors:
             reason += (" · " if reason else "") + "영역 부족 미해소: " + ", ".join(e.detail for e in gap_errors)
-        hint = (ov.note if ov else "잔여 학기를 늘리거나 계절학기를 활용하세요.")
+        if ov:
+            hint = ov.note
+        elif unfillable and not unplaced:
+            # '학기 늘리세요'는 후보 고갈엔 자기모순 — 메시지 일관화(라운드5 검증)
+            hint = "수강 후보가 없는 요건은 초과학기로 해결되지 않습니다 — 학과/교육과정 확인이 필요합니다."
+        else:
+            hint = "잔여 학기를 늘리거나 계절학기를 활용하세요."
         plan = RoadmapPlan(status="blocked", feasible=False, terms=placed, why_this_plan=why,
                            assumptions=assumptions, overflow=ov,
                            blocked_reason=reason, relaxation_hint=hint)

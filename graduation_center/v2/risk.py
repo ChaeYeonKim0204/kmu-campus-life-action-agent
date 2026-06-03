@@ -74,10 +74,14 @@ def compute_risk(
         reasons.append(RiskReason(factor="잔여학기",
                       detail=f"부족 {gap:.0f}학점 > 잔여 {context.remaining_semesters}학기 수용량(~{capacity:.0f})", severity=20))
 
-    if core_missing:
+    core_total_gap = next((g.gap for g in audit.area_gaps if g.area == "핵심교양"), 0.0)
+    if core_missing and core_total_gap > 0:
         grade = _worse(grade, "B")
         areas = ", ".join(g.area for g in core_missing)
         reasons.append(RiskReason(factor="핵심교양", detail=f"영역 미충족: {areas}", severity=8))
+    elif core_missing:
+        # 총량은 충족 — 세부영역 미충족은 과목명 미매핑(attribution) 가능성 → 강등 없이 확인만
+        reasons.append(RiskReason(factor="핵심교양", detail="영역별 분류 확인 필요(총량은 충족)", severity=0))
 
     for cc in audit.convergence_checks:
         group_short = [gc for gc in cc.get("group_checks", []) if gc["gap"] > 0]
@@ -99,6 +103,12 @@ def compute_risk(
     if roadmap_feasible is False:
         grade = _worse(grade, "C")
         reasons.append(RiskReason(factor="로드맵", detail="잔여 학기 내 실현 가능한 계획 없음", severity=15))
+    elif roadmap_feasible is True and grade == "D" and context.gpa_min_met != "no" \
+            and gap <= capacity + 0.01:
+        # 절대 학점차(gap>15 등)만으로 D였더라도, 실현 가능한 완성 로드맵이 있고 수용량 내면
+        # '졸업불가 가능성'은 과장 — C로 완화('D 졸업불가 + feasible 로드맵' 동시표시 모순 방지)
+        grade = "C"
+        reasons.append(RiskReason(factor="로드맵", detail="실현 가능한 학기별 계획 존재 — 등급 완화(C)", severity=0))
 
     if grade == "A" and not reasons:
         reasons.append(RiskReason(factor="종합", detail="확인된 부족·위험 항목 없음", severity=0))

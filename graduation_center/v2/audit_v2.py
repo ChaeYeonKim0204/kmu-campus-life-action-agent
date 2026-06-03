@@ -365,6 +365,7 @@ def compute_audit(
         missing_required_names=missing_names,
         required_check_available=required_available,
         gen_basic_courses=_gen_basic_view(verified, profile.program_id, year),
+        to_fusion_total=to_fusion_total,
         convergence_checks=conv_checks,
         unresolved_credits=unresolved_credits,
     )

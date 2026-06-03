@@ -125,6 +125,7 @@ class AuditResult(BaseModel):
     missing_required_names: list[str] = Field(default_factory=list)
     required_check_available: bool = True   # 요람 필수지정 데이터 구축 여부
     gen_basic_courses: list[dict] = Field(default_factory=list)   # 기초교양 필수 [{name_ko,taken}]
+    to_fusion_total: float = 0.0                                  # 융합 배정으로 전공에서 차감된 학점(과목 dedup)
     convergence_checks: list[dict] = Field(default_factory=list)  # [{program_id,name,required,earned,gap,matched_courses}]
     unresolved_credits: float = 0.0
 

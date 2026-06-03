@@ -589,7 +589,7 @@ export default function GraduationV2({ apiBase }) {
                 {audit.audit.area_gaps.map((g, i) => <Gauge key={i} label={g.area} earned={g.earned} required={g.required} gap={g.gap} />)}
               </div>
               {(() => {
-                const tf = (audit.audit.convergence_checks || []).reduce((s, c) => s + (c.to_fusion_credits || 0), 0);
+                const tf = audit.audit.to_fusion_total || 0;   // 백엔드 dedup값(다중 융합 합산 오류 방지)
                 return tf > 0 ? (
                   <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0" }}>
                     ※ 전공 이수 학점 중 {tf}학점은 연계·융합전공 인정으로 배정되어 전공 게이지에서 제외됨 (중복인정 한도 초과분 — 총학점에는 포함)
@@ -652,7 +652,7 @@ export default function GraduationV2({ apiBase }) {
             <div style={card}>
               <div style={sectionTitle}>🗺️ 추천 학기별 로드맵</div>
               {audit.roadmap.status === "not_generated" && <p style={{ color: C.muted, fontSize: 13 }}>LLM 미설정 — 결정론 진단만 제공됩니다.</p>}
-              {audit.roadmap.status === "blocked" && <p style={{ color: C.danger, fontSize: 13 }}>{audit.roadmap.blocked_reason} · {audit.roadmap.relaxation_hint}</p>}
+              {/* blocked 상세는 아래 feasible=false 박스·초과학기 카드에서 1회만 표시(3중 중복 방지) */}
               {/* 진짜 충족: feasible===true & 빈 계획 → 초록 / 현재학기 미입력(feasible null) → 중립 안내 */}
               {audit.roadmap.terms.length === 0 && audit.roadmap.feasible === true && (
                 <div style={{ padding: "14px 16px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, color: "#047857", fontSize: 13.5, fontWeight: 600 }}>
@@ -695,7 +695,7 @@ export default function GraduationV2({ apiBase }) {
                               {c.satisfies && <span style={{ fontSize: 10.5, background: "#eef5ff", color: C.accent, border: "1px solid #cfe1fb", borderRadius: 5, padding: "1px 6px" }}>{c.satisfies}</span>}
                               {c.assignment && <span style={{ fontSize: 10.5, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd", borderRadius: 5, padding: "1px 6px" }}>{c.assignment}</span>}
                               {offered && <span style={{ fontSize: 10.5, color: "#047857" }}>· {offered}</span>}
-                              {c.manual_check && <span style={{ fontSize: 10.5, color: "#b45309", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 5, padding: "1px 6px" }}>개설학기 확인필요</span>}
+                              {c.manual_check && <span style={{ fontSize: 10.5, color: "#b45309", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 5, padding: "1px 6px" }}>확인 필요</span>}
                             </div>
                           );
                         })}
@@ -706,7 +706,9 @@ export default function GraduationV2({ apiBase }) {
               )}
               {audit.roadmap.feasible === false && audit.roadmap.blocked_reason && (
                 <div style={{ fontSize: 12.5, color: "#b45309", margin: "10px 0 0", padding: "10px 12px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8 }}>
-                  ⚠️ {audit.roadmap.blocked_reason}{audit.roadmap.relaxation_hint ? ` · ${audit.roadmap.relaxation_hint}` : ""}
+                  ⚠️ {audit.roadmap.blocked_reason}
+                  {/* hint는 초과학기 카드가 있으면 거기서만(문장 중복 방지) */}
+                  {audit.roadmap.relaxation_hint && !audit.roadmap.overflow ? ` · ${audit.roadmap.relaxation_hint}` : ""}
                 </div>
               )}
               {audit.roadmap.why_this_plan && audit.roadmap.terms.length > 0 && (

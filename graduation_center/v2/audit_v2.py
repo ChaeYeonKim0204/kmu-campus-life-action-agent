@@ -197,30 +197,24 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             if acc >= cap:
                 break
             rec.append(c["name_ko"]); rec_keys.add(id(c)); acc += c["credits"]
-        # 이수구분 배정 라벨:
-        #  - 미이수 / 융합전용(겹침X) / 중복인정 추천(한도 내, 양쪽 동시인정)
-        #  - 한도 초과 겹침 과목은 한쪽만 산입 → 융합이 이미 충족이고 그 과목을 빼도 그룹 최저가
-        #    유지되면 '제1전공 산입' 추천(융합이 안 쓰는 학점), 아니면 '융합 유지'.
-        flexible = []   # 한도초과 겹침 = 제1전공/융합 중 한쪽에만 산입(사용자 배정)
+        # 이수구분 기본 라벨(표시용). 겹침(중복인정 가능) 과목은 프론트에서 3-way로 사용자 선택.
         for c in courses_view:
             if not c["taken"]:
-                c["assignment"], c["recommended"], c["flexible"] = "미이수", False, False
+                c["assignment"], c["selectable"] = "미이수", False
             elif not c["overlap"]:
-                c["assignment"], c["recommended"], c["flexible"] = "융합전용", False, False
-            elif id(c) in rec_keys:
-                c["assignment"], c["recommended"], c["flexible"] = "중복인정", True, False
+                c["assignment"], c["selectable"] = "융합전용", False
             else:
-                c["assignment"], c["recommended"], c["flexible"] = "배정 선택", False, True
-                flexible.append(c)
-        # 고정분: 한도초과 겹침을 뺀 나머지(=non-overlap+융합전용+중복인정)는 양쪽에서 고정
-        flexible_cr = round(sum(c["credits"] for c in flexible), 1)
-        primary_base = round(primary_major_earned - flexible_cr, 1)   # 제1전공 전공 고정분
-        fusion_base = round(earned - flexible_cr, 1)                   # 융합 고정분(중복인정 포함)
+                c["assignment"], c["selectable"] = "중복인정", True   # 기본 중복인정, 사용자 변경 가능
+        # 고정분: 겹침을 제외한 나머지. 제1전공 non-overlap / 융합전용. 겹침은 전부 사용자 배정 풀.
+        primary_base = round(primary_major_earned - overlap_cr, 1)    # 제1전공 non-overlap (예: 43)
+        fusion_base = round(earned - overlap_cr, 1)                   # 융합전용 (예: 18)
+        overlap_courses = [{"name_ko": c.name_ko, "credits": c.credits,
+                            "group": prefix_to_group.get(c.course_id[:5]) or "",
+                            "primary_required": c.course_id[:5] in required_prefixes}
+                           for c in overlap]
         group_short = [gc for gc in group_checks if gc["gap"] > 0]
-        note = (f"들은 융합전공 과목 {earned:.0f}학점 인정(총 {req:.0f} 필요). 그룹별 최소 {per_group_min:.0f}학점. "
-                f"제1전공과 겹치는 {overlap_cr:.0f}학점은 최대 {cap:.0f}까지 중복(동시)인정, 초과분은 한쪽만 산입(이수구분정정).")
-        if gap > 0 or group_short:
-            note += " 부족분은 융합전공(그룹) 과목 추가 이수 필요."
+        note = (f"제1전공과 겹치는 {overlap_cr:.0f}학점은 중복인정(양쪽 동시) 최대 {cap:.0f}까지. "
+                f"한도 초과·미선택분은 제1전공 또는 {('연계' if is_yeonge else '융합')}전공 한쪽에만 산입돼 양쪽 학점이 달라집니다.")
         out.append({
             "program_id": pid, "name": name, "track": track,
             "conv_type": "연계전공" if is_yeonge else "융합전공",
@@ -228,11 +222,9 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             "earned": earned, "gap": gap, "group_checks": group_checks,
             "overlap_credits": overlap_cr, "double_recognizable": double_recognizable,
             "recommend_double_count": rec, "note": note, "courses": courses_view,
-            # 동시배정: 고정분 + 한도초과 겹침(배정 대상). 제1전공=primary_base+배정, 융합=fusion_base+(나머지)
+            # 동시배정: 제1전공 = primary_base + (중복인정+제1전공 선택분), 융합 = fusion_base + (중복인정+융합 선택분)
             "primary_base": primary_base, "fusion_base": fusion_base,
-            "primary_required": primary_major_required, "flexible_credits": flexible_cr,
-            "flexible_courses": [{"name_ko": c["name_ko"], "credits": c["credits"], "group": c["group"],
-                                  "primary_required": c["primary_required"]} for c in flexible],
+            "primary_required": primary_major_required, "overlap_courses": overlap_courses,
         })
     return out
 

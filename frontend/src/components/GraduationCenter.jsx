@@ -1,6 +1,8 @@
 import React from "react";
+import GraduationV2 from "./GraduationV2.jsx";
 
 const TABS = [
+  { id: "v2", label: "★ 졸업사정 v2" },
   { id: "upload", label: "성적증명서 업로드" },
   { id: "audit", label: "졸업 진단" },
   { id: "early", label: "조기졸업" },
@@ -181,6 +183,12 @@ export default function GraduationCenter({ apiBase, onClose, hideHeader }) {
       </div>
 
       <div className="graduation-body">
+        {activeTab === "v2" && (
+          <section className="graduation-panel">
+            <GraduationV2 apiBase={apiBase} />
+          </section>
+        )}
+
         {activeTab === "upload" && (
           <section className="graduation-panel">
             <h3>성적증명서 PDF 업로드</h3>

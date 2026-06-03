@@ -270,6 +270,8 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             "recommend_double_count": rec, "note": note, "courses": courses_view,
             "primary_base": primary_base, "fusion_base": fusion_base, "double_used": dup_cr,
             "primary_effective": primary_eff, "fusion_effective": fusion_eff, "to_fusion_credits": to_fusion,
+            # 다중 융합 선언 시 전공 차감 dedup용 — fusion 배정 과목의 (앞5자리→학점)
+            "to_fusion_course_credits": {c.course_id[:5]: c.credits for c in flex if alloc.get(id(c)) == "fusion"},
             "primary_required": primary_major_required, "overlap_courses": overlap_courses,
         })
     return out
@@ -285,7 +287,13 @@ def compute_audit(
     conv_checks = _convergence_checks(verified, convergence_program_ids, convergence_tracks,
                                       profile.program_id, float(profile.area_min.get("전공", 0)),
                                       float(earned.get("전공", 0)))
-    to_fusion_total = round(sum(cc.get("to_fusion_credits", 0.0) for cc in conv_checks), 1)
+    # 다중 융합 선언 시 같은 물리 과목이 두 프로그램에서 to_fusion으로 잡혀 이중 차감되지 않게
+    # 과목(앞5자리) 단위로 dedup해 전공 차감(라운드3·4 지적)
+    to_fusion_by_course: dict = {}
+    for cc in conv_checks:
+        for pfx, cr in (cc.get("to_fusion_course_credits") or {}).items():
+            to_fusion_by_course[pfx] = cr
+    to_fusion_total = round(sum(to_fusion_by_course.values()), 1)
     major_effective = max(0.0, round(float(earned.get("전공", 0)) - to_fusion_total, 1))
 
     # 핵심교양 영역별 최저(별표5 단과대 override 반영 — 예: 미래모빌리티 소통 5)

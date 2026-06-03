@@ -494,16 +494,18 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                 # 7자리 전체 또는 이름으로 이수 제외(5자리 절단 충돌 — 예: 0365007/0365008 — 방지)
                 if not ((c.course_id and c.course_id in confirmed_full) or normalize_name(c.name_ko) in confirmed_norm)]
         reqs.append({"label": "전공 부족", "area": "전공", "priority": 3, "need": major_gap_eff, "pool": pool})
-    # 4) 기초교양 — 필수 미이수 과목명, 또는 영역 부족분을 학기 분할 슬롯으로
+    # 4) 기초교양 — 영역 학점이 '부족할 때만' 계획(영역 총량 충족이면 이름 미매칭은 확인 항목일 뿐,
+    #    phantom 12학점 추가 금지 — 라운드4 검증). 필수명이 있으면 그것으로, 없으면 슬롯으로.
     missing_basic = [g for g in (audit.gen_basic_courses or []) if not g["taken"]]
     basic_gap = next((g.gap for g in audit.area_gaps if g.area == "기초교양"), 0.0)
-    if missing_basic:
-        reqs.append({"label": "기초교양 필수", "area": "기초교양", "priority": 4, "need": None,
-                     "items": [{"name_ko": g["name_ko"], "credits": 3.0, "satisfies": "기초교양 필수",
-                                "confidence": "name_only", "manual": True} for g in missing_basic]})
-    elif basic_gap > 0:
-        reqs.append({"label": "기초교양", "area": "기초교양", "priority": 4, "need": basic_gap,
-                     "pool": _slot_chunks("기초교양 선택", basic_gap, "기초교양")})
+    if basic_gap > 0:
+        if missing_basic:
+            reqs.append({"label": "기초교양 필수", "area": "기초교양", "priority": 4, "need": basic_gap,
+                         "pool": [{"name_ko": g["name_ko"], "credits": 3.0, "satisfies": "기초교양 필수",
+                                   "confidence": "name_only", "manual": True} for g in missing_basic]})
+        else:
+            reqs.append({"label": "기초교양", "area": "기초교양", "priority": 4, "need": basic_gap,
+                         "pool": _slot_chunks("기초교양 선택", basic_gap, "기초교양")})
     # 5) 핵심교양 영역별 부족 → 영역 슬롯(학기 분할)
     for g in audit.core_area_gaps:
         if g.gap > 0:
@@ -533,7 +535,9 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                     break
                 key = normalize_name(it["name_ko"])
                 if key in seen:
-                    acc += it["credits"]   # 이미 다른 요건으로 선택됨 — 같은 과목이 quota도 충당
+                    # 다른 요건이 이미 선택한 과목 — 이 요건 quota에 '가산하지 않는다'.
+                    # (가산하면 융합 과목이 전공 quota를 거짓 충당해 중복인정 한도를 우회하고,
+                    #  필수지정은 major_gap_eff에서 이미 차감돼 이중 차감이 됨 — 라운드4 검증)
                     continue
                 seen.add(key); selected.append({**it, "area": r["area"], "priority": r["priority"]}); acc += it["credits"]
             if acc + 0.01 < r["need"]:
@@ -564,12 +568,19 @@ def plan_greedy(selected: list[dict], terms: list[list],
     placed_at: dict[str, int] = {}                      # course_id(앞5자리) → term index
     unplaced: list[dict] = []
 
+    prereq_warn: list[str] = []
+
     def _try_place(it):
         pres = [p[:5] for p in (it.get("prerequisites") or []) if p]
         # 선수 중 selected에 있는데 아직 미배치면 보류(나중 패스)
         sel_pref = {c.get("course_id", "")[:5] for c in items if c.get("course_id")}
         if any(p not in completed and p not in placed_at and p in sel_pref for p in pres):
             return None                                 # defer
+        # 선수가 이수도·후보도 아님 → 배치는 하되 '선수 확인 필요' 플래그(연도 코드 드리프트로
+        # 실제로는 이수했을 수 있어 하드 차단하지 않음 — 라운드4 절충)
+        if any(p not in completed and p not in placed_at and p not in sel_pref for p in pres):
+            it["manual"] = True
+            prereq_warn.append(it["name_ko"])
         min_idx = 0                                     # 배치된 선수보다 뒤 학기여야
         for p in pres:
             if p in placed_at:
@@ -622,6 +633,8 @@ def plan_greedy(selected: list[dict], terms: list[list],
     assumptions = []
     if any(it.get("manual") for it in selected):
         assumptions.append("이름기준·교양 슬롯 과목은 개설학기·학점을 수강신청 전 확인하세요.")
+    if prereq_warn:
+        assumptions.append(f"선수과목 이수 여부 확인 필요: {', '.join(sorted(set(prereq_warn))[:6])}")
     return out, assumptions, unplaced
 
 
@@ -681,22 +694,38 @@ def run_planner(
         errors.append(ValidationError(code="unplaced", detail=it["name_ko"], course_id=it.get("course_id") or None))
     for uf in unfillable:
         errors.append(ValidationError(code="pool_exhausted", detail=f"{uf['label']} {uf['shortfall']:.0f}학점 후보 부족"))
+    # 영역(이수구분) 커버리지 검증 — 배치된 후보가 전공 floor 갭을 실제로 닫는지(안전망)
+    unplaced_ids = {id(it) for it in unplaced}
+    placed_by_area: dict = {}
+    for it in selected:
+        if id(it) in unplaced_ids:
+            continue
+        placed_by_area[it["area"]] = placed_by_area.get(it["area"], 0.0) + it["credits"]
+    for g in audit.area_gaps:
+        if g.area in MAJOR_AREAS and g.gap > 0 and placed_by_area.get(g.area, 0.0) + 0.01 < g.gap \
+                and not any(g.area in (u["label"] or "") or u["label"].startswith(g.area) for u in unfillable):
+            errors.append(ValidationError(code="gap_not_closed",
+                          detail=f"{g.area} 계획 {placed_by_area.get(g.area, 0):.0f} < 부족 {g.gap:.0f}"))
     report = ValidationReport(ok=not errors, errors=errors)
+    gap_errors = [e for e in errors if e.code == "gap_not_closed"]
 
     parts = [s["label"] for s in summary]
     why = "남은 요건(" + ", ".join(parts) + ")을 잔여 학기에 개설학기·선수·학점상한을 지켜 배치했습니다." if parts else ""
-    if unplaced or unfillable:
-        # 미배치(용량/개설/선수) 또는 후보 고갈 → blocked + 초과학기(미배치 학점 기반)
+    if unplaced or unfillable or gap_errors:
+        # blocked. 초과학기는 '용량/개설/선수로 잔여 학기에 못 넣은' unplaced 학점만 환산 —
+        # unfillable(후보 고갈)은 학기를 늘려도 해결 불가이므로 별도 메시지(라운드4 검증).
         un = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in unplaced)
         uf = ", ".join(f"{u['label']}(-{u['shortfall']:.0f})" for u in unfillable)
-        unplaced_cr = round(sum(it["credits"] for it in unplaced) + sum(u["shortfall"] for u in unfillable), 1)
+        unplaced_cr = round(sum(it["credits"] for it in unplaced), 1)
         ov = _overflow_from_credits(unplaced_cr, context, profile, reg_cap)
         if ov and any(it.get("confidence") == "catalog_verified" and it.get("offered_terms") not in (None, ["1", "2"])
                       for it in unplaced):
             ov.note += " (개설학기 제약으로 실제 필요 학기는 더 늘 수 있음)"
         reason = "잔여 학기에 다 배치하지 못한 과목: " + un if un else ""
         if uf:
-            reason += (" · " if reason else "") + f"후보 부족: {uf}"
+            reason += (" · " if reason else "") + f"수강 후보 없음(초과학기로 해결 불가, 학과 확인 필요): {uf}"
+        if gap_errors:
+            reason += (" · " if reason else "") + "영역 부족 미해소: " + ", ".join(e.detail for e in gap_errors)
         hint = (ov.note if ov else "잔여 학기를 늘리거나 계절학기를 활용하세요.")
         plan = RoadmapPlan(status="blocked", feasible=False, terms=placed, why_this_plan=why,
                            assumptions=assumptions, overflow=ov,

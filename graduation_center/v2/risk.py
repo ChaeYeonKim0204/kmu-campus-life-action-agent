@@ -66,7 +66,9 @@ def compute_risk(
     if context.prev_term_gpa_ge_375:
         capacity += PREV_GPA_BONUS
     if context.seasonal_semester_allowed:
-        capacity += SEASONAL_TERM_CAP
+        # 플래너(_ordered_terms)와 동일 모델: 정규학기마다 계절학기 1개 — 1회(+6)만 더하면
+        # 플래너 feasible인데 risk D가 뜨는 모순(라운드4 검증)
+        capacity += context.remaining_semesters * SEASONAL_TERM_CAP
     if gap > 0 and capacity > 0 and gap > capacity:
         grade = _worse(grade, "D")
         reasons.append(RiskReason(factor="잔여학기",

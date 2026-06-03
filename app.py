@@ -39,6 +39,9 @@ from graduation_center.models import (
     SubstituteCoursesRequest,
 )
 from graduation_center.service import GraduationServiceUnavailable
+from graduation_center.v2 import pipeline as v2_pipeline
+from graduation_center.v2.catalog import load_programs
+from graduation_center.v2.excel_parser import fail_fast_columns as v2_fail_fast_columns
 from ingestion.live_refresh import refresh_sources_for_issue
 from ingestion.pipeline import CRAWLERS, load_state, run_ingestion
 from llm_client import GuardedLLMClient
@@ -237,6 +240,62 @@ def graduation_customized_major(request: CustomizedMajorRequest) -> dict:
 def graduation_credit_drop(request: CreditDropRequest) -> dict:
     """Guide credit-drop / grade-waiver policy checks."""
     return _graduation_analysis_response("credit_drop", request.transcript, {"concern": request.concern})
+
+
+# --- 졸업센터 v2 (Bounded Audit Agent) — 엑셀 수강내역 기반, Chroma 비의존 ---
+
+@app.get("/graduation/v2/status")
+def graduation_v2_status() -> dict:
+    """v2 준비 상태 (프로그램 목록·LLM 키 유무). Chroma와 무관."""
+    import os
+    return {
+        "programs": load_programs(),
+        "openai_api_key_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+        "note": "엑셀 수강내역 업로드 기반. 결정론 진단/리스크는 키 없이도 동작, 로드맵만 LLM 사용.",
+    }
+
+
+@app.post("/graduation/v2/verify")
+async def graduation_v2_verify(request: Request) -> dict:
+    """수강내역 엑셀(여러 학기) → 매칭 → 편집 가능한 검증 테이블(HITL)."""
+    try:
+        form = await request.form()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="python-multipart 패키지가 필요합니다.") from exc
+    uploads = form.getlist("files") or ([form.get("file")] if form.get("file") else [])
+    files: list[tuple[bytes, str]] = []
+    for up in uploads:
+        if up is None or not hasattr(up, "read"):
+            continue
+        fn = str(getattr(up, "filename", "") or "")
+        if not fn.lower().endswith((".xls", ".xlsx")):
+            raise HTTPException(status_code=400, detail=f"엑셀(.xls/.xlsx)만 업로드할 수 있습니다: {fn}")
+        content = await up.read()
+        missing = v2_fail_fast_columns(content, fn)
+        if missing:
+            raise HTTPException(status_code=422, detail={"file": fn, "missing_columns": missing})
+        files.append((content, fn))
+    if not files:
+        raise HTTPException(status_code=400, detail="files 필드에 수강내역 엑셀을 1개 이상 업로드해 주세요.")
+    context_raw = form.get("context")
+    context = json.loads(context_raw) if context_raw else {}
+    if "program_id" not in context:
+        raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다 (예: ai_bigdata, mirae_mobility).")
+    try:
+        return v2_pipeline.run_verify(files, context)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 program_id: {exc}") from exc
+
+
+@app.post("/graduation/v2/audit")
+def graduation_v2_audit(payload: dict) -> dict:
+    """사용자 확정 테이블 → 진단 → 로드맵(LLM+검증) → 리스크 → 컨설팅 응답."""
+    if "context" not in payload or "program_id" not in payload.get("context", {}):
+        raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다.")
+    try:
+        return v2_pipeline.run_audit(payload).model_dump()
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 program_id: {exc}") from exc
 
 
 _EMPTY_ANSWER_VALIDATION = {"ok": True, "flags": [], "markers": [], "citation_ids": []}

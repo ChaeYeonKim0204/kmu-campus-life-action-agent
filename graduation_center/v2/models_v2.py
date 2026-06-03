@@ -1,0 +1,205 @@
+"""졸업센터 v2 Pydantic 스키마 (Bounded Audit Agent).
+
+데이터 계약: 결정론 노드가 사실(matching·audit·risk)을 채우고, LLM은 RoadmapPlan만
+생성하며, 검증기가 RoadmapPlan을 재확인한다. AuditPipelineResponse가 JSON-first 응답.
+"""
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+# 졸업요건 영역 (집계 카테고리). 융합전공은 연계·융합전공 카탈로그 과목 표시용.
+Area = Literal["전공", "기초교양", "핵심교양", "자유교양", "일반선택", "융합전공"]
+GpaMinStatus = Literal["yes", "no", "unknown"]
+
+
+# ---------- 입력 컨텍스트 ----------
+class StudentContext(BaseModel):
+    program_id: str                                  # 예: ai_bigdata, mirae_mobility
+    admission_year: int | None = None
+    current_term: str | None = None                  # "2026-1" 등; None이면 로드맵 시작점 미상
+    remaining_semesters: int = Field(default=2, ge=0, le=12)
+    seasonal_semester_allowed: bool = False
+    max_courses_per_term: int = Field(default=6, ge=1, le=12)
+    max_credits_per_term: float | None = None
+    preferences: list[str] = Field(default_factory=list)
+    gpa_min_met: GpaMinStatus = "unknown"            # 엑셀에 성적 없음 → 사용자 선언
+    convergence_program_ids: list[str] = Field(default_factory=list)  # 연계·융합전공 — 사용자 입력
+    convergence_tracks: dict[str, str] = Field(default_factory=dict)  # program_id → "다전공"|"부전공"
+    masked_student_id: str | None = None             # 표시용(뒷자리 마스킹)
+
+
+# ---------- 카탈로그 ----------
+class CatalogCourse(BaseModel):
+    course_id: str                                   # 교과목코드 7자리
+    name_ko: str
+    name_norm: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    credits: float = 0.0
+    requirement_area: Area = "전공"
+    is_required: bool = False                        # 요람 비고 '필수지정'
+    prerequisites: list[str] = Field(default_factory=list)        # course_id
+    prereq_external: list[str] = Field(default_factory=list)      # 미해소 선수(이름) → 확인 필요
+    grade_level: int | None = None
+    offered_terms: list[str] = Field(default_factory=lambda: ["1", "2"])
+    group: str | None = None                         # 연계융합전공 그룹(A그룹/B그룹) — 그룹별 최저 체크용
+    source: dict = Field(default_factory=dict)
+
+
+# ---------- 파싱/매칭 ----------
+class RawLine(BaseModel):
+    """수강내역 .xls 한 행."""
+    course_code: str = ""
+    course_name: str = ""
+    area_raw: str = ""                               # 이수구분 원문(전공선택/기초교양...)
+    credits: float = 0.0
+    section: str = ""                                # 분반
+    term_label: str = ""                             # 파일/헤더에서 온 학기 라벨
+    professor: str = ""
+    note: str = ""                                   # 비고
+
+
+class CourseMatch(BaseModel):
+    raw: RawLine
+    matched_course_id: str | None = None
+    match_by: Literal["code", "name", "none"] = "none"
+    status: Literal["matched", "aggregate_only", "unresolved"] = "unresolved"
+    requirement_area: Area | None = None             # 확정 영역(매칭/이수구분 유래)
+    core_area: str | None = None                     # 핵심교양 세부영역(인문Ⅰ..)
+
+
+# ---------- 검증 ----------
+class VerifiedCourse(BaseModel):
+    course_id: str | None = None
+    name_ko: str
+    credits: float
+    requirement_area: Area
+    core_area: str | None = None
+    term_label: str = ""
+    included: bool = True
+    exclude_reason: str | None = None                # 폐강 / F / 재수강중복
+    aggregate_only: bool = False                     # 카탈로그 밖(교양·타과) → 집계만
+
+
+class VerifiedTranscript(BaseModel):
+    confirmed_courses: list[VerifiedCourse] = Field(default_factory=list)
+    excluded: list[VerifiedCourse] = Field(default_factory=list)
+    unresolved: list[CourseMatch] = Field(default_factory=list)
+    possible_retakes: list[dict] = Field(default_factory=list)    # {code, name, term_labels[]}
+    earned_by_area: dict[str, float] = Field(default_factory=dict)
+    core_area_earned: dict[str, float] = Field(default_factory=dict)
+    total_earned: float = 0.0
+
+
+# ---------- 요건 프로파일 ----------
+class RequirementProfile(BaseModel):
+    program_id: str
+    department_name_ko: str = ""
+    admission_year: int | None = None
+    total_credits_min: float = 0.0
+    area_min: dict[str, float] = Field(default_factory=dict)      # {전공,기초교양,핵심교양,자유교양,일반선택}
+    required_course_ids: list[str] = Field(default_factory=list)
+    core_area_min: float = 3.0
+    core_total_min: float = 15.0
+    applied_yoram: str = "2025 요람"
+
+
+# ---------- 진단 ----------
+class AreaGap(BaseModel):
+    area: str
+    required: float
+    earned: float
+    gap: float
+
+
+class AuditResult(BaseModel):
+    total_required: float
+    total_earned: float
+    total_gap: float
+    area_gaps: list[AreaGap] = Field(default_factory=list)
+    core_area_gaps: list[AreaGap] = Field(default_factory=list)   # 핵심교양 영역별
+    missing_required_course_ids: list[str] = Field(default_factory=list)
+    missing_required_names: list[str] = Field(default_factory=list)
+    required_check_available: bool = True   # 요람 필수지정 데이터 구축 여부
+    convergence_checks: list[dict] = Field(default_factory=list)  # [{program_id,name,required,earned,gap,matched_courses}]
+    unresolved_credits: float = 0.0
+
+
+# ---------- 리스크 ----------
+class RiskReason(BaseModel):
+    factor: str
+    detail: str
+    severity: int = 0
+
+
+class RiskAssessment(BaseModel):
+    grade: Literal["A", "B", "C", "D"]
+    label: str
+    score: int = 0
+    reasons: list[RiskReason] = Field(default_factory=list)
+
+
+# ---------- 로드맵 ----------
+class RoadmapCourse(BaseModel):
+    course_id: str
+    name_ko: str = ""
+    credits: float = 0.0
+    satisfies: str = ""                              # 영역/필수
+    reason: str = ""
+    source_ids: list[str] = Field(default_factory=list)
+
+
+class RoadmapTerm(BaseModel):
+    term: str
+    courses: list[RoadmapCourse] = Field(default_factory=list)
+    term_credits: float = 0.0
+    term_risk: Literal["low", "medium", "high"] = "low"
+    notes: list[str] = Field(default_factory=list)
+
+
+class RoadmapPlan(BaseModel):
+    status: Literal["generated", "not_generated", "blocked"] = "not_generated"
+    feasible: bool | None = None
+    terms: list[RoadmapTerm] = Field(default_factory=list)
+    why_this_plan: str = ""
+    blocked_reason: str | None = None
+    relaxation_hint: str | None = None
+    assumptions: list[str] = Field(default_factory=list)
+
+
+class ValidationError(BaseModel):
+    code: str
+    detail: str
+    course_id: str | None = None
+
+
+class ValidationReport(BaseModel):
+    ok: bool = True
+    errors: list[ValidationError] = Field(default_factory=list)
+
+
+# ---------- 근거 / 응답 ----------
+class Source(BaseModel):
+    id: str                                          # G1, G2, ...
+    doc: str = ""
+    page: int | None = None
+    source_type: Literal["requirement_rule", "catalog_course", "gen_ed"] = "requirement_rule"
+    ref: str | None = None                           # rule area or course_id
+
+
+class NodeTraceEvent(BaseModel):
+    node: str
+    status: Literal["ok", "warn", "skip", "fail"] = "ok"
+    summary: str = ""
+
+
+class AuditPipelineResponse(BaseModel):
+    context: StudentContext
+    verified_transcript: VerifiedTranscript
+    audit: AuditResult
+    risk: RiskAssessment
+    roadmap: RoadmapPlan
+    sources: list[Source] = Field(default_factory=list)
+    node_trace: list[NodeTraceEvent] = Field(default_factory=list)
+    report_markdown: str = ""

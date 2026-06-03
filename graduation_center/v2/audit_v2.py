@@ -214,7 +214,7 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
                            for c in overlap]
         group_short = [gc for gc in group_checks if gc["gap"] > 0]
         note = (f"제1전공과 겹치는 {overlap_cr:.0f}학점은 중복인정(양쪽 동시) 최대 {cap:.0f}까지. "
-                f"한도 초과·미선택분은 제1전공 또는 {('연계' if is_yeonge else '융합')}전공 한쪽에만 산입돼 양쪽 학점이 달라집니다.")
+                f"한도 초과·미선택분은 제1전공 또는 {('연계' if is_yeonge else '융합')}전공 한쪽에만 인정돼 양쪽 학점이 달라집니다.")
         out.append({
             "program_id": pid, "name": name, "track": track,
             "conv_type": "연계전공" if is_yeonge else "융합전공",

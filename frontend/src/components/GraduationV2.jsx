@@ -54,8 +54,6 @@ function Gauge({ label, earned, required, gap, sub }) {
 
 const ASSIGN_STYLE = {
   "중복인정 추천": { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
-  "제1전공 산입": { bg: "#ede9fe", border: "#c4b5fd", color: "#6d28d9" },
-  "융합 산입": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
   "중복인정": { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
   "융합 유지": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
   "융합전용": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
@@ -143,7 +141,7 @@ function ConvergenceBlock({ cc, C, first }) {
         <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: 10, marginBottom: 8 }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: "#b45309", marginBottom: 4 }}>📋 졸업 가능 시나리오 (미이수 과목 추가 이수)</div>
           <div style={{ fontSize: 11.5, color: "#7c4a12" }}>
-            다음 과목을 <strong>{cc.conv_type} 산입</strong>으로 이수하면 충족: {suggest.map((c) => `${c.name_ko}(${c.credits}${c.group ? "·" + c.group : ""})`).join(", ")}
+            다음 {cc.conv_type} 과목을 추가 이수하면 충족: {suggest.map((c) => `${c.name_ko}(${c.credits}${c.group ? "·" + c.group : ""})`).join(", ")}
           </div>
         </div>
       )}
@@ -175,11 +173,16 @@ function ConvergenceBlock({ cc, C, first }) {
                     <span style={{ display: "inline-flex", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
                       {SEL3.map(([key, lbl, col, bg, bd]) => {
                         const on = sel[ovIdx] === key;
+                        // 중복인정은 한도(cap) 초과하면 선택 불가
+                        const wouldExceed = key === "dup" && !on && (dupCr + ov[ovIdx].credits > cap);
                         return (
-                          <button key={key} onClick={() => setSel((s) => ({ ...s, [ovIdx]: key }))}
-                            style={{ fontSize: 10, fontWeight: 700, padding: "3px 6px", cursor: "pointer", border: "none",
+                          <button key={key} disabled={wouldExceed}
+                            onClick={() => !wouldExceed && setSel((s) => ({ ...s, [ovIdx]: key }))}
+                            title={wouldExceed ? `중복인정 한도 ${cap}학점 초과` : ""}
+                            style={{ fontSize: 10, fontWeight: 700, padding: "3px 6px",
+                              cursor: wouldExceed ? "not-allowed" : "pointer", border: "none",
                               borderLeft: key !== "dup" ? `1px solid ${C.border}` : "none",
-                              background: on ? bg : "#fff", color: on ? col : "#9aa6b8" }}>{lbl}</button>
+                              background: on ? bg : "#fff", color: on ? col : (wouldExceed ? "#d1d5db" : "#9aa6b8") }}>{lbl}</button>
                         );
                       })}
                     </span>
@@ -202,7 +205,7 @@ function ConvergenceBlock({ cc, C, first }) {
 export default function GraduationV2({ apiBase }) {
   const [programs, setPrograms] = React.useState({});
   const [ctx, setCtx] = React.useState({
-    program_id: "ai_bigdata", current_term: "2026-1", remaining_semesters: 2,
+    student_id: "", program_id: "ai_bigdata", current_term: "2026-1", remaining_semesters: 2,
     max_credits_per_term: 18, prev_term_gpa_ge_375: false,
     seasonal_semester_allowed: false, gpa_min_met: "unknown",
     preferences: "", convergence_program_ids: [], convergence_tracks: {},
@@ -228,10 +231,16 @@ export default function GraduationV2({ apiBase }) {
       }).catch(() => {});
   }, [apiBase]);
 
+  const admissionYear = () => {
+    const m = String(ctx.student_id || "").match(/(20\d{2})/);
+    return m ? Number(m[1]) : null;
+  };
   const contextPayload = () => ({
     ...ctx,
     remaining_semesters: Number(ctx.remaining_semesters),
     max_credits_per_term: Number(ctx.max_credits_per_term),
+    admission_year: admissionYear(),
+    masked_student_id: ctx.student_id ? ctx.student_id.slice(0, 4) + "XXXX" : null,
     preferences: ctx.preferences ? ctx.preferences.split(",").map((s) => s.trim()).filter(Boolean) : [],
   });
 
@@ -331,6 +340,8 @@ export default function GraduationV2({ apiBase }) {
         <div style={card}>
           <div style={sectionTitle}>🎓 학생 정보 & 수강내역</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+            <Field label="학번" hint="입학연도 기준 요람 적용 (예: 20231234 → 2023 요람)">
+              <input style={inputStyle} placeholder="예: 20231234" value={ctx.student_id} onChange={(e) => setCtx({ ...ctx, student_id: e.target.value })} /></Field>
             <Field label="주전공">
               <select style={inputStyle} value={ctx.program_id} onChange={(e) => onProgramChange(e.target.value)}>
                 {primaryPrograms.map(([id, p]) => <option key={id} value={id}>{p.name_ko}</option>)}

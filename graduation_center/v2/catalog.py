@@ -99,30 +99,49 @@ def load_catalog(program_id: str) -> dict:
             "group_rules": data.get("group_rules")}
 
 
+def _requirements_by_year(program_id: str, year: int | None) -> dict | None:
+    """학번(입학연도) 요람 별표5 영역 최저학점. 없으면 None."""
+    if not year:
+        return None
+    p = V2_DIR / "requirements_by_year.json"
+    by_year = (json.loads(p.read_text(encoding="utf-8")).get("programs", {}) if p.exists() else {}).get(program_id)
+    if not by_year:
+        return None
+    # 정확 연도만 적용(기본값 graduation_requirements.json이 최신 요람 기준이므로 임의 근사 금지)
+    return by_year.get(str(year))
+
+
 def assemble_requirement_profile(context: StudentContext) -> RequirementProfile:
-    """graduation_requirements.json(카테고리 총계) + 카탈로그 필수과목으로 요건 프로파일 구성."""
+    """graduation_requirements.json(카테고리 총계) + 카탈로그 필수과목으로 요건 프로파일 구성.
+
+    학번(입학연도) 요람 별표5(requirements_by_year.json)가 있으면 영역 최저학점은 그것을 우선.
+    """
     cat = load_catalog(context.program_id)
     req = json.loads(GRAD_REQ.read_text(encoding="utf-8"))["departments"][cat["requirements_key"]]
     gyo = req.get("교양", {})
+    yr = _requirements_by_year(context.program_id, context.admission_year)
     area_min = {
-        "전공": float(req.get("전공_최저", 0)),
-        "기초교양": float(gyo.get("기초교양", 0)),
-        "핵심교양": float(gyo.get("핵심교양", 0)),
-        "자유교양": float(gyo.get("자유교양", 0)),
-        "일반선택": float(req.get("일반선택", 0)),
+        "전공": float((yr or {}).get("전공", req.get("전공_최저", 0))),
+        "기초교양": float((yr or {}).get("기초교양", gyo.get("기초교양", 0))),
+        "핵심교양": float((yr or {}).get("핵심교양", gyo.get("핵심교양", 0))),
+        "자유교양": float((yr or {}).get("자유교양", gyo.get("자유교양", 0))),
+        "일반선택": float((yr or {}).get("일반선택", req.get("일반선택", 0))),
     }
+    total_min = float((yr or {}).get("졸업_최저합계", req.get("졸업_최저합계", 0)))
     required_ids = [c.course_id for c in cat["courses"] if c.is_required]
     gen = load_gen_ed().get("core_liberal", {})
+    applied = f"{context.admission_year} 요람 (학번 기준)" if (yr and context.admission_year) else "2025 요람"
     return RequirementProfile(
         program_id=context.program_id,
         department_name_ko=cat["department_name_ko"],
         admission_year=context.admission_year,
-        total_credits_min=float(req.get("졸업_최저합계", 0)),
+        total_credits_min=total_min,
         area_min=area_min,
         required_course_ids=required_ids,
         core_area_min=float(gen.get("area_min_credits", 3)),
         core_area_min_overrides={k: float(v) for k, v in (req.get("핵심교양_영역최저") or {}).items()},
         core_total_min=float(gen.get("total_min_credits", 15)),
+        applied_yoram=applied,
     )
 
 

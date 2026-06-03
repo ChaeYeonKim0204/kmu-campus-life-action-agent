@@ -55,36 +55,100 @@ function Gauge({ label, earned, required, gap, sub }) {
 const ASSIGN_STYLE = {
   "중복인정 추천": { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
   "제1전공 산입": { bg: "#ede9fe", border: "#c4b5fd", color: "#6d28d9" },
+  "융합 산입": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
+  "중복인정": { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
   "융합 유지": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
   "융합전용": { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
   "미이수": { bg: "#f3f4f6", border: "#e5e7eb", color: "#9aa6b8" },
 };
 
+function StatBox({ label, earned, required, C }) {
+  const ok = earned >= required;
+  return (
+    <div style={{ flex: 1, minWidth: 140, border: `1px solid ${ok ? "#a7f3d0" : "#fecaca"}`, borderRadius: 10,
+      padding: "10px 12px", background: ok ? "#f0fdf4" : "#fef2f2" }}>
+      <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: ok ? "#047857" : "#dc2626" }}>
+        {earned}<span style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}> / {required}</span>
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: ok ? "#047857" : "#dc2626" }}>{ok ? "충족" : `${(required - earned).toFixed(0)}학점 부족`}</div>
+    </div>
+  );
+}
+
 function ConvergenceBlock({ cc, C, first }) {
+  const flex = cc.flexible_courses || [];
+  // 기본 배정: 제1전공 요건을 먼저 채우도록(전공필수·고학점 우선) 그리디 → 나머지는 융합 유지
+  const defaultAlloc = React.useMemo(() => {
+    const need = Math.max(0, (cc.primary_required || 0) - (cc.primary_base || 0));
+    const order = [...flex.keys()].sort((i, j) =>
+      (flex[j].primary_required - flex[i].primary_required) || (flex[j].credits - flex[i].credits));
+    const a = {}; let acc = 0;
+    for (const i of order) { if (acc < need) { a[i] = "primary"; acc += flex[i].credits; } else a[i] = "fusion"; }
+    return a;
+  }, [cc]);
+  const [alloc, setAlloc] = React.useState(defaultAlloc);
+  React.useEffect(() => { setAlloc(defaultAlloc); }, [defaultAlloc]);
+
+  const toPrimary = flex.reduce((s, f, i) => s + (alloc[i] === "primary" ? f.credits : 0), 0);
+  const primaryCr = (cc.primary_base || 0) + toPrimary;
+  const fusionCr = (cc.fusion_base || 0) + (cc.flexible_credits || 0) - toPrimary;
+  const fits = primaryCr >= (cc.primary_required || 0) && fusionCr >= cc.required;
+
   const groups = [...new Set((cc.courses || []).map((c) => c.group || "기타"))].sort();
   const taken = (cc.courses || []).filter((c) => c.taken).length;
+
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, background: C.soft, marginTop: first ? 0 : 12 }}>
-      <Gauge label={cc.name} sub={`${cc.track}·${cc.conv_type}`} earned={cc.earned} required={cc.required} gap={cc.gap} />
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 11.5, color: C.muted, margin: "2px 0 8px" }}>
-        <span>제1전공 겹침 {cc.overlap_credits} → 중복인정 {cc.double_recognizable}/{cc.double_cap}</span>
-        {cc.group_checks?.map((gc, gi) => (
-          <span key={gi} style={{ color: gc.gap > 0 ? "#b45309" : C.ok }}>{gc.group} {gc.earned}/{gc.required}{gc.gap > 0 ? ` (${gc.gap}↓)` : " ✓"}</span>
-        ))}
-        <span>이수 {taken}/{(cc.courses || []).length}과목</span>
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, background: C.soft, marginTop: first ? 0 : 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, color: C.navy, marginBottom: 8 }}>{cc.name} <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 400 }}>{cc.track}·{cc.conv_type} · 이수 {taken}/{(cc.courses || []).length}과목</span></div>
+
+      {/* 동시배정 결과 — 제1전공/융합 이수학점(배정 반영) */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+        <StatBox label="제1전공 전공 (배정 반영)" earned={primaryCr} required={cc.primary_required || 0} C={C} />
+        <StatBox label={`${cc.conv_type} 이수 (배정 반영)`} earned={fusionCr} required={cc.required} C={C} />
       </div>
-      {cc.recommend_double_count?.length > 0 && (
-        <div style={{ fontSize: 11.5, color: C.accent, marginBottom: 8 }}>
-          💡 중복인정 신청 권장(제1전공·다전공 전공필수 우선): <strong>{cc.recommend_double_count.join(", ")}</strong>
+      <div style={{ fontSize: 11.5, color: fits ? "#047857" : "#b45309", marginBottom: 8 }}>
+        {fits
+          ? "✅ 현재 배정으로 제1전공·융합 둘 다 졸업요건 충족"
+          : `⚠️ 현재 배정으로는 둘 다 충족 불가 — ${primaryCr < (cc.primary_required || 0) ? `제1전공 ${((cc.primary_required || 0) - primaryCr).toFixed(0)}학점` : `${cc.conv_type} ${(cc.required - fusionCr).toFixed(0)}학점`} 부족. 추가 이수 필요(대체 시나리오)`}
+      </div>
+
+      {/* 한도초과 겹침 — 클릭 배정 */}
+      {flex.length > 0 && (
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, marginBottom: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: C.navy, marginBottom: 2 }}>중복인정 한도 초과 겹침과목 — 클릭해서 산입 전공 선택</div>
+          <div style={{ fontSize: 10.5, color: C.muted, marginBottom: 7 }}>
+            한도({cc.double_cap}학점) 내 중복인정은 양쪽 동시 인정. 초과분은 <strong>한쪽에만</strong> 산입돼 위 학점이 바뀝니다.
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {flex.map((f, i) => {
+              const p = alloc[i] === "primary";
+              return (
+                <button key={i} onClick={() => setAlloc((a) => ({ ...a, [i]: a[i] === "primary" ? "fusion" : "primary" }))}
+                  title="클릭하여 제1전공↔융합 전환"
+                  style={{ fontSize: 11.5, padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontWeight: 600,
+                    border: `1px solid ${p ? "#c4b5fd" : "#a7f3d0"}`, background: p ? "#ede9fe" : "#ecfdf5", color: p ? "#6d28d9" : "#047857" }}>
+                  {f.name_ko}({f.credits}) <span style={{ opacity: .8 }}>→ {p ? "제1전공" : cc.conv_type}</span>{f.primary_required ? " ★" : ""}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
-      {/* 교육과정 전체 과목 — 그룹별, 이수 강조, 이수구분 배정 */}
+      {cc.recommend_double_count?.length > 0 && (
+        <div style={{ fontSize: 11.5, color: C.accent, marginBottom: 8 }}>
+          💡 중복인정(양쪽 동시) 권장 — 제1전공·다전공 전공필수 우선: <strong>{cc.recommend_double_count.join(", ")}</strong>
+        </div>
+      )}
+
+      {/* 교육과정 전체 — 그룹별, 이수 강조 */}
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: "#fff" }}>
         {groups.map((g) => (
           <div key={g}>
             <div style={{ background: C.soft, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, color: C.navy, borderTop: `1px solid ${C.border}` }}>{g}</div>
             {(cc.courses || []).filter((c) => (c.group || "기타") === g).map((c, ci) => {
-              const a = ASSIGN_STYLE[c.assignment] || ASSIGN_STYLE["미이수"];
+              const label = c.flexible ? (alloc[flex.findIndex((f) => f.name_ko === c.name_ko)] === "primary" ? "제1전공 산입" : "융합 산입") : c.assignment;
+              const a = ASSIGN_STYLE[label] || ASSIGN_STYLE["미이수"] || { bg: "#eef5ff", border: "#cfe1fb", color: "#1d6fe0" };
               return (
                 <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", fontSize: 12,
                   borderTop: "1px solid #f1f4f8", opacity: c.taken ? 1 : 0.5, background: c.taken ? "#fafcff" : "#fff" }}>
@@ -95,7 +159,7 @@ function ConvergenceBlock({ cc, C, first }) {
                   </span>
                   <span style={{ width: 28, textAlign: "right", color: C.muted }}>{c.credits}</span>
                   <span style={{ width: 92, textAlign: "center", fontSize: 10.5, fontWeight: 600, color: a.color,
-                    background: a.bg, border: `1px solid ${a.border}`, borderRadius: 5, padding: "2px 0", whiteSpace: "nowrap" }}>{c.assignment}</span>
+                    background: a.bg, border: `1px solid ${a.border}`, borderRadius: 5, padding: "2px 0", whiteSpace: "nowrap" }}>{label}</span>
                 </div>
               );
             })}

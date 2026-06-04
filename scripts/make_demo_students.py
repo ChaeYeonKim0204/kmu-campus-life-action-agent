@@ -76,14 +76,21 @@ def _pref(course: dict) -> int:
     return (gl - 1) * 2 + (0 if term0 == "1" else 1)
 
 
+def _off(c):
+    """개설학기 제약 — ['1']/['2']면 해당 정규학기에만 배치(codex 데모검사 HIGH: 1학기 전용
+    과목이 2학기 파일에 있던 어색함). 양학기·미상은 None(제약 없음)."""
+    t = c.get("offered_terms") or []
+    return t[0] if len(t) == 1 and t[0] in ("1", "2") else None
+
+
 def major(cs):
     return [{"code": c["course_id"], "name": c["name_ko"], "area": "전공선택",
-             "credits": c["credits"], "pref": _pref(c)} for c in cs]
+             "credits": c["credits"], "pref": _pref(c), "off": _off(c)} for c in cs]
 
 
 def ds_only(cs):  # dsci 전용 과목은 일반선택 이수구분으로 수강 — 융합은 보통 2~3학년부터
     return [{"code": c["course_id"], "name": c["name_ko"], "area": "일반선택",
-             "credits": c["credits"], "pref": max(4, _pref(c))} for c in cs]
+             "credits": c["credits"], "pref": max(4, _pref(c)), "off": _off(c)} for c in cs]
 
 
 def gened(offset=0, n_per_area=1):  # 핵심교양 — 실과목명, 학생별 offset으로 다양화. 1~2학년 분산.
@@ -120,7 +127,7 @@ def schedule(rows: list[dict], n_terms: int, start_year: int):
     nones = [r for r in rows if r["pref"] is None]
     for i, r in enumerate(nones):
         r["pref"] = (i * n_terms) // max(1, len(nones))
-    # 같은 과목 중복(재수강 서사)은 두 번째 행을 2학기 뒤로
+    # 같은 과목 중복(재수강 서사)은 두 번째 행을 2학기 뒤로(+2 = 같은 정규학기 종류라 개설학기 유지)
     seen: dict[str, int] = {}
     for r in rows:
         k = r["code"]
@@ -128,31 +135,40 @@ def schedule(rows: list[dict], n_terms: int, start_year: int):
             r["pref"] = min(n_terms - 1, seen[k] + 2)
         else:
             seen[k] = min(n_terms - 1, max(0, r["pref"]))
-    ordered = sorted(rows, key=lambda r: (min(n_terms - 1, max(0, r["pref"])),
+    # 개설학기 제약(off) 과목을 같은 pref에서 먼저 배치 — 유연 과목이 정규를 선점해
+    # 제약 과목이 계절로도 못 가 배치 실패하는 문제 방지(총학점 > 정규 용량인 학생)
+    # 개설학기 제약(off) 과목 전역 우선 배치 — 같은 pref 우선만으로는 낮은 pref의 유연
+    # 과목들이 해당 parity 학기를 선점해 늦은 pref 제약 과목이 갈 곳을 잃음(알고리즘 사례). 기초교양도 1학년 우선(codex 데모검사 MED)
+    ordered = sorted(rows, key=lambda r: (0 if (r.get("off") or r["area"] == "기초교양") else 1,
+                                          min(n_terms - 1, max(0, r["pref"])),
                                           {"기초교양": 0, "핵심교양": 1, "전공선택": 2}.get(r["area"], 3)))
     reg = [[] for _ in range(n_terms)]
     season: dict[int, list] = {}                       # 정규 i 뒤 계절(하계=짝수 i, 동계=홀수 i)
     for r in ordered:
         p = min(n_terms - 1, max(0, r["pref"]))
+        off = r.get("off")                              # '1'/'2'면 해당 정규학기에만(개설학기 정합)
+        ok = (lambda t: off is None or (t % 2 == 0) == (off == "1"))
         placed = False
-        for t in list(range(p, n_terms)) + list(range(p - 1, -1, -1)):   # 뒤로 밀고, 안 되면 앞으로
+        for t in [t for t in list(range(p, n_terms)) + list(range(p - 1, -1, -1)) if ok(t)]:
             if sum(x["credits"] for x in reg[t]) + r["credits"] <= REG_CAP:
                 reg[t].append(r)
                 placed = True
                 break
-        if not placed:                                  # 정규 전부 만석 → 계절학기
+        if not placed and off is None:                  # 계절은 개설학기 제약 없는 과목만(전공 단일학기 금지)
             for t in range(n_terms):
                 pool = season.setdefault(t, [])
                 if sum(x["credits"] for x in pool) + r["credits"] <= SEASONAL_CAP:
                     pool.append(r)
                     placed = True
                     break
-        assert placed, f"배치 실패: {r['name']}"
+        assert placed, f"배치 실패: {r['name']} (개설 {off or '제약없음'})"
     # 외톨이 학기 정리: 6학점 미만 정규학기는 앞 학기 여유로 흡수(1과목짜리 학기 어색함 방지)
     for t in range(n_terms - 1, 0, -1):
         if reg[t] and sum(x["credits"] for x in reg[t]) < 6:
             for r in list(reg[t]):
                 for u in range(t - 1, -1, -1):
+                    if r.get("off") and ((u % 2 == 0) != (r["off"] == "1")):
+                        continue                        # 개설학기 어긋나는 흡수 금지
                     if sum(x["credits"] for x in reg[u]) + r["credits"] <= REG_CAP:
                         reg[u].append(r)
                         reg[t].remove(r)
@@ -197,7 +213,10 @@ def build_students():
                  if AI_BY_NAME.get(c["name_ko"]) and not AI_BY_NAME[c["name_ko"]].get("is_required")]
     need = 48 - sum(c["credits"] for c in s1_major)
     ov5 = {o["course_id"][:5] for o in ov7}
-    s1_major += [c for c in ELECTIVE if c not in s1_major and c["course_id"][:5] not in ov5][: max(0, int(need // 3) + 1)]
+    # 충전용 선택과목은 양학기 개설 우선 — 단일학기 전용이 몰리면 parity 배치 불가(개설학기 정합)
+    fillers = sorted([c for c in ELECTIVE if c not in s1_major and c["course_id"][:5] not in ov5],
+                     key=lambda c: 0 if len(c.get("offered_terms") or []) != 1 else 1)
+    s1_major += fillers[: max(0, int(need // 3) + 1)]
     s1 = major(s1_major) + ds_only(DS_ONLY_B[:5]) + gened(0) + basic() + free(0, 2) + etc(15, 0)
 
     # S2 3학년 — dsci A그룹만(B그룹 0) → 그룹최저 부족. 1학년 필수는 전부 이수,

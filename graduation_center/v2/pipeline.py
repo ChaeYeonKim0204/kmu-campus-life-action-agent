@@ -52,7 +52,7 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
                           convergence_tracks=ctx.convergence_tracks)
     plan, vrep, pctx = run_planner(audit, profile, ctx, verified, client=client)
     feasible = plan.feasible if plan.status != "not_generated" else None
-    risk = compute_risk(audit, ctx, roadmap_feasible=feasible)
+    risk = compute_risk(audit, ctx, roadmap_feasible=feasible, overflow=plan.overflow)
     sources = [Source.model_validate(s) for s in pctx.get("sources", [])]
 
     conv_n = len(audit.convergence_checks)

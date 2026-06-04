@@ -6,7 +6,7 @@ planner 미가동(키 없음)은 강등 사유가 아니다. roadmap 실현불�
 from __future__ import annotations
 
 from graduation_center.v2.models_v2 import (
-    AuditResult, RiskAssessment, RiskReason, StudentContext,
+    AuditResult, OverflowScenario, RiskAssessment, RiskReason, StudentContext,
 )
 from graduation_center.v2.catalog import PREV_GPA_BONUS, SEASONAL_TERM_CAP
 
@@ -20,6 +20,7 @@ def _worse(a: str, b: str) -> str:
 
 def compute_risk(
     audit: AuditResult, context: StudentContext, roadmap_feasible: bool | None = None,
+    overflow: OverflowScenario | None = None,
 ) -> RiskAssessment:
     reasons: list[RiskReason] = []
     grade = "A"
@@ -109,6 +110,14 @@ def compute_risk(
         # '졸업불가 가능성'은 과장 — C로 완화('D 졸업불가 + feasible 로드맵' 동시표시 모순 방지)
         grade = "C"
         reasons.append(RiskReason(factor="로드맵", detail="실현 가능한 학기별 계획 존재 — 등급 완화(C)", severity=0))
+    if grade == "D" and context.gpa_min_met != "no" and overflow is not None \
+            and overflow.extra_semesters <= 1:
+        # blocked라도 초과학기 1학기로 닫히는 구체적 졸업 경로(overflow 시나리오)가 있으면
+        # 'D 졸업불가 가능성' 배지와 '초과학기 1학기 → 졸업' 카드의 무화해 병치 모순 — C로 완화
+        grade = "C"
+        reasons.append(RiskReason(
+            factor="로드맵",
+            detail=f"초과학기 {overflow.extra_semesters}학기로 졸업 경로 존재 — 등급 완화(C)", severity=0))
 
     if grade == "A" and not reasons:
         reasons.append(RiskReason(factor="종합", detail="확인된 부족·위험 항목 없음", severity=0))

@@ -40,6 +40,7 @@ from graduation_center.models import (
 )
 from graduation_center.service import GraduationServiceUnavailable
 from graduation_center.v2 import pipeline as v2_pipeline
+from graduation_center.v2 import whatif as v2_whatif
 from graduation_center.v2.catalog import load_programs
 from graduation_center.v2.excel_parser import fail_fast_columns as v2_fail_fast_columns
 from ingestion.live_refresh import refresh_sources_for_issue
@@ -332,6 +333,27 @@ def graduation_v2_audit(payload: dict) -> dict:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다.")
     try:
         return v2_pipeline.run_audit(payload).model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 program_id: {exc}") from exc
+
+
+@app.post("/graduation/v2/whatif")
+def graduation_v2_whatif(payload: dict) -> dict:
+    """졸업 시나리오 상담 Agent — 자연어 질문 → 매개변수 추출(LLM) → 조건 가드 →
+    졸업사정 재실행(결정론, before/after) → 비교·다음 행동. 해석·재실행 실패는
+    500이 아니라 status="unsupported"로 degrade(데모 중 에러 화면 금지)."""
+    ctx = payload.get("context")
+    if not isinstance(ctx, dict) or "program_id" not in ctx:
+        raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다.")
+    question = str(payload.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question 이 필요합니다 (1~200자).")
+    if len(question) > 200:
+        raise HTTPException(status_code=400, detail="question 은 200자 이내여야 합니다.")
+    try:
+        return v2_whatif.run_whatif(payload).model_dump()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:

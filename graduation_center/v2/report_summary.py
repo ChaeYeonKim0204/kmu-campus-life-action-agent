@@ -28,7 +28,7 @@ from graduation_center.v2.whatif import (
 )
 
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data/graduation/v2/summary_cache.json"
-SUMMARY_SCHEMA_VERSION = 4        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
+SUMMARY_SCHEMA_VERSION = 5        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
 MAX_CANDIDATES = 5                # LLM 제안 상한(Thought의 폭)
 MAX_SIMULATIONS = 4               # pre 통과 후보 시뮬레이션 상한(비용 가드)
 MAX_ACCEPTED = 3                  # 최종 채택 상한
@@ -220,6 +220,37 @@ def _summary_schema(fact_ids: list[str]) -> dict:
     }
 
 
+_GRADE_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+
+def _effect(diff) -> tuple[str, str]:
+    """시나리오 효과 라벨·종류 — 결정론 합성(프론트 추측 금지, codex R1). build_diff 값만 사용."""
+    parts, kind = [], "neutral"
+    rb, ra = diff.risk_before, diff.risk_after
+    if rb != ra and rb in _GRADE_ORDER and ra in _GRADE_ORDER:
+        better = _GRADE_ORDER[ra] < _GRADE_ORDER[rb]
+        parts.append(f"리스크 {rb}→{ra} {'개선' if better else '악화'}")
+        kind = "improve" if better else "worsen"
+    gb, ga = diff.graduation_term_before, diff.graduation_term_after
+    if gb and ga and gb != ga:
+        sooner = ga < gb
+        parts.append(f"예상 졸업 {'단축' if sooner else '지연'}")
+        if kind == "neutral":
+            kind = "improve" if sooner else "worsen"
+    if not diff.overflow_before and diff.overflow_after:
+        parts.append("초과학기 발생")
+        kind = "worsen" if kind != "improve" else kind
+    elif diff.overflow_before and not diff.overflow_after:
+        parts.append("초과학기 해소")
+        if kind == "neutral":
+            kind = "improve"
+    if diff.feasible_before is not True and diff.feasible_after is True:
+        parts.append("배치 가능 전환")
+        if kind == "neutral":
+            kind = "improve"
+    return (" · ".join(parts) or "변화 없음", kind)
+
+
 def _scenario_facts(outcomes: list[ScenarioOutcome]) -> list[dict]:
     out = []
     for sc in outcomes:
@@ -255,7 +286,10 @@ sim_cap/accept_cap=상한 초과로 미채택일 뿐 효과 없음이 아님 —
 - 채택 시나리오가 없으면: "검토 결과 현 계획 유지가 최적"을 headline으로, recommendation은 '유지 권장'.
 - headline은 이 학생의 핵심 갈림길 한 문장(예: "다전공 유지 시 +1학기 vs 포기 시 적시 졸업 — 이게 핵심 선택").
 - **학생에게 말하듯 쉬운 한국어로** — blocked·feasible 같은 시스템 용어 금지, F1/S1 같은 근거 id를
-  본문에 쓰지 마라(근거는 fact_ids 필드로만 — 화면이 배지로 따로 단다)."""
+  본문에 쓰지 마라(근거는 fact_ids 필드로만 — 화면이 배지로 따로 단다).
+- **권고 변별**: 채택 시나리오 중 리스크·졸업시점이 *개선*된 것이 있으면 recommendation과
+  headline에 그 방향을 반영하라. 개선이 없고 로드맵이 배치 가능 상태면 '유지 권장'.
+  (판정은 여전히 관찰값 인용일 뿐 — 새 판정을 만들지 마라.)"""
 
 
 # 한글 인접("A등급"·"D입니다")도 잡는 등급 패턴 — 영문 단어 내부(AI·CLASS)는 제외(codex R1)
@@ -536,7 +570,8 @@ def run_report_summary(payload: dict, audit, risk, plan, ctx: StudentContext,
             total_gap_before=diff.total_gap_before, total_gap_after=diff.total_gap_after,
             graduation_term_before=diff.graduation_term_before,
             graduation_term_after=diff.graduation_term_after,
-            feasible_after=diff.feasible_after, overflow_after=diff.overflow_after))
+            feasible_after=diff.feasible_after, overflow_after=diff.overflow_after,
+            effect_label=_effect(diff)[0], effect_kind=_effect(diff)[1]))
 
     review += sim_capped
     n_cand, n_acc = len(review), len(outcomes)

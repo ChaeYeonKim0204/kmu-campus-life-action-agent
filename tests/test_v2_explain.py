@@ -30,9 +30,10 @@ CTX = StudentContext(program_id="ai_bigdata")
 def test_select_items_priority_and_cap():
     items = explain.select_explain_items(_audit(), PROFILE, CTX)
     assert len(items) <= explain.MAX_ITEMS
-    assert items[0]["key"] == "missing_required"          # 필수 > 융합 > 영역
-    assert items[1]["key"] == "conv:dsci_convergence"
-    assert "중복인정 12/12" in items[1]["context"]
+    # 필수과목은 LLM 해설 대상에서 제외(결정론 섹션으로 분리 — 3파트 develop §A)
+    assert all(i["key"] != "missing_required" for i in items)
+    assert items[0]["key"] == "conv:dsci_convergence"     # 융합 > 영역
+    assert "중복인정 12/12" in items[0]["context"]
 
 
 def test_select_items_empty_when_satisfied():
@@ -100,7 +101,7 @@ class _FakeClient:
         @staticmethod
         def create(**kwargs):
             return _FakeClient._Resp(json.dumps({"explanations": [{
-                "item_key": "missing_required",
+                "item_key": "conv:dsci_convergence",
                 "lines": [{"text": "필수지정 과목은 졸업 전 반드시 이수해야 합니다.", "source_ids": ["Y1"]}],
             }]}, ensure_ascii=False))
 
@@ -110,7 +111,7 @@ def test_run_explain_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(explain, "retrieve_yoram",
                         lambda q, c, top_k=4: [{"page": 693, "section": "졸업요건",
                                                 "text": "필수지정 과목 이수 규정"}])
-    a = _audit(convergence_checks=[], area_gaps=[])
+    a = _audit(area_gaps=[], missing_required_names=[])   # 융합 항목으로 LLM 경로 검증
     secs, sources, trace, fb = explain.run_explain(a, PROFILE, CTX, client=_FakeClient())
     assert fb is None and len(secs) == 1
     assert secs[0].lines[0].grounded is True

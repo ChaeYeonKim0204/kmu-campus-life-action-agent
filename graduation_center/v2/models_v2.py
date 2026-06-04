@@ -217,6 +217,7 @@ class RoadmapPlan(BaseModel):
     relaxation_hint: str | None = None
     assumptions: list[str] = Field(default_factory=list)
     overflow: OverflowScenario | None = None          # 잔여 학기 초과 시 예상 시나리오
+    unplaced_by_area: dict[str, float] = Field(default_factory=dict)  # blocked 시 영역별 미배치(unfillable 포함)
 
 
 class ValidationError(BaseModel):
@@ -251,6 +252,7 @@ class ExplainSection(BaseModel):
     key: str                                               # missing_required / conv:<pid> / area:<영역> / core_areas
     title: str
     lines: list[ExplainLine] = Field(default_factory=list)
+    deterministic: bool = False                            # True면 LLM 미경유(결정론 합성) — 프론트 '결정론' 칩
 
 
 class NodeTraceEvent(BaseModel):
@@ -291,6 +293,8 @@ class ScenarioOutcome(BaseModel):
     graduation_term_after: str | None = None
     feasible_after: bool | None = None
     overflow_after: bool = False
+    effect_label: str = ""                           # 결정론 합성("리스크 C→B 개선" 등) — 프론트 추측 금지(codex)
+    effect_kind: Literal["improve", "worsen", "neutral"] = "neutral"
 
 
 class SummaryLine(BaseModel):

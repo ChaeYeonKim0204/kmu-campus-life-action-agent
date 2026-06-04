@@ -694,7 +694,9 @@ def plan_greedy(selected: list[dict], terms: list[list],
                                  confidence=it.get("confidence", "catalog_verified"),
                                  manual_check=it.get("manual", False)) for it in bucket[lab]]
         out.append(RoadmapTerm(term=lab, courses=courses, term_credits=round(used[lab], 1),
-                               term_risk="medium" if used[lab] > cap - 3 else "low"))
+                               # high: 상한 만재(float 안전 임계 — codex R2) — 표시용 산출(배치 로직 아님)
+                               term_risk=("high" if used[lab] >= cap - 0.01
+                                          else "medium" if used[lab] > cap - 3 else "low")))
     assumptions = []
     if any(it.get("manual") for it in selected):
         assumptions.append("이름기준·교양 슬롯 과목은 개설학기·학점을 수강신청 전 확인하세요.")
@@ -800,8 +802,15 @@ def run_planner(
             hint = "수강 후보가 없는 요건은 초과학기로 해결되지 않습니다 — 학과/교육과정 확인이 필요합니다."
         else:
             hint = "잔여 학기를 늘리거나 계절학기를 활용하세요."
+        # 미배치 영역별 집계 — unplaced(용량·개설학기) + unfillable(후보 고갈) 합산(적대 R1 §10).
+        # blocked_reason 문자열은 이 집계와 같은 원천(unplaced·unfillable)에서 조립 — 이중 진실 없음.
+        upa: dict[str, float] = {}
+        for it in unplaced:
+            upa[it.get("area") or "기타"] = round(upa.get(it.get("area") or "기타", 0) + it["credits"], 1)
+        for u in unfillable:
+            upa[u.get("area") or "기타"] = round(upa.get(u.get("area") or "기타", 0) + u["shortfall"], 1)
         plan = RoadmapPlan(status="blocked", feasible=False, terms=placed, why_this_plan=why,
-                           assumptions=assumptions, overflow=ov,
+                           assumptions=assumptions, overflow=ov, unplaced_by_area=upa,
                            blocked_reason=reason, relaxation_hint=hint)
     else:
         # 전부 배치됨(feasible) → 초과학기 카드는 모순이므로 표시하지 않음(단일 용량 모델)

@@ -102,6 +102,11 @@ def main() -> int:
         payload = {"context": v["context"], "verification_table": v["verification_table"],
                    "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
         r1 = pipeline.run_audit(payload, run_summary=True)        # 적재(미스 시 LLM 2콜)
+        # 해설 미확인률 집계(계획 §G — 안 재면 '~14%' 검증 불가). 결정론 섹션 제외(LLM 줄만)
+        llm_lines = [ln for sec in r1.explanations if not sec.deterministic for ln in sec.lines]
+        ung = sum(1 for ln in llm_lines if not ln.grounded)
+        print(f"  {sid[:12]} 해설: LLM {len(llm_lines)}줄 중 미확인 {ung}"
+              f" ({ung / len(llm_lines) * 100:.0f}%)" if llm_lines else f"  {sid[:12]} 해설: LLM 줄 0")
         s = r1.agent_summary
         if s is None:
             bad += 1
@@ -111,6 +116,7 @@ def main() -> int:
         hit = (r2.agent_summary is not None
                and r2.agent_summary.model_dump() == s.model_dump())
         acc = sorted({sc.reason_code for sc in s.scenarios})
+        effects = [f"{sc.effect_kind[:3]}:{sc.effect_label[:18]}" for sc in s.scenarios]
         rej = [f"{r.label[:18]}({r.rejected_by})" for r in s.candidates_review
                if r.verdict == "rejected"]
         recs.add((tuple(acc), s.recommendation))
@@ -118,6 +124,8 @@ def main() -> int:
         print(f"  {sid}: 후보 {len(s.candidates_review)} → 채택 {len(s.scenarios)} {acc}"
               f" · 권고 [{s.recommendation}] · 캐시 {'✅' if hit else '❌ 미스!'}")
         print(f"    headline: {s.headline[:80]}")
+        if effects:
+            print(f"    효과: {'; '.join(effects)[:110]}")
         if rej:
             print(f"    제외: {'; '.join(rej)[:100]}")
         if not hit:

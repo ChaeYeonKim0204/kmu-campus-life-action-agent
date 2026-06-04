@@ -33,19 +33,16 @@ _STUDENT_ID = re.compile(r"\b(20\d{2})\d{4}\b")
 # ---------- 1) 해설 대상 선정 (결정론) ----------
 def select_explain_items(audit: AuditResult, profile: RequirementProfile,
                          ctx: StudentContext) -> list[dict]:
-    """부족 항목을 우선순위(필수 > 융합 > 영역 > 핵심교양 세부)로 최대 3개 선정."""
+    """부족 항목을 우선순위(융합 > 영역 > 핵심교양 세부)로 최대 3개 선정.
+
+    필수과목(missing_required)은 LLM 해설 대상에서 **제외**(2026-06-06, 3파트 develop §A) —
+    캐시 실측에서 전체 미확인 줄의 61%가 이 항목이었고 원인은 검색 실패가 아니라 LLM 인용
+    누락. 필수 지정은 교과과정표 데이터로 이미 결정론 확정이라 pipeline이 결정론 섹션
+    (deterministic=True·G1 근거)을 합성한다 — "필수=결정론, 정책=RAG" 역할 분리.
+    """
     items: list[dict] = []
     dept = profile.department_name_ko
 
-    if audit.missing_required_names:
-        names = ", ".join(audit.missing_required_names[:4])
-        items.append({
-            "key": "missing_required",
-            "title": f"미이수 필수지정 과목 ({len(audit.missing_required_names)}과목)",
-            # 과목명 나열은 검색을 타과·과목소개 페이지로 끌고 감 — 교과과정표(비고 필수)로 유도
-            "query": f"{dept} 교육과정 전공 교과목 필수 이수구분",
-            "context": f"미이수 필수지정: {names}",
-        })
     for cc in audit.convergence_checks:
         short_groups = [gc for gc in cc.get("group_checks", []) if gc["gap"] > 0]
         if cc.get("gap", 0) > 0 or short_groups:

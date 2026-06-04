@@ -83,6 +83,23 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
     else:
         explanations, y_sources, explain_trace, explain_fallback = run_explain(
             audit, profile, ctx, client=client)
+        # 미이수 필수는 결정론 섹션으로 합성 — run_explain 밖(trace·캐시·ungrounded 집계는
+        # LLM 섹션만 대상, 캐시-라이브 모순 회피). 근거는 G1(적용 요람 졸업요건) — "필수=결정론,
+        # 정책 해설=RAG" 역할 분리(3파트 develop §A, 미확인 줄의 61%가 이 항목의 LLM 인용 누락이었음).
+        if audit.missing_required_names:
+            from graduation_center.v2.models_v2 import ExplainLine, ExplainSection
+            names = ", ".join(audit.missing_required_names)
+            det = ExplainSection(
+                key="missing_required", deterministic=True,
+                title=f"미이수 필수지정 과목 ({len(audit.missing_required_names)}과목) — 결정론 판정",
+                lines=[
+                    ExplainLine(text=f"{names} — 학과 교과과정표상 '필수' 지정 과목입니다"
+                                f"(적용 요람 {profile.applied_yoram} 졸업요건 기준).",
+                                source_ids=["G1"], grounded=True),
+                    ExplainLine(text="개설 학기를 반영해 아래 추천 로드맵에 배치되어 있습니다.",
+                                source_ids=["G1"], grounded=True),
+                ])
+            explanations = [det] + explanations
     sources += y_sources
 
     conv_n = len(audit.convergence_checks)

@@ -310,3 +310,48 @@ def test_summary_node_names_disjoint_from_existing():
     jsx = Path("frontend/src/components/WorkflowGraph.jsx").read_text(encoding="utf-8")
     for n in summary_nodes:
         assert n in jsx, f"WorkflowGraph BASE_NODES에 '{n}' 누락"
+
+
+# ---------- 3파트 develop (rev.2 계획 §F) ----------
+def test_deterministic_required_section_prepended():
+    """미이수 필수 → pipeline이 결정론 섹션(deterministic·G1·grounded) 합성, LLM 선정에선 제외."""
+    required = [c for c in CATALOG["courses"] if c["is_required"]]
+    rows = [{"code": c["course_id"], "name": c["name_ko"], "credits": c["credits"]}
+            for c in required[:4]]                       # 필수 일부만 이수 → 미이수 발생
+    v = pipeline.run_verify([(_xlsx(rows), "a.xlsx")], CTX)
+    payload = {"context": v["context"], "verification_table": v["verification_table"],
+               "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
+    resp = pipeline.run_audit(payload)                   # client 없음 — 해설 LLM 미실행이어도 합성됨
+    assert resp.audit.missing_required_names
+    det = [x for x in resp.explanations if x.deterministic]
+    assert len(det) == 1 and det[0].key == "missing_required"
+    assert all(l.grounded and l.source_ids == ["G1"] for l in det[0].lines)
+    # LLM 해설 대상에서는 제외(분리 계약)
+    from graduation_center.v2.explain import select_explain_items
+    from graduation_center.v2.catalog import assemble_requirement_profile
+    items = select_explain_items(resp.audit, assemble_requirement_profile(resp.context), resp.context)
+    assert all(i["key"] != "missing_required" for i in items)
+
+
+def test_effect_label_deterministic():
+    from graduation_center.v2.report_summary import _effect
+    from graduation_center.v2.models_v2 import WhatIfDiff
+    d = WhatIfDiff(risk_before="C", risk_after="B", graduation_term_before="2027-1",
+                   graduation_term_after="2026-2")
+    label, kind = _effect(d)
+    assert kind == "improve" and "리스크 C→B 개선" in label and "단축" in label
+    d2 = WhatIfDiff(risk_before="C", risk_after="C", overflow_before=False, overflow_after=True)
+    label2, kind2 = _effect(d2)
+    assert kind2 == "worsen" and "초과학기 발생" in label2
+    d3 = WhatIfDiff(risk_before="C", risk_after="C")
+    assert _effect(d3) == ("변화 없음", "neutral")
+
+
+def test_unplaced_by_area_on_blocked():
+    """blocked 학생의 영역별 미배치 집계(unfillable 포함) — S3급 갭 학생."""
+    ctx = dict(CTX, remaining_semesters=1)
+    payload = _payload(ctx, target_credits=20)
+    resp = pipeline.run_audit(payload)
+    if resp.roadmap.status == "blocked":
+        upa = resp.roadmap.unplaced_by_area
+        assert upa and all(v > 0 for v in upa.values())

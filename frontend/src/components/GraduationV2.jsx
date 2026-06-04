@@ -363,7 +363,10 @@ export default function GraduationV2({ apiBase }) {
   }));
   const setReason = (i, reason) => setTable((t) => t.map((row, idx) =>
     idx === i ? { ...row, exclude_reason: reason, included: false } : row));
-  const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pass)", "드랍·철회", "폐강", "기타"];
+  // 총평 시나리오 reason_code 한국어 칩(백엔드 _REASON_KO와 동기 — 3파트 develop §B)
+const REASON_KO = { graduate_faster: "더 빨리 졸업", overflow_relief: "초과학기 해소",
+  conv_tradeoff: "다전공 갈림길", load_adjust: "수강 부담 조정", timeline_extend: "기간 연장" };
+const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pass)", "드랍·철회", "폐강", "기타"];
   // 이수구분 편집(카탈로그 밖 행만) — 융합전공 area는 게이지 밖 애매 영역이라 제외(검증 codex)
   const EDITABLE_AREAS = ["전공", "기초교양", "핵심교양", "자유교양", "일반선택"];
   const setArea = (i, area) => setTable((t) => t.map((row, idx) =>
@@ -727,13 +730,24 @@ export default function GraduationV2({ apiBase }) {
                         {audit.agent_summary.scenarios.length > 0 && (
                           <table style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse", marginBottom: 10 }}>
                             <thead><tr style={{ color: C.muted, textAlign: "left" }}>
-                              <th style={{ padding: "4px 6px" }}>시나리오</th><th>리스크</th><th>총 부족</th><th>예상 졸업</th></tr></thead>
+                              <th style={{ padding: "4px 6px" }}>시나리오</th><th>효과</th><th>총 부족</th><th>예상 졸업</th></tr></thead>
                             <tbody>
                               {audit.agent_summary.scenarios.map((sc) => (
-                                <tr key={sc.id} style={{ borderTop: "1px solid #eef1f5" }}>
-                                  <td style={{ padding: "5px 6px", fontWeight: 600 }}>[{sc.id}] {sc.label}</td>
-                                  <td>{sc.risk_before}→{sc.risk_after}</td>
-                                  <td>{fmtNum(sc.total_gap_before)}→{fmtNum(sc.total_gap_after)}</td>
+                                <tr key={sc.id} style={{ borderTop: "1px solid #eef1f5",
+                                  background: sc.effect_kind === "worsen" ? "#f8fafc" : undefined,
+                                  color: sc.effect_kind === "worsen" ? "#64748b" : undefined }}>
+                                  <td style={{ padding: "5px 6px" }}>
+                                    <span style={{ fontSize: 10, borderRadius: 8, padding: "1px 6px", marginRight: 5,
+                                      background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", fontWeight: 700 }}>
+                                      {REASON_KO[sc.reason_code] || sc.reason_code}</span>
+                                    <span style={{ fontSize: 11.5, color: C.muted }}>{sc.label}</span>
+                                  </td>
+                                  <td style={{ fontWeight: 600,
+                                    color: sc.effect_kind === "improve" ? "#047857"
+                                      : sc.effect_kind === "worsen" ? "#b45309" : C.muted }}>
+                                    {sc.effect_kind === "worsen" ? "⚠ " : ""}{sc.effect_label || `${sc.risk_before}→${sc.risk_after}`}</td>
+                                  <td>{sc.total_gap_before === sc.total_gap_after ? "—"
+                                    : `${fmtNum(sc.total_gap_before)}→${fmtNum(sc.total_gap_after)}`}</td>
                                   <td>{sc.graduation_term_before === sc.graduation_term_after
                                     ? "동일" : `${sc.graduation_term_before || "미상"}→${sc.graduation_term_after || "미상"}`}</td>
                                 </tr>
@@ -905,7 +919,9 @@ export default function GraduationV2({ apiBase }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {audit.roadmap.terms.map((t, i) => (
                     <div key={i} style={{ display: "flex", gap: 12 }}>
-                      <div style={{ minWidth: 64, fontWeight: 700, color: C.navy, fontSize: 13.5, paddingTop: 2 }}>{t.term}<div style={{ fontSize: 10.5, color: C.muted, fontWeight: 400 }}>{t.term_credits}학점</div></div>
+                      <div style={{ minWidth: 64, fontWeight: 700, color: C.navy, fontSize: 13.5, paddingTop: 2 }}>{t.term}<div style={{ fontSize: 10.5, color: C.muted, fontWeight: 400 }}>{t.term_credits}학점{" "}
+                        <span title={t.term_risk === "high" ? "학점 상한 만재 — 수강 부담 높음" : t.term_risk === "medium" ? "상한 근접" : "여유"}>
+                          {t.term_risk === "high" ? "🔴" : t.term_risk === "medium" ? "🟡" : "🟢"}</span></div></div>
                       <div style={{ flex: 1, borderLeft: `3px solid ${C.accent}`, paddingLeft: 12, display: "flex", flexDirection: "column", gap: 5 }}>
                         {t.courses.map((c, ci) => {
                           const offered = (c.offered_terms || []).length ? `${c.offered_terms.map((x) => (x === "1" ? "1학기" : x === "2" ? "2학기" : x)).join("·")} 개설` : null;
@@ -925,12 +941,24 @@ export default function GraduationV2({ apiBase }) {
                   ))}
                 </div>
               )}
-              {audit.roadmap.feasible === false && audit.roadmap.blocked_reason && (
-                <div style={{ fontSize: 12.5, color: "#b45309", margin: "10px 0 0", padding: "10px 12px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8 }}>
-                  ⚠️ {audit.roadmap.blocked_reason}
-                  {/* hint는 초과학기 카드가 있으면 거기서만(문장 중복 방지) */}
-                  {audit.roadmap.relaxation_hint && !audit.roadmap.overflow ? ` · ${audit.roadmap.relaxation_hint}` : ""}
+              {audit.roadmap.feasible === false && Object.keys(audit.roadmap.unplaced_by_area || {}).length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "10px 0 0" }}>
+                  <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700 }}>⚠️ 미배치:</span>
+                  {Object.entries(audit.roadmap.unplaced_by_area).map(([area, cr]) => (
+                    <span key={area} style={{ fontSize: 11.5, background: "#fff5ed", color: "#b45309",
+                      border: "1px solid #fed7aa", borderRadius: 12, padding: "2px 9px" }}>{area} {fmtNum(cr)}학점</span>
+                  ))}
                 </div>
+              )}
+              {audit.roadmap.feasible === false && audit.roadmap.blocked_reason && (
+                <details style={{ margin: "6px 0 0" }}>
+                  <summary style={{ fontSize: 11.5, color: C.muted, cursor: "pointer" }}>미배치 상세 사유 보기</summary>
+                  <div style={{ fontSize: 12.5, color: "#b45309", margin: "6px 0 0", padding: "10px 12px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8 }}>
+                    ⚠️ {audit.roadmap.blocked_reason}
+                    {/* hint는 초과학기 카드가 있으면 거기서만(문장 중복 방지) */}
+                    {audit.roadmap.relaxation_hint && !audit.roadmap.overflow ? ` · ${audit.roadmap.relaxation_hint}` : ""}
+                  </div>
+                </details>
               )}
               {audit.roadmap.why_this_plan && audit.roadmap.terms.length > 0 && (
                 <p style={{ fontSize: 12.5, color: C.text, margin: "12px 0 0", padding: "10px 12px", background: C.soft, borderRadius: 8 }}>
@@ -971,13 +999,23 @@ export default function GraduationV2({ apiBase }) {
                 )}
                 {(audit.explanations || []).map((sec) => (
                   <div key={sec.key} style={{ marginTop: 10 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{sec.title}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>
+                      {sec.title}
+                      {sec.deterministic && (
+                        <span style={{ fontSize: 10, color: "#047857", marginLeft: 6, background: "#ecfdf5",
+                          border: "1px solid #a7f3d0", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>결정론</span>
+                      )}
+                    </div>
                     <ul style={{ margin: "5px 0 0", paddingLeft: 18 }}>
                       {sec.lines.map((ln, i) => (
                         <li key={i} style={{ fontSize: 12.5, color: ln.grounded ? C.text : "#b45309", lineHeight: 1.55, marginBottom: 3 }}>
                           {ln.text}
                           {ln.source_ids.map((s) => (
-                            <span key={s} style={{ fontSize: 10, color: "#2563EB", marginLeft: 4, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 4, padding: "0 4px" }}>{s}</span>
+                            // G(결정론 근거)=초록 / Y(요람 RAG 인용)=파랑 — 체계 구분(3파트 develop §A)
+                            <span key={s} style={{ fontSize: 10, marginLeft: 4, borderRadius: 4, padding: "0 4px",
+                              color: s.startsWith("G") ? "#047857" : "#2563EB",
+                              background: s.startsWith("G") ? "#ecfdf5" : "#eff6ff",
+                              border: s.startsWith("G") ? "1px solid #a7f3d0" : "1px solid #bfdbfe" }}>{s}</span>
                           ))}
                         </li>
                       ))}

@@ -60,7 +60,7 @@ def test_validator_resolves_and_flags():
     assert len(secs) == 1
     lines = secs[0].lines
     assert lines[0].grounded is True
-    assert lines[1].grounded is False and "공식 출처 미확인" in lines[1].text
+    assert lines[1].grounded is False and "요람 원문에서 직접 확인되지 않음" in lines[1].text
     assert lines[2].grounded is False
     assert "2023XXXX" in lines[3].text and "20231234" not in lines[3].text
 

@@ -203,7 +203,7 @@ def validate_explanations(raw: dict, items: list[dict], chunks_by_item: dict,
             allowed_nums = chunk_txt + (" " + ctx_by_key[key] if diag_ref else "")
             grounded = bool(sids) and all(n in allowed_nums for n in re.findall(r"\d{2,}", text))
             if not grounded:
-                text += " ※ 공식 출처 미확인 — 학과사무실 확인 권장"
+                text += " ※ 요람 원문에서 직접 확인되지 않음 — 학과사무실 확인 권장"
             lines.append(ExplainLine(text=text, source_ids=sids, grounded=grounded))
         if lines:
             sections.append(ExplainSection(key=key, title=title_by_key[key], lines=lines))
@@ -283,7 +283,7 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
         sections = [ExplainSection.model_validate(s) for s in cached["sections"]]
         sources = [Source.model_validate(s) for s in cached["sources"]]
         # 캐시 경로도 라이브와 동일하게 미확인 줄을 반영 — '통과' 고정 표기는
-        # 화면의 '※ 공식 출처 미확인' 줄과 모순(데모 시나리오 검증 라운드)
+        # 화면의 '※ 요람 원문에서 직접 확인되지 않음' 줄과 모순(데모 시나리오 검증 라운드)
         ungrounded = sum(1 for sec in sections for ln in sec.lines if not ln.grounded)
         trace = [
             NodeTraceEvent(node="요람 RAG 해설", kind="llm",

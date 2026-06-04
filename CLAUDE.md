@@ -109,7 +109,7 @@ There is no linter or formatter wired into the repo.
 These are project requirements, not preferences — see `project_plan.md` §7:
 
 - **프라이버시 — 최소 적용 (2026-06 결정):** 입력은 학생 본인의 **성적증명서**라 주민번호가 없으므로 주민번호 마스킹은 비해당. 출력에서 **학번 뒷자리만 마스킹**한다(예: `2020XXXX`). 본인이 업로드한 성적·GPA·과목은 자문 도구 특성상 보고서에 **활용·표시 허용**. 따라서 기존의 GPA/성적/이메일/연락처 출력 마스킹, 입력측 차단(과거 `inspect_privacy`류), false-positive 유발 패턴은 **제거**한다(`graduation_center`의 `SENSITIVE_PATTERNS`를 학번 1종으로 축소). ⚠️ 데모·공유는 **본인 또는 더미 성적증명서**로 할 것 — 타인의 실제 증명서를 공개 화면에 띄우면 이름·성적이 노출된다. 다중 사용자/외부 배포로 가면 이 결정을 재검토.
-- **근거 우선 + graceful degrade (2026-06 결정, 완화):** 공식 근거(요람·규정 RAG·정책 데이터)가 있으면 근거를 달아 단정적으로 답한다. 근거가 얇거나 없으면 **차단하지 말고** 일반 가이드를 주되 `※ 공식 출처 미확인 — 학과사무실/교무팀 확인 권장`처럼 확신도를 표시한다. "몰라요"로 회피하지 않되(루브릭 4: 실무 유용성), 근거 없는 내용을 근거 있는 것처럼 단정하지도 않는다. 과거의 hard-block(`require_sources`로 답 자체를 막던 방식)은 쓰지 않는다.
+- **근거 우선 + graceful degrade (2026-06 결정, 완화):** 공식 근거(요람·규정 RAG·정책 데이터)가 있으면 근거를 달아 단정적으로 답한다. 근거가 얇거나 없으면 **차단하지 말고** 일반 가이드를 주되 `※ 요람 원문에서 직접 확인되지 않음 — 학과사무실/교무팀 확인 권장`처럼 확신도를 표시한다. "몰라요"로 회피하지 않되(루브릭 4: 실무 유용성), 근거 없는 내용을 근거 있는 것처럼 단정하지도 않는다. 과거의 hard-block(`require_sources`로 답 자체를 막던 방식)은 쓰지 않는다.
 - Never auto-crawl post-login portals (ON국민, SWELL personal screens) or 에브리타임. Only the public sources tier-listed in the README. (티어2 크롤러를 동결·재사용하더라도 이 규칙과 `crawler/base.py`의 학교서버 보호 규칙 — 8~18s 딜레이, `max_pages_per_run`, `INGEST_COOLDOWN_SECONDS`, 조건부 GET, `_INGEST_LOCK` — 은 절대 완화 금지.)
 - LLM 사용은 grounded·결정론 우선. 보고서 본문은 결정론적 builder가 source of truth이고, LLM 산출은 final validator가 citation/프라이버시 위반 시 되돌린다.
 

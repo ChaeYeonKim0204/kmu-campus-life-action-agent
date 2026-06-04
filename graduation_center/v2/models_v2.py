@@ -244,7 +244,7 @@ class Source(BaseModel):
 class ExplainLine(BaseModel):
     text: str
     source_ids: list[str] = Field(default_factory=list)   # Y1.. (검증된 인용만)
-    grounded: bool = True                                  # False면 '공식 출처 미확인' 표시됨
+    grounded: bool = True                                  # False면 '요람 원문에서 직접 확인되지 않음' 표시됨
 
 
 class ExplainSection(BaseModel):

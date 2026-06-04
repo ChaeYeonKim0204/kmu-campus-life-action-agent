@@ -307,6 +307,8 @@ async def graduation_v2_verify(request: Request) -> dict:
         context = json.loads(context_raw) if context_raw else {}
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="context 필드가 유효한 JSON이 아닙니다.") from exc
+    if not isinstance(context, dict):
+        raise HTTPException(status_code=400, detail="context 필드는 JSON 객체여야 합니다.")
     if "program_id" not in context:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다 (예: ai_bigdata, mirae_mobility).")
     try:
@@ -320,7 +322,8 @@ async def graduation_v2_verify(request: Request) -> dict:
 @app.post("/graduation/v2/audit")
 def graduation_v2_audit(payload: dict) -> dict:
     """사용자 확정 테이블 → 진단 → 로드맵(LLM+검증) → 리스크 → 컨설팅 응답."""
-    if "context" not in payload or "program_id" not in payload.get("context", {}):
+    ctx = payload.get("context")
+    if not isinstance(ctx, dict) or "program_id" not in ctx:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다.")
     try:
         return v2_pipeline.run_audit(payload).model_dump()

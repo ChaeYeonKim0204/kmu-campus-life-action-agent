@@ -8,8 +8,9 @@ const KIND = {
   llm: { color: "#2563EB", label: "LLM 판단", icon: "✦" },
   validator: { color: "#7C3AED", label: "검증·수리", icon: "✔" },
 };
+const kindOf = (k) => KIND[k] || KIND.tool;   // 미정의 kind 방어(검증 라운드3 — branch 등)
 // lane:"side" = 분기 갈래 노드(우측 레인). branchFrom/branchTo: 갈래 엣지의 출발/합류 노드.
-const NODES = [
+const BASE_NODES = [
   { key: "요람 로딩", kind: "tool" },
   { key: "데이터 수집", kind: "tool" },
   { key: "코드 매칭", kind: "tool" },
@@ -24,22 +25,47 @@ const NODES = [
   { key: "해설 검증", kind: "validator", shape: "diamond" },
   { key: "리포트", kind: "tool", terminal: true },
 ];
-const KNOWN = new Set(NODES.map((n) => n.key));
+// 졸업 시나리오 상담 Agent(what-if) 클러스터 — trace에 상담 이벤트가 있을 때만 그린다.
+// 안내 종료는 합류 없는 종단 분기(noRejoin) — 예제06의 실패메시지 노드 대응.
+const CONSULT_NODES = [
+  { key: "질문 분류", kind: "llm" },
+  { key: "매개변수 추출", kind: "llm" },
+  { key: "조건 가드", kind: "validator", shape: "diamond" },
+  { key: "안내 종료", kind: "tool", lane: "side", noRejoin: true,
+    branchFrom: "조건 가드", okLabel: "통과", failLabel: "지원 범위 밖" },
+  { key: "졸업사정 재실행", kind: "tool" },
+  { key: "시나리오 비교", kind: "tool" },
+  { key: "다음 행동 제안", kind: "tool", terminal: true },
+];
+const BASE_KNOWN = new Set(BASE_NODES.map((n) => n.key));
+const CONSULT_KNOWN = new Set(CONSULT_NODES.map((n) => n.key));
 const STEP = 82, TOP = 20, NX = 178, NW = 230, NH = 54;
 const SX = NX + NW + 26, SW = 168, SH = 46;        // 사이드 레인(분기 갈래)
-const idxOf = (key) => NODES.findIndex((n) => n.key === key);
-const nodeY = (i) => TOP + i * STEP;
 const STATUS_GLYPH = { fail: "✕", warn: "!", skip: "·" };
 
 export default function WorkflowGraph({ trace, compact = false }) {
+  // 상담 이벤트가 있을 때만 상담 클러스터를 노출(레이아웃·높이·엣지 전부 동적 — 검증 라운드2 H3)
+  const hasConsult = React.useMemo(
+    () => (trace || []).some((e) => CONSULT_KNOWN.has(e.node)), [trace]);
+  const nodes = React.useMemo(
+    () => (hasConsult ? [...BASE_NODES, ...CONSULT_NODES] : BASE_NODES), [hasConsult]);
+  const known = React.useMemo(() => new Set(nodes.map((n) => n.key)), [nodes]);
+  const idxOf = React.useCallback((key) => nodes.findIndex((n) => n.key === key), [nodes]);
+  const nodeY = (i) => TOP + i * STEP;
+
   const byNode = React.useMemo(() => {
     const m = {};
-    (trace || []).forEach((e) => { if (KNOWN.has(e.node)) m[e.node] = e; });
+    (trace || []).forEach((e) => { if (known.has(e.node)) m[e.node] = e; });
     return m;
-  }, [trace]);
+  }, [trace, known]);
   const execKeys = React.useMemo(() => {
-    const ks = (trace || []).map((e) => e.node).filter((k) => KNOWN.has(k));
+    // '리포트'는 audit trace 직후에 삽입 — 상담 노드가 리포트보다 먼저 점등되는 순서 왜곡 방지
+    const all = (trace || []).map((e) => e.node);
+    const audit = all.filter((k) => BASE_KNOWN.has(k));
+    const consult = all.filter((k) => CONSULT_KNOWN.has(k));
+    const ks = [...audit];
     if (ks.length) ks.push("리포트");
+    ks.push(...consult);
     return ks;
   }, [trace]);
 
@@ -67,7 +93,7 @@ export default function WorkflowGraph({ trace, compact = false }) {
 
   const litKeys = new Set(execKeys.slice(0, active));
   const cx = NX + NW / 2;
-  const height = TOP + NODES.length * STEP;
+  const height = TOP + nodes.length * STEP;
   const W = SX + SW + 12;
   const statusStroke = (evt, base) =>
     evt?.status === "fail" ? "#EF4444" : evt?.status === "warn" ? "#D97706" : base;
@@ -89,25 +115,29 @@ export default function WorkflowGraph({ trace, compact = false }) {
     </g>
   );
 
-  // 메인 레인 노드들 사이 엣지 + 분기 갈래 엣지
-  const mains = NODES.filter((n) => n.lane !== "side");
+  // 메인 레인 노드들 사이 엣지 + 분기 갈래 엣지 (branchFrom 키별 매핑 — 사이드 2개 공존 지원)
+  const mains = nodes.filter((n) => n.lane !== "side");
+  const sideByFrom = {};
+  nodes.forEach((s) => { if (s.lane === "side" && s.branchFrom) sideByFrom[s.branchFrom] = s; });
   const edges = [];
   mains.slice(0, -1).forEach((n, mi) => {
     const next = mains[mi + 1];
-    const side = NODES.find((s) => s.lane === "side" && s.branchFrom === n.key);
+    const side = sideByFrom[n.key];
     const i = idxOf(n.key), j = idxOf(next.key);
     const yBot = nodeY(i) + NH + (n.shape === "diamond" ? 4 : 0);
     const yTop = nodeY(j) - (next.shape === "diamond" ? 4 : 0);
     if (side) {
-      const evt = byNode[n.key];
       const sLit = litKeys.has(side.key);
       const okLit = litKeys.has(n.key) && litKeys.has(next.key) && !sLit;
       const si = idxOf(side.key);
       const sy = nodeY(si) + (STEP - SH) / 2;
-      // 통과(직행) vs 미배치(사이드 경유) — 둘 다 항상 그려서 '갈 수 있는 길'을 보여줌
+      // 통과(직행) vs 실패(사이드 경유) — 둘 다 항상 그려서 '갈 수 있는 길'을 보여줌
       edges.push(edge(cx, yBot, cx, yTop, okLit, `e-ok-${n.key}`, side.okLabel, okLit));
       edges.push(edge(cx + NW / 4, yBot, SX + SW / 2, sy, sLit, `e-f1-${n.key}`, side.failLabel, sLit));
-      edges.push(edge(SX + SW / 2, sy + SH, cx + NW / 4, yTop, sLit, `e-f2-${n.key}`));
+      // noRejoin(안내 종료): 합류 엣지 없음 — 흐름이 거기서 끝남(거짓 합류 표시 금지)
+      if (!side.noRejoin) {
+        edges.push(edge(SX + SW / 2, sy + SH, cx + NW / 4, yTop, sLit, `e-f2-${n.key}`));
+      }
     } else {
       edges.push(edge(cx, yBot, cx, yTop, litKeys.has(n.key) && litKeys.has(next.key), `e-${n.key}`));
     }
@@ -143,10 +173,10 @@ export default function WorkflowGraph({ trace, compact = false }) {
         <g transform={`translate(${pan.x},${pan.y})`}>
         {edges}
         {/* 노드 */}
-        {NODES.map((n) => {
+        {nodes.map((n) => {
           const evt = byNode[n.key];
           const lit = litKeys.has(n.key);
-          const base = KIND[n.kind].color;
+          const base = kindOf(n.kind).color;
           const stroke = lit ? statusStroke(evt, base) : "#dbe1ea";
           const i = idxOf(n.key);
           const isSide = n.lane === "side";
@@ -168,9 +198,9 @@ export default function WorkflowGraph({ trace, compact = false }) {
                   strokeDasharray={isSide && !lit ? "5 4" : undefined} />
               )}
               <circle cx={x + 18} cy={y + h / 2} r={6} fill={lit ? base : "#cbd5e1"} />
-              <text x={x + 18} y={y + h / 2 + 3.5} textAnchor="middle" fontSize="8" fill="#fff">{KIND[n.kind].icon}</text>
+              <text x={x + 18} y={y + h / 2 + 3.5} textAnchor="middle" fontSize="8" fill="#fff">{kindOf(n.kind).icon}</text>
               <text x={x + 34} y={y + h / 2 - 2} fontSize={isSide ? 12 : 14} fontWeight="700" fill={lit ? "#0f172a" : "#94a3b8"}>{n.key}</text>
-              <text x={x + 34} y={y + h / 2 + 13} fontSize="10.5" fill="#94a3b8">{KIND[n.kind].label}</text>
+              <text x={x + 34} y={y + h / 2 + 13} fontSize="10.5" fill="#94a3b8">{kindOf(n.kind).label}</text>
               {glyph && (
                 <g>
                   <circle cx={x + w - 16} cy={y + 15} r={8} fill={statusStroke(evt, base)} />

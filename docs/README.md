@@ -9,6 +9,8 @@
 |---|---|
 | [graduation_center_current_state.md](./graduation_center_current_state.md) | **팀 공유 허브** — 무엇이 완성됐고 어떻게 동작하나(워크플로우·데모 자산·품질·한계) |
 | [demo_script_2026-06-09.md](./demo_script_2026-06-09.md) | 발표 비트·타임라인·Fallback·예상 Q&A·기여 매핑 |
+| [dify_style_workflow.md](./dify_style_workflow.md) | **Dify식 워크플로우 다이어그램**(발표 슬라이드용) — 노드 타입 대응표·내러티브·금지 표현 |
+| [professor_feedback_notes.md](./professor_feedback_notes.md) | 교수 구두 피드백 원문 + 구현 대응표(발표 준비 기준점) |
 | [graduation_center_direction.md](./graduation_center_direction.md) | 졸업센터 기획(방향) |
 | [graduation_center_direction_vs_built.md](./graduation_center_direction_vs_built.md) | 기획 대비 실제 구현 차이·사유 |
 | [second_topic_workflow_candidates.md](./second_topic_workflow_candidates.md) | 두 번째 주제 후보 3종 비교(CLAUDE.md 참조) |
@@ -21,6 +23,7 @@
 | [cleanup_unused_plan.md](./plans/cleanup_unused_plan.md) | 미사용 코드 unused/ 보관 계획(1차 시도 사고 분석 포함) |
 | [trust_isugubun_plan.md](./plans/trust_isugubun_plan.md) | 이수구분 신뢰 전환 계획(코드표 매핑·융합 이중인정 가드) |
 | [docs_reorg_plan.md](./plans/docs_reorg_plan.md) | 본 문서 구조 정리 계획 |
+| [agentic_scenario_summary_plan.md](./plans/agentic_scenario_summary_plan.md) | **에이전트 총평**(능동 시나리오 탐색·단일 턴 ReAct) — 4라운드 양 렌즈 수렴 + 교수 사인오프·비타협 3항 |
 
 ## reviews/ — 검증 캠페인 원기록 (품질 증빙·개인 기여 보고서 소스)
 

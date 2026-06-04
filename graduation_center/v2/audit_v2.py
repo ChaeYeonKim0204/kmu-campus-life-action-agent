@@ -197,9 +197,10 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
         per_group_min = float(rules.get("per_group_min", 12 if track == "다전공" else 6))
         all_groups = sorted({g for g in prefix_to_group.values() if g})
         # 그중 제1전공/다른 다전공과 겹치는 과목 = 중복인정 가능 후보(최대 cap까지 양쪽 동시 인정).
-        # requirement_area=='전공'도 겹침으로 취급(이수구분 신뢰 전환의 짝): 카탈로그 미수록이지만
-        # 성적표상 본전공인 과목이 융합 prefix와 겹치면, 카탈로그 prefix 검사만으로는 primary와
-        # fusion 양쪽에 무캡 이중 인정됨(검증 codex MUST — primary_base가 overlap만 차감하므로).
+        # requirement_area=='전공' 조건은 **사용자 편집 경로의 가드**: HITL에서 카탈로그 밖 과목을
+        # 전공으로 수동 변경하면, 카탈로그 prefix 검사만으로는 primary와 fusion 양쪽에 무캡
+        # 이중 인정됨(primary_base가 overlap만 차감 — 검증 codex MUST). 자동 경로(강등 복원)에선
+        # aggregate 전공이 없어 비활성 노이즈 0.
         overlap = sorted([c for c in designated
                           if c.course_id[:5] in other_prefixes or c.requirement_area == "전공"],
                          key=lambda x: -x.credits)

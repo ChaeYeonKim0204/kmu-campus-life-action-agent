@@ -1,5 +1,9 @@
 # 작업계획: 이수구분 신뢰 — 전공선택 강등 규칙 제거 + 비제1전공 이수구분 명시 매핑 (rev.2)
 
+> ⚠️ **부분 롤백(2026-06-04 같은 날)**: '전공선택 자동 신뢰'는 전과 등 이수구분 자체가 틀린 케이스 때문에
+> 강등으로 복원 — 대신 HITL 이수구분 편집 + demoted_from_major 일괄 복구로 대체.
+> 코드표 매핑·overlap 가드·게이지 연동은 유지. → `plans/rollback_trust_add_area_edit_plan.md`
+
 > codex 라운드1 반영: [MUST-①] 신뢰된 카탈로그 밖 '전공' 과목이 융합 prefix와 겹치면 primary_base와
 > fusion 양쪽에 무캡 이중 인정(audit_v2:200 overlap이 카탈로그 prefix만 검사) → overlap 조건에
 > `or requirement_area=="전공"` 추가 + 회귀 테스트. [MUST-②] 코드표(grade_category_codes.json)에

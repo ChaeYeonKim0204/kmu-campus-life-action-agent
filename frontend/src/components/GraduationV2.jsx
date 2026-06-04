@@ -362,7 +362,16 @@ export default function GraduationV2({ apiBase }) {
   }));
   const setReason = (i, reason) => setTable((t) => t.map((row, idx) =>
     idx === i ? { ...row, exclude_reason: reason, included: false } : row));
-  const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "드랍·철회", "폐강", "기타"];
+  const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pass)", "드랍·철회", "폐강", "기타"];
+  // 이수구분 편집(카탈로그 밖 행만) — 융합전공 area는 게이지 밖 애매 영역이라 제외(검증 codex)
+  const EDITABLE_AREAS = ["전공", "기초교양", "핵심교양", "자유교양", "일반선택"];
+  const setArea = (i, area) => setTable((t) => t.map((row, idx) =>
+    // 핵심교양 세부영역(core_area)은 사용자 편집 행에선 미배정(총량만 산입 — 정직)
+    idx === i ? { ...row, requirement_area: area, core_area: null } : row));
+  const demotedCount = table.filter((r) => r.demoted_from_major && r.requirement_area === "일반선택").length;
+  const restoreDemoted = () => setTable((t) => t.map((row) =>
+    row.demoted_from_major && row.requirement_area === "일반선택"
+      ? { ...row, requirement_area: "전공", core_area: null } : row));
   const retakeCount = table.filter((r) => (r.exclude_reason || "").includes("재수강")).length;
 
   const runAudit = async () => {
@@ -570,9 +579,21 @@ export default function GraduationV2({ apiBase }) {
           <div style={card}>
             <div style={sectionTitle}>🔍 수강내역 검증 <span style={{ color: C.muted, fontWeight: 400, fontSize: 12 }}>({table.length}행 · 학기 오름차순)</span></div>
             <p style={{ fontSize: 12, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>
-              성적 정보가 없는 수강내역입니다. <strong style={{ color: C.text }}>F·드랍한 과목은 체크를 해제</strong>하고 비고에서 사유를 고르세요.
+              성적 정보가 없는 수강내역입니다. <strong style={{ color: C.text }}>F·NP(Non-Pass)·드랍한 과목은 체크를 해제</strong>하고 비고에서 사유를 고르세요.
               재수강 의심 과목은 최신 이수만 자동 포함했습니다.
             </p>
+            {demotedCount > 0 && (
+              <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 9, padding: "9px 12px",
+                fontSize: 12.5, color: "#b45309", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ flex: 1 }}>⚠️ <strong>전공계 이수구분인데 요람 카탈로그에 없는 과목 {demotedCount}건</strong> —
+                  보수적으로 '일반선택'으로 분류했습니다(전과·구과정 과목 가능성). 본전공 과목이 맞으면 이수구분을 직접 바꾸세요.</span>
+                <button onClick={restoreDemoted}
+                  style={{ fontSize: 11.5, fontWeight: 700, border: "1px solid #fed7aa", borderRadius: 7,
+                    background: "#fff", color: "#b45309", padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                  모두 전공으로
+                </button>
+              </div>
+            )}
             {retakeCount > 0 && (
               <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 9, padding: "9px 12px",
                 fontSize: 12.5, color: "#b45309", marginBottom: 10 }}>
@@ -596,7 +617,22 @@ export default function GraduationV2({ apiBase }) {
                         <td style={{ textAlign: "center", padding: "5px 8px" }}><input type="checkbox" checked={row.included} onChange={() => toggleRow(i)} /></td>
                         <td style={{ padding: "5px 8px" }}>{row.name_ko}
                           {!row.course_id && <span style={{ marginLeft: 5, fontSize: 10.5, color: C.muted, background: "#eef1f5", borderRadius: 4, padding: "1px 5px" }}>집계</span>}</td>
-                        <td style={{ padding: "5px 8px", color: C.muted }}>{row.requirement_area}{row.core_area ? `·${row.core_area}` : ""}</td>
+                        <td style={{ padding: "5px 8px", color: C.muted }}>
+                          {row.aggregate_only ? (
+                            // 카탈로그 밖 행만 편집 가능 — 매칭 행은 요람 교과과정표 근거(전과·구과정 과목은 모두 여기로 옴)
+                            <select value={row.requirement_area} onChange={(e) => setArea(i, e.target.value)}
+                              title={row.demoted_from_major ? "성적표 이수구분은 전공계 — 카탈로그 미수록이라 일반선택으로 보수 분류됨. 본전공 과목이면 전공으로 변경" : "카탈로그 밖 과목 — 이수구분 직접 수정 가능"}
+                              style={{ border: `1px solid ${row.demoted_from_major ? "#fed7aa" : C.border}`, borderRadius: 6,
+                                fontSize: 11.5, padding: "2px 4px", color: C.text,
+                                background: row.demoted_from_major ? "#fff7ed" : "#fff" }}>
+                              {EDITABLE_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                          ) : (
+                            <span title="요람 교과과정표 기준(코드 매칭) — 편집 불가">{row.requirement_area}</span>
+                          )}
+                          {row.core_area ? `·${row.core_area}` : ""}
+                          {row.demoted_from_major && <span style={{ marginLeft: 4, fontSize: 10, color: "#b45309" }}>•전공계</span>}
+                        </td>
                         <td style={{ textAlign: "center", padding: "5px 8px" }}>{row.credits}</td>
                         <td style={{ padding: "5px 8px", color: C.muted }}>{row.term_label}</td>
                         <td style={{ padding: "4px 8px" }}>

@@ -91,8 +91,10 @@ class VerifiedCourse(BaseModel):
     core_area: str | None = None
     term_label: str = ""
     included: bool = True
-    exclude_reason: str | None = None                # 폐강 / F / 재수강중복
+    exclude_reason: str | None = None                # 폐강 / F / NP / 재수강중복
     aggregate_only: bool = False                     # 카탈로그 밖(교양·타과) → 집계만
+    demoted_from_major: bool = False                 # 전공계 이수구분이었으나 카탈로그 미스로 일반선택 강등
+                                                     # — HITL에서 사용자가 전공으로 복구 가능(표시·일괄용)
 
     @field_validator("credits", mode="before")
     @classmethod

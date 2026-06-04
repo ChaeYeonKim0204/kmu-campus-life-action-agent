@@ -260,20 +260,44 @@ def test_isugubun_mapping_follows_code_table():
         assert area_from_isugubun(raw) == want, f"{raw} → {area_from_isugubun(raw)} (기대 {want})"
 
 
-def test_trusted_major_isugubun_not_demoted():
-    """이수구분 신뢰: 카탈로그 밖 '전공선택'은 일반선택 강등 없이 전공 집계(미래모빌리티 증상 회귀)."""
+def test_major_isugubun_demoted_with_flag_and_user_editable():
+    """강등 복원(롤백 2026-06-04): 카탈로그 밖 '전공선택'은 보수적으로 일반선택 +
+    demoted_from_major 플래그(HITL 일괄 복구용). 사용자 편집값은 /audit에 그대로 반영."""
     rows = [{"code": "9999999", "name": "구과정전공과목", "credits": 3, "area": "전공선택"},
             {"code": "9999998", "name": "타과수강과목", "credits": 3, "area": "타전공"}]
     v = pipeline.run_verify([(_xlsx(rows), "a.xlsx")], {"program_id": "ai_bigdata"})
     by_name = {t["name_ko"]: t for t in v["verification_table"]}
     t1 = by_name["구과정전공과목"]
-    assert t1["requirement_area"] == "전공" and t1["aggregate_only"] is True
-    assert by_name["타과수강과목"]["requirement_area"] == "일반선택"   # 비제1전공 계열은 불산입
+    assert t1["requirement_area"] == "일반선택" and t1["aggregate_only"] is True
+    assert t1["demoted_from_major"] is True                          # 복구 후보 표시
+    t2 = by_name["타과수강과목"]
+    assert t2["requirement_area"] == "일반선택" and t2["demoted_from_major"] is False  # 타전공은 강등 아님
+    # 사용자 편집(HITL): 강등 행을 전공으로 복구 → finalize가 그대로 집계
+    t1["requirement_area"] = "전공"
+    payload = {"context": v["context"], "verification_table": v["verification_table"],
+               "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
+    resp = pipeline.run_audit(payload)
+    major = next(g for g in resp.audit.area_gaps if g.area == "전공")
+    assert major.earned == 3.0                                       # 편집값 반영
 
 
-def test_trusted_major_with_conv_prefix_no_double_count():
-    """codex MUST 회귀: 신뢰된 카탈로그 밖 '전공' 과목이 융합 prefix와 겹치면
-    무캡 이중 인정 금지 — overlap으로 취급돼 primary_base에서 차감·캡 적용."""
+def test_invalid_area_string_maps_to_400():
+    """편집 경로 가드: 잘못된 area 문자열 → ValidationError(=ValueError) → 라우트 400."""
+    from fastapi.testclient import TestClient
+    import app as app_module
+    rows = [{"code": "9999999", "name": "구과정전공과목", "credits": 3, "area": "전공선택"}]
+    v = pipeline.run_verify([(_xlsx(rows), "a.xlsx")], {"program_id": "ai_bigdata"})
+    v["verification_table"][0]["requirement_area"] = "이상한영역"
+    payload = {"context": v["context"], "verification_table": v["verification_table"],
+               "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
+    r = TestClient(app_module.app).post("/graduation/v2/audit", json=payload)
+    assert r.status_code == 400
+
+
+def test_user_edited_major_with_conv_prefix_no_double_count():
+    """편집 경로 가드(codex MUST 회귀): 사용자가 카탈로그 밖 과목을 '전공'으로 수동 변경했을 때
+    융합 prefix와 겹치면 무캡 이중 인정 금지 — overlap으로 취급돼 primary_base 차감·캡 적용.
+    (VerifiedCourse 직접 구성 = HITL 편집 후 /audit 입력과 동형.)"""
     import json as _json
     from pathlib import Path as _Path
     from graduation_center.v2.audit_v2 import compute_audit

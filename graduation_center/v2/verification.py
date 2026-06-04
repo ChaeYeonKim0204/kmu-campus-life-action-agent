@@ -60,11 +60,12 @@ def build_verification_table(
             unresolved.append(m)
             continue
         area = m.requirement_area or area_from_isugubun(ln.area_raw)
-        # 이수구분 신뢰(2026-06-04 도메인 결정): 성적표의 '전공선택/전공필수'는 학적시스템이
-        # 그 학생 기준으로 이미 분류한 값 — 카탈로그 미수록(구과정·빌드 누락)이어도 본전공으로
-        # 집계한다. (과거의 '카탈로그 미스 → 일반선택 강등'은 미래모빌리티 실데이터에서 본전공
-        # 전공선택을 오분류.) 타과·다전공·부전공 과목은 이수구분 자체가 '다전공/제2전공/타전공'
-        # 계열이라 _ISU_TO_AREA 명시 매핑이 일반선택으로 보냄 — 강등 규칙 불필요.
+        # 강등 복원(2026-06-04 재결정): '전공계 이수구분 + 카탈로그 미스'는 보수적으로 일반선택.
+        # 자동 신뢰는 전과 등 이수구분 자체가 틀린 케이스에 오신뢰 위험 — 대신 HITL 테이블에서
+        # 사용자가 이수구분을 직접 수정 가능(demoted_from_major 플래그로 강등 행 표시·일괄 복구).
+        demoted = False
+        if m.status == "aggregate_only" and area == "전공":
+            area, demoted = "일반선택", True
         included, reason = True, None
         code = ln.course_code
         # 폐강 자동 제외
@@ -87,6 +88,7 @@ def build_verification_table(
             included=included,
             exclude_reason=reason,
             aggregate_only=(m.status == "aggregate_only"),
+            demoted_from_major=demoted,
         ))
     # 학기 오름차순(과거→최신) 정렬 — 화면 표시·검토 순서
     table.sort(key=lambda vc: _term_order(vc.term_label))

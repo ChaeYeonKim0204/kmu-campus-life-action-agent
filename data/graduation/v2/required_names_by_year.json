@@ -533,40 +533,40 @@
         "글쓰기",
         {
           "any_of": [
-            "College English",
-            "English Conversation"
+            "College EnglishⅠ",
+            "College EnglishⅡ"
           ],
-          "label": "College English·English Conversation 중 택1"
+          "label": "College EnglishⅠ·Ⅱ 중 택1"
         }
       ],
       "2023": [
         "글쓰기",
         {
           "any_of": [
-            "College English",
-            "English Conversation"
+            "College EnglishⅠ",
+            "College EnglishⅡ"
           ],
-          "label": "College English·English Conversation 중 택1"
+          "label": "College EnglishⅠ·Ⅱ 중 택1"
         }
       ],
       "2024": [
         "글쓰기",
         {
           "any_of": [
-            "College English",
-            "English Conversation"
+            "College EnglishⅠ",
+            "College EnglishⅡ"
           ],
-          "label": "College English·English Conversation 중 택1"
+          "label": "College EnglishⅠ·Ⅱ 중 택1"
         }
       ],
       "2025": [
         "글쓰기",
         {
           "any_of": [
-            "College English",
-            "English Conversation"
+            "College EnglishⅠ",
+            "College EnglishⅡ"
           ],
-          "label": "College English·English Conversation 중 택1"
+          "label": "College EnglishⅠ·Ⅱ 중 택1"
         }
       ]
     }

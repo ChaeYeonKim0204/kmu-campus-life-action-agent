@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
 
 # 졸업요건 영역 (집계 카테고리). 융합전공은 연계·융합전공 카탈로그 과목 표시용.
 Area = Literal["전공", "기초교양", "핵심교양", "자유교양", "일반선택", "융합전공"]
@@ -29,6 +31,15 @@ class StudentContext(BaseModel):
     convergence_program_ids: list[str] = Field(default_factory=list)  # 연계·융합전공 — 사용자 입력
     convergence_tracks: dict[str, str] = Field(default_factory=dict)  # program_id → "다전공"|"부전공"
     masked_student_id: str | None = None             # 표시용(뒷자리 마스킹)
+
+    @field_validator("current_term", mode="before")
+    @classmethod
+    def _valid_term(cls, v):
+        """형식 오류('26-1','2026','2026-3' 등)는 None으로 정규화 — 오타가 2자리 연도 라벨이나
+        침묵 '미입력' 경로로 새지 않게(플래너가 '미입력/형식 오류'를 명시 안내)."""
+        if v is None or v == "":
+            return None
+        return v if re.match(r"^20\d{2}-(1|2|S|W)$", str(v)) else None
 
 
 # ---------- 카탈로그 ----------

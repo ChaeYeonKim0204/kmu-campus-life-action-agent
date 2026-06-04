@@ -711,10 +711,10 @@ def run_planner(
                                 blocked_reason=f"잔여 학기 0 — 남은 의무 {sel_credits:.0f}학점 이수 불가.",
                                 relaxation_hint=(ov.note if ov else "초과학기가 필요합니다.")),
                     ValidationReport(ok=False, errors=[ValidationError(code="no_terms", detail="잔여 학기 0")]), ctx)
-        # 현재 학기 미입력 → 학기 배치 보류(미상). 권장 과목만 안내.
+        # 현재 학기 미입력/형식 오류 → 학기 배치 보류(미상). 권장 과목만 안내.
         return (RoadmapPlan(status="generated", feasible=None, terms=[],
-                            why_this_plan=f"현재 학기 미입력 — 학기 배치 생략. 추가 이수 권장: {names}",
-                            assumptions=["현재 학기를 입력하면 학기별 배치를 제공합니다."]),
+                            why_this_plan=f"현재 학기 미입력 또는 형식 오류(예: 2026-1) — 학기 배치 생략. 추가 이수 권장: {names}",
+                            assumptions=["현재 학기를 올바른 형식(연도-학기)으로 입력하면 학기별 배치를 제공합니다."]),
                 ValidationReport(ok=True), ctx)
 
     completed = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}

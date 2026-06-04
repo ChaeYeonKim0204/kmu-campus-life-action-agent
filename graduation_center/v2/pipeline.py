@@ -71,7 +71,13 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
                        branch_taken="사용자 확정"),
         NodeTraceEvent(node="갭 계산", kind="tool",
                        summary=f"총 부족 {audit.total_gap} · 필수누락 {len(audit.missing_required_names)} · 연계융합 {conv_n}건",
-                       branch_taken=(f"연계융합 {conv_n}개 검사" if conv_n else ("부족 있음" if audit.total_gap > 0 else "충족"))),
+                       # '충족'은 총학점·영역·필수·융합(그룹 포함) 전부 충족일 때만 — 리포트 ⚠️와 모순 방지
+                       branch_taken=(("부족 있음" if (
+                           audit.total_gap > 0 or any(g.gap > 0 for g in audit.area_gaps)
+                           or bool(audit.missing_required_names)
+                           or any(cc.get("gap", 0) > 0 or any(gc["gap"] > 0 for gc in cc.get("group_checks", []))
+                                  for cc in audit.convergence_checks)) else "충족")
+                           + (f" · 융합 {conv_n}건" if conv_n else ""))),
         NodeTraceEvent(node="로드맵 배치", kind="tool",
                        status="ok" if plan.status != "blocked" else "warn",
                        summary=plan.why_this_plan or plan.blocked_reason or "", branch_taken=plan_branch),

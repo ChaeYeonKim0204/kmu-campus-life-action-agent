@@ -754,7 +754,7 @@ export default function GraduationV2({ apiBase }) {
                           <div style={{ marginTop: 9, padding: "8px 10px", background: "#f8fafc",
                             borderRadius: 8, fontSize: 12, color: C.muted }}>
                             <strong style={{ color: "#475569" }}>검토 후 제외</strong> — 에이전트가 제안했지만
-                            시뮬레이션·전제 검증에서 효과가 확인되지 않은 시나리오:
+                            채택되지 않은 시나리오(사유별 — 상한 초과는 '효과 없음'이 아님):
                             {audit.agent_summary.candidates_review.filter((r) => r.verdict === "rejected").map((r, i) => (
                               <div key={i} style={{ marginTop: 3 }}>
                                 · {r.label} <span style={{ color: "#94a3b8" }}>

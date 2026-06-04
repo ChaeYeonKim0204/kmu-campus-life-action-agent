@@ -34,7 +34,7 @@ This is a course **team project**; the professor's grading rubric below is a bin
 
 **선행 의존 이관 (중요):** `graduation_center/service.py:_official_policy_sources()`가 `data/processed/chunks.jsonl`(티어2 데이터)을 **직접 읽는다**(early_graduation·credit_drop 공식 근거용). 졸업센터는 import 레벨에선 독립이지만 이 **런타임 파일 의존**이 있으므로, 티어2 데이터를 건드리기 전에 해당 정책 chunk를 `data/graduation/policies.json`으로 이관하고 이 함수를 고쳐야 근거가 조용히 빠지지 않는다.
 
-**권장 순서:** ① 위 chunks.jsonl 의존 이관 → ② `app.py`를 졸업센터 전용으로 슬림화(`/ask`·`/actions`·일반 `/ingest`·`/sources` 제거 or flag) → ③ (프론트 파트) 첫 화면을 졸업센터 중심으로, 기존 채팅/퀘스트/Admin ingest 숨김 → ④ `graduation_center`에 ReAct controller 추가 → ⑤ 두 번째 주제 확정 후 티어2 재사용 vs 삭제 결정. **프론트는 `/ask`·`/actions/start`·`/ingest/run`에 강결합돼 있어, 백엔드만 지우면 데모 첫 화면이 깨진다 — 프론트 정보구조 전환과 함께 진행할 것.**
+**권장 순서:** ① 위 chunks.jsonl 의존 이관 → ② `app.py`를 졸업센터 전용으로 슬림화(`/ask`·`/actions`·일반 `/ingest`·`/sources` 제거 or flag) → ③ (프론트 파트) 첫 화면을 졸업센터 중심으로, 기존 채팅/퀘스트/Admin ingest 숨김 → ④ ~~ReAct controller~~ 에이전트 총평(단일 턴 ReAct)으로 구현 완료 → ⑤ 두 번째 주제 확정 후 티어2 재사용 vs 삭제 결정. **프론트는 `/ask`·`/actions/start`·`/ingest/run`에 강결합돼 있어, 백엔드만 지우면 데모 첫 화면이 깨진다 — 프론트 정보구조 전환과 함께 진행할 것.**
 
 ## Commands
 
@@ -76,9 +76,9 @@ There is no linter or formatter wired into the repo.
 
 **의존 주의:** `_official_policy_sources()`(service.py)가 `data/processed/chunks.jsonl`을 직접 읽는다 — *재설계 개요*의 선행 이관 참고.
 
-**목표 (이 브랜치에서 구축):**
-- 직선 파이프라인 → **ReAct controller** 도입. LLM이 갭을 보고 *필요한 도구만 골라 반복 호출*(compute_check / 요람 RAG / 대체과목·마이크로디그리 탐색 / 학점 갭 계산).
-- 출력을 **섹션형 컨설팅 보고서**로(현황진단·부족요건·대체경로 시나리오·학기별 액션플랜·근거).
+**구현 완료 (목표였던 것 — 2026-06-05 갱신):**
+- ~~멀티스텝 ReAct controller~~ → **단일 턴 bounded ReAct로 확정 구현**(에이전트 총평 `report_summary.py`: LLM이 what-if 갈림길 후보·delta 값을 골라 결정론 시뮬레이터 호출, 탈락 사유까지 기록). 멀티스텝 반복 호출은 일관성 트레이드오프로 의도적 미도입 — *ReAct 가드레일* 절 참고.
+- 출력은 **섹션형 컨설팅 보고서**로 구현 완료(판정·게이지·로드맵·해설·에이전트 총평·근거 토글).
 
 ### 두 번째 주제 — 미정 (RAG와 다른 workflow)
 

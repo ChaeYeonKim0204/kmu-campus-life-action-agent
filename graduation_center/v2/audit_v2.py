@@ -47,6 +47,12 @@ def _required_names_for_year(program_id: str, year: int | None) -> list[str] | N
     return names, pick
 
 
+def _group_label(grp: dict) -> str:
+    """choose-1 그룹 표시 라벨 — audit(미이수 표기)·planner(라벨→그룹 매핑)가 공유.
+    합성 규칙이 두 곳에서 갈리면 라벨 없는 그룹이 planner에서 미해소된다(연도 라운드 검증)."""
+    return grp.get("label") or (" · ".join(it["name"] for it in grp.get("items", [])) + " 중 택1")
+
+
 def _required_groups_for_year(program_id: str, year: int | None) -> list[dict]:
     """choose-1 필수 그룹(예: S-TEAM·사제동행 중 택1). nearest-prior 연도 해석."""
     p = V2_DIR / "required_names_by_year.json"
@@ -102,11 +108,18 @@ def _gen_basic_view(verified: VerifiedTranscript, program_id: str, year: int | N
         return []
     taken_norm = [normalize_name(c.name_ko) for c in verified.confirmed_courses
                   if c.requirement_area == "기초교양"]
+
+    def _hit(nm: str) -> bool:
+        key = normalize_name(nm)
+        return any(key in t for t in taken_norm)    # '택1'·접미사(Ⅰ/ABEEK) 흡수 위해 부분일치
+
     out = []
     for nm in names:
-        key = normalize_name(nm)
-        taken = any(key in t for t in taken_norm)   # '택1'·접미사(ABEEK) 흡수 위해 부분일치
-        out.append({"name_ko": nm, "taken": taken})
+        if isinstance(nm, dict):                     # choose-1 (예: College Eng/Conv 중 택1)
+            out.append({"name_ko": nm.get("label") or " · ".join(nm["any_of"]) + " 중 택1",
+                        "taken": any(_hit(m) for m in nm.get("any_of", []))})
+        else:
+            out.append({"name_ko": nm, "taken": _hit(nm)})
     return out
 
 
@@ -357,7 +370,7 @@ def compute_audit(
         # choose-1 그룹(예: S-TEAM·사제동행 중 택1) — 멤버 중 하나라도 이수했으면 충족
         for grp in _required_groups_for_year(profile.program_id, year):
             if not any(_taken(it["name"]) for it in grp.get("items", [])):
-                missing_names.append(grp.get("label") or " · ".join(it["name"] for it in grp["items"]) + " 중 택1")
+                missing_names.append(_group_label(grp))
         missing_ids = []                       # 이름 기준 — 코드 없음
         required_available = True
         if applied_year:

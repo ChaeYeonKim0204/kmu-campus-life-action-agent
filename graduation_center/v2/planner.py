@@ -438,11 +438,12 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     # 카탈로그 매칭은 alias(명칭 드리프트 동치)까지 시도 — 옛 이름으로만 계획하고 신명을 전공 풀에서
     # 또 선택하는 '같은 물리 과목 이중 계획'을 방지(라운드5 검증).
     if audit.missing_required_names:
-        from graduation_center.v2.audit_v2 import _required_aliases, _required_groups_for_year
+        from graduation_center.v2.audit_v2 import _group_label, _required_aliases, _required_groups_for_year
         rmeta = _required_meta(profile.program_id, profile.admission_year)
         alias_groups = _required_aliases(profile.program_id)
         # choose-1 그룹 라벨 → 배치 후보는 멤버 중 1개(카탈로그 있는 첫 과목)로 해소
-        grp_by_label = {g.get("label"): g for g in _required_groups_for_year(profile.program_id, profile.admission_year)}
+        # (라벨 합성은 audit과 _group_label 공유 — 합성 규칙이 갈리면 그룹 미해소)
+        grp_by_label = {_group_label(g): g for g in _required_groups_for_year(profile.program_id, profile.admission_year)}
         items = []
         for n in audit.missing_required_names:
             grp = grp_by_label.get(n)
@@ -515,11 +516,18 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     major_gap_eff = max(0.0, round(major_gap - req_major_credits, 1))
     if major_gap_eff > 0:
         confirmed_full = {c.course_id for c in verified.confirmed_courses if c.course_id}
+        # choose-1 그룹 멤버는 전공 일반 풀에서 제외 — 필수지정(택1)로 1개가 이미 계획되는데
+        # 미선택 sibling이 '전공 부족'으로 또 배치되는 이중 계획 방지(연도 라운드 검증, S3 재현)
+        from graduation_center.v2.audit_v2 import _required_groups_for_year as _grps
+        group_member_norms = {normalize_name(it["name"])
+                              for g in _grps(profile.program_id, profile.admission_year)
+                              for it in g.get("items", [])}
         pool = [{"name_ko": c.name_ko, "course_id": c.course_id, "credits": c.credits, "satisfies": "전공 부족",
                  "offered_terms": c.offered_terms, "prerequisites": c.prerequisites, "confidence": "catalog_verified"}
                 for c in cat["courses"]
                 # 7자리 전체 또는 이름으로 이수 제외(5자리 절단 충돌 — 예: 0365007/0365008 — 방지)
-                if not ((c.course_id and c.course_id in confirmed_full) or normalize_name(c.name_ko) in confirmed_norm)]
+                if not ((c.course_id and c.course_id in confirmed_full) or normalize_name(c.name_ko) in confirmed_norm
+                        or normalize_name(c.name_ko) in group_member_norms)]
         reqs.append({"label": "전공 부족", "area": "전공", "priority": 3, "need": major_gap_eff, "pool": pool})
     # 4) 기초교양 — 영역 학점이 '부족할 때만' 계획(영역 총량 충족이면 이름 미매칭은 확인 항목일 뿐,
     #    phantom 12학점 추가 금지 — 라운드4 검증). 필수명이 있으면 그것으로, 없으면 슬롯으로.

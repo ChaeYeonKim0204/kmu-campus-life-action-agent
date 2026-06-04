@@ -331,6 +331,164 @@
             "1"
           ]
         }
+      ],
+      "2023": [
+        {
+          "name": "현대경영과기업가정신",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영통계",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "회계학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영정보학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "인공지능수학",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅰ",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅱ",
+          "credits": 3,
+          "terms": [
+            "2"
+          ]
+        },
+        {
+          "name": "회귀분석",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "머신러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "딥러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        }
+      ],
+      "2024": [
+        {
+          "name": "현대경영과기업가정신",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영통계",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "회계학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영정보학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "인공지능수학",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅰ",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅱ",
+          "credits": 3,
+          "terms": [
+            "2"
+          ]
+        },
+        {
+          "name": "회귀분석",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "머신러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "딥러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        }
       ]
     }
   },
@@ -373,22 +531,98 @@
     "ai_bigdata": {
       "2022": [
         "글쓰기",
-        "College English",
-        "English Conversation",
+        {
+          "any_of": [
+            "College English",
+            "English Conversation"
+          ],
+          "label": "College English·English Conversation 중 택1"
+        },
+        "글로벌영어"
+      ],
+      "2023": [
+        "글쓰기",
+        {
+          "any_of": [
+            "College English",
+            "English Conversation"
+          ],
+          "label": "College English·English Conversation 중 택1"
+        },
+        "글로벌영어"
+      ],
+      "2024": [
+        "글쓰기",
+        {
+          "any_of": [
+            "College English",
+            "English Conversation"
+          ],
+          "label": "College English·English Conversation 중 택1"
+        },
         "글로벌영어"
       ],
       "2025": [
         "글쓰기",
-        "College English",
-        "English Conversation"
+        {
+          "any_of": [
+            "College English",
+            "English Conversation"
+          ],
+          "label": "College English·English Conversation 중 택1"
+        }
       ]
     }
   },
-  "_gen_basic_note": "학번 요람 기초교양 필수 과목명(택1 포함). 학생 수강내역 기초교양 과목명과 부분일치로 이수 판정.",
+  "_gen_basic_note": "학번 요람 기초교양 필수 과목명(택1 포함). 학생 수강내역 기초교양 과목명과 부분일치로 이수 판정. 항목이 dict(any_of)면 멤버 중 1개 이수 시 충족(택1).",
   "_required_format": "값은 [문자열] 또는 [{name,credits,terms}] 모두 허용. terms=개설학기(['1'],['2'],['1','2']).",
   "required_groups": {
     "ai_bigdata": {
       "2022": [
+        {
+          "label": "S-TEAM Class·사제동행세미나 중 택1",
+          "items": [
+            {
+              "name": "S-TEAM Class",
+              "credits": 1,
+              "terms": [
+                "1"
+              ]
+            },
+            {
+              "name": "사제동행세미나",
+              "credits": 1,
+              "terms": [
+                "1",
+                "2"
+              ]
+            }
+          ]
+        }
+      ],
+      "2023": [
+        {
+          "label": "S-TEAM Class·사제동행세미나 중 택1",
+          "items": [
+            {
+              "name": "S-TEAM Class",
+              "credits": 1,
+              "terms": [
+                "1"
+              ]
+            },
+            {
+              "name": "사제동행세미나",
+              "credits": 1,
+              "terms": [
+                "1",
+                "2"
+              ]
+            }
+          ]
+        }
+      ],
+      "2024": [
         {
           "label": "S-TEAM Class·사제동행세미나 중 택1",
           "items": [

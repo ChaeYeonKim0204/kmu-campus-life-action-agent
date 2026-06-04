@@ -42,7 +42,8 @@ def select_explain_items(audit: AuditResult, profile: RequirementProfile,
         items.append({
             "key": "missing_required",
             "title": f"미이수 필수지정 과목 ({len(audit.missing_required_names)}과목)",
-            "query": f"{dept} 전공 필수지정 과목 이수 졸업요건 {names}",
+            # 과목명 나열은 검색을 타과·과목소개 페이지로 끌고 감 — 교과과정표(비고 필수)로 유도
+            "query": f"{dept} 교육과정 전공 교과목 필수 이수구분",
             "context": f"미이수 필수지정: {names}",
         })
     for cc in audit.convergence_checks:
@@ -276,12 +277,18 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
     if cached:
         sections = [ExplainSection.model_validate(s) for s in cached["sections"]]
         sources = [Source.model_validate(s) for s in cached["sources"]]
+        # 캐시 경로도 라이브와 동일하게 미확인 줄을 반영 — '통과' 고정 표기는
+        # 화면의 '※ 공식 출처 미확인' 줄과 모순(데모 시나리오 검증 라운드)
+        ungrounded = sum(1 for sec in sections for ln in sec.lines if not ln.grounded)
         trace = [
             NodeTraceEvent(node="요람 RAG 해설", kind="llm",
                            summary=f"{len(sections)}개 항목 해설 (캐시 — 동일 입력 동일 결과)",
                            branch_taken=f"{len(sections)}개 항목 해설"),
             NodeTraceEvent(node="해설 검증", kind="validator",
-                           summary="인용 해소·수치 정합·마스킹 통과(캐시)", branch_taken="통과"),
+                           status="ok" if ungrounded == 0 else "warn",
+                           summary=("인용 해소·수치 정합·마스킹 통과" if ungrounded == 0
+                                    else f"근거 미확인 {ungrounded}줄 표시"),
+                           branch_taken=("통과" if ungrounded == 0 else "일부 미확인 표시")),
         ]
         return sections, sources, trace, None
 

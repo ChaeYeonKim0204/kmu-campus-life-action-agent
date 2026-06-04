@@ -144,6 +144,15 @@ def schedule(rows: list[dict], n_terms: int, start_year: int):
                     placed = True
                     break
         assert placed, f"배치 실패: {r['name']}"
+    # 외톨이 학기 정리: 6학점 미만 정규학기는 앞 학기 여유로 흡수(1과목짜리 학기 어색함 방지)
+    for t in range(n_terms - 1, 0, -1):
+        if reg[t] and sum(x["credits"] for x in reg[t]) < 6:
+            for r in list(reg[t]):
+                for u in range(t - 1, -1, -1):
+                    if sum(x["credits"] for x in reg[u]) + r["credits"] <= REG_CAP:
+                        reg[u].append(r)
+                        reg[t].remove(r)
+                        break
     out = []
     for i in range(n_terms):
         year, sem = start_year + i // 2, 1 + i % 2

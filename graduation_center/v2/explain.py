@@ -252,6 +252,17 @@ def _get_client():
         return None
 
 
+def skip_explain_trace(summary: str, branch: str, status: str = "skip") -> list[NodeTraceEvent]:
+    """해설 생략 시 placeholder 2노드 — 없으면 그래프에서 리포트 노드가 고립됨.
+    run_explain 내부와 pipeline.run_audit(skip_explain=True)가 공용(모듈 레벨로 추출)."""
+    return [
+        NodeTraceEvent(node="요람 RAG 해설", kind="llm", status=status,
+                       summary=summary, branch_taken=branch),
+        NodeTraceEvent(node="해설 검증", kind="validator", status="skip",
+                       summary="해설 없음 — 검증 생략", branch_taken="생략"),
+    ]
+
+
 # ---------- 오케스트레이션 ----------
 def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentContext,
                 client=None) -> tuple[list[ExplainSection], list[Source], list[NodeTraceEvent], str | None]:
@@ -259,15 +270,9 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
     items = select_explain_items(audit, profile, ctx)
     model = os.getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini")
 
-    def _skip_trace(summary: str, branch: str, status: str = "skip"):
-        # skip/fail에도 '해설 검증' placeholder를 방출 — 없으면 그래프에서 리포트 노드가
-        # lit 엣지 없이 고립됨(신규코드 검증 라운드: 키 없는 환경 재현)
-        return [
-            NodeTraceEvent(node="요람 RAG 해설", kind="llm", status=status,
-                           summary=summary, branch_taken=branch),
-            NodeTraceEvent(node="해설 검증", kind="validator", status="skip",
-                           summary="해설 없음 — 검증 생략", branch_taken="생략"),
-        ]
+    # skip/fail에도 '해설 검증' placeholder를 방출 — 없으면 그래프에서 리포트 노드가
+    # lit 엣지 없이 고립됨(신규코드 검증 라운드: 키 없는 환경 재현)
+    _skip_trace = skip_explain_trace
 
     if not items:
         return [], [], _skip_trace("부족 항목 없음 — 해설 생략", "해설 불필요"), None

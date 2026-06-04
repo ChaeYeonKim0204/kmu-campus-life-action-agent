@@ -270,3 +270,67 @@ class AuditPipelineResponse(BaseModel):
     sources: list[Source] = Field(default_factory=list)
     node_trace: list[NodeTraceEvent] = Field(default_factory=list)
     report_markdown: str = ""
+
+
+# ---------- 졸업 시나리오 상담 Agent (What-if) ----------
+# LLM은 자연어 질문 → WhatIfDelta 변환(매개변수 추출기)만 하고,
+# 판정은 기존 결정론 파이프라인(run_audit) 재실행이 한다. 예제06 Tool Calling 패턴.
+WhatIfCategory = Literal["휴학", "수강학기변경", "계절학기", "학점상한", "다전공변경", "성적우수", "기타"]
+
+
+class ConvChange(BaseModel):
+    program_id: str
+    track: Literal["다전공", "부전공"] = "다전공"
+
+
+class WhatIfDelta(BaseModel):
+    """LLM 출력의 유일한 통로 — 전 필드 None/빈 리스트 = 변경 없음.
+    범위 밖 값은 ValidationError → 호출측이 unsupported로 degrade."""
+    calendar_delay_terms: int | None = Field(default=None, ge=0, le=4)   # 휴학: 시작만 지연
+    remaining_semesters_change: int | None = Field(default=None, ge=-4, le=4)
+    seasonal_semester_allowed: bool | None = None
+    max_credits_per_term: float | None = Field(default=None, gt=0, le=24)
+    prev_term_gpa_ge_375: bool | None = None
+    add_convergence: list[ConvChange] = Field(default_factory=list)
+    drop_convergence: list[str] = Field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return (self.calendar_delay_terms in (None, 0)
+                and self.remaining_semesters_change in (None, 0)
+                and self.seasonal_semester_allowed is None
+                and self.max_credits_per_term is None
+                and self.prev_term_gpa_ge_375 is None
+                and not self.add_convergence and not self.drop_convergence)
+
+
+class WhatIfDiff(BaseModel):
+    """before/after 결정론 비교 — 전 필드 f-string 조립(LLM 미사용)."""
+    risk_before: str
+    risk_after: str
+    risk_label_before: str = ""
+    risk_label_after: str = ""
+    total_gap_before: float = 0.0
+    total_gap_after: float = 0.0
+    feasible_before: bool | None = None
+    feasible_after: bool | None = None
+    graduation_term_before: str | None = None
+    graduation_term_after: str | None = None
+    already_met_after: bool = False                  # terms=[] + feasible=True
+    overflow_before: bool = False
+    overflow_after: bool = False
+    changed_areas: list[str] = Field(default_factory=list)
+    convergence_changes: list[str] = Field(default_factory=list)
+    headline: str = ""
+
+
+class WhatIfResponse(BaseModel):
+    status: Literal["ok", "unsupported"]
+    category: WhatIfCategory | None = None
+    question_summary: str = ""
+    unsupported_reason: str | None = None
+    applied_changes: list[str] = Field(default_factory=list)   # "잔여학기 4→3" 등 사람용
+    assumptions: list[str] = Field(default_factory=list)
+    diff: WhatIfDiff | None = None
+    next_actions: list[str] = Field(default_factory=list)
+    after: AuditPipelineResponse | None = None       # ⚠️ after.node_trace는 그래프 합성 금지(§계약)
+    node_trace: list[NodeTraceEvent] = Field(default_factory=list)

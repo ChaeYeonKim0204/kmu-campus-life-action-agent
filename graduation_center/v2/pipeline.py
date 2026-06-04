@@ -11,7 +11,7 @@ from graduation_center.v2.catalog import (
     regular_term_cap,
 )
 from graduation_center.v2.excel_parser import parse_many
-from graduation_center.v2.explain import run_explain
+from graduation_center.v2.explain import run_explain, skip_explain_trace
 from graduation_center.v2.models_v2 import (
     AuditPipelineResponse, CourseMatch, NodeTraceEvent, Source, StudentContext,
     VerifiedCourse,
@@ -44,7 +44,7 @@ def run_verify(files: list[tuple[bytes, str]], context: dict) -> dict:
     }
 
 
-def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
+def run_audit(payload: dict, client=None, *, skip_explain: bool = False) -> AuditPipelineResponse:
     ctx = StudentContext.model_validate(payload["context"])
     table = [VerifiedCourse.model_validate(x) for x in payload.get("verification_table", [])]
     unresolved = [CourseMatch.model_validate(x) for x in payload.get("unresolved", [])]
@@ -71,9 +71,14 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
     # 근거(G1..) — 결정론 구성: 적용 요람·학사규정 제32/77조·융합 요람·교양과정.
     # (과거 LLM 플래너의 pctx["sources"]는 빈 배열이라 citation contract가 죽어 있었음)
     sources, marks = _build_sources(profile, ctx, audit)
-    # 규정 근거 해설(보고서 내장 RAG) — LLM은 요람 chunk 해설만, 실패해도 본체 무영향
-    explanations, y_sources, explain_trace, explain_fallback = run_explain(
-        audit, profile, ctx, client=client)
+    # 규정 근거 해설(보고서 내장 RAG) — LLM은 요람 chunk 해설만, 실패해도 본체 무영향.
+    # skip_explain: what-if 재실행 경로용 — 결정론 판정만 필요해 해설(LLM·검색) 생략.
+    if skip_explain:
+        explanations, y_sources, explain_fallback = [], [], None
+        explain_trace = skip_explain_trace("해설 생략(what-if 재실행)", "해설 생략")
+    else:
+        explanations, y_sources, explain_trace, explain_fallback = run_explain(
+            audit, profile, ctx, client=client)
     sources += y_sources
 
     conv_n = len(audit.convergence_checks)

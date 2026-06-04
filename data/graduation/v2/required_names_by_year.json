@@ -537,8 +537,7 @@
             "English Conversation"
           ],
           "label": "College English·English Conversation 중 택1"
-        },
-        "글로벌영어"
+        }
       ],
       "2023": [
         "글쓰기",
@@ -548,8 +547,7 @@
             "English Conversation"
           ],
           "label": "College English·English Conversation 중 택1"
-        },
-        "글로벌영어"
+        }
       ],
       "2024": [
         "글쓰기",
@@ -559,8 +557,7 @@
             "English Conversation"
           ],
           "label": "College English·English Conversation 중 택1"
-        },
-        "글로벌영어"
+        }
       ],
       "2025": [
         "글쓰기",
@@ -574,7 +571,7 @@
       ]
     }
   },
-  "_gen_basic_note": "학번 요람 기초교양 필수 과목명(택1 포함). 학생 수강내역 기초교양 과목명과 부분일치로 이수 판정. 항목이 dict(any_of)면 멤버 중 1개 이수 시 충족(택1).",
+  "_gen_basic_note": "학번 요람 기초교양 필수 과목명(택1 포함). 학생 수강내역 기초교양 과목명과 부분일치로 이수 판정. 항목이 dict(any_of)면 멤버 중 1개 이수 시 충족(택1). 글로벌영어 필수지정 해지는 전 학번 공통(일괄 적용 — 연도분기 안 함, 2026-06 확인). 기초교양 최저학점(8/7)은 시트 그대로.",
   "_required_format": "값은 [문자열] 또는 [{name,credits,terms}] 모두 허용. terms=개설학기(['1'],['2'],['1','2']).",
   "required_groups": {
     "ai_bigdata": {

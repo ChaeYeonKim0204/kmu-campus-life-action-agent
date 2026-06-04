@@ -178,7 +178,10 @@ def build_students():
     # S1 졸업반 — 겹침 21(A그룹 18 + 선형대수 B 3) > 캡 12
     s1_major = [c for c in REQUIRED if "캡스톤디자인Ⅱ" not in c["name_ko"]]
     ov7 = OVERLAP_A[:6] + OVERLAP_B[:1]
-    s1_major += [c for c in ov7 if AI_BY_NAME.get(c["name_ko"]) and not AI_BY_NAME[c["name_ko"]].get("is_required")]
+    # 겹침 과목은 제1전공 개설본 코드로 수강(예: 선형대수 0155708 — dsci 쪽 0155707은
+    # 소프트웨어전공 개설본. 앞 5자리 동일교과목이라 판정은 같지만 실제 수강 패턴에 맞춤)
+    s1_major += [AI_BY_NAME[c["name_ko"]] for c in ov7
+                 if AI_BY_NAME.get(c["name_ko"]) and not AI_BY_NAME[c["name_ko"]].get("is_required")]
     need = 48 - sum(c["credits"] for c in s1_major)
     ov5 = {o["course_id"][:5] for o in ov7}
     s1_major += [c for c in ELECTIVE if c not in s1_major and c["course_id"][:5] not in ov5][: max(0, int(need // 3) + 1)]

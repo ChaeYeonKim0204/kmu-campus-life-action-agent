@@ -1,7 +1,7 @@
 {
   "S1_졸업반_김융합": {
-    "student_no": "20210001",
-    "admission_year": 2021,
+    "student_no": "20220001",
+    "admission_year": 2022,
     "files": [
       "1차학기.xls",
       "1학년 하계.xls",
@@ -15,7 +15,7 @@
     ],
     "context": {
       "program_id": "ai_bigdata",
-      "admission_year": 2021,
+      "admission_year": 2022,
       "convergence_program_ids": [
         "dsci_convergence"
       ],
@@ -34,7 +34,8 @@
       "1차학기.xls",
       "2차학기.xls",
       "3차학기.xls",
-      "4차학기.xls"
+      "4차학기.xls",
+      "5차학기.xls"
     ],
     "context": {
       "program_id": "ai_bigdata",
@@ -73,10 +74,11 @@
     }
   },
   "S4_4학년_최계절": {
-    "student_no": "20210004",
-    "admission_year": 2021,
+    "student_no": "20220004",
+    "admission_year": 2022,
     "files": [
       "1차학기.xls",
+      "1학년 하계.xls",
       "2차학기.xls",
       "3차학기.xls",
       "4차학기.xls",
@@ -85,7 +87,7 @@
     ],
     "context": {
       "program_id": "ai_bigdata",
-      "admission_year": 2021,
+      "admission_year": 2022,
       "convergence_program_ids": [
         "dsci_convergence"
       ],

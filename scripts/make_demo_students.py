@@ -16,6 +16,7 @@ ON국민 수강신청확인서 형식(.xls, 학기당 1파일)으로 4명의 합
   S3 2학년    — 잔여 2학기 선언 대비 갭 큼 → blocked + 초과학기 시나리오(D)
   S4 4학년    — 계절 허용 + 직전학기 3.75↑(+3) → feasible 로드맵
 
+주의: 학과는 2022학년도 신설 — 최저 학번 2022.
 실행:  PYTHONPATH=. python scripts/make_demo_students.py
 출력:  data/graduation/v2/demo_students/<학생>/<n차학기|n학년 하계·동계>.xls
 """
@@ -53,7 +54,8 @@ ETC_POOL = [
     "디지털콘텐츠기획", "행동경제학입문", "동아시아근현대사", "스포츠마케팅",
     "미디어와젠더", "도시와공간의사회학", "빅히스토리",
 ]
-BASIC_ROWS = [("글쓰기", 3), ("EnglishⅠ", 2), ("컴퓨팅적사고", 2)]   # 기초교양 7학점
+# 기초교양 8학점(2022~2024학번 시트: 글쓰기3·College Eng/Conv 택1 2·글로벌영어1 + 영역 잔여 2)
+BASIC_ROWS = [("글쓰기", 3), ("College EnglishⅠ", 2), ("컴퓨팅적사고", 2), ("글로벌영어", 1)]
 FREE_POOL = [("스포츠와건강", 1), ("생활속의화학", 2), ("클래식음악의이해", 1), ("와인과세계문화", 2)]
 
 _FAKE = [9000000]
@@ -196,8 +198,10 @@ def build_students():
     s1_major += [c for c in ELECTIVE if c not in s1_major and c["course_id"][:5] not in ov5][: max(0, int(need // 3) + 1)]
     s1 = major(s1_major) + ds_only(DS_ONLY_B[:5]) + gened(0) + basic() + free(0, 2) + etc(15, 0)
 
-    # S2 3학년 — dsci A그룹만(B그룹 0) → 그룹최저 부족. 빅데이터처리와시각화 중복=재수강 서사
-    s2_major = [AI_BY_NAME.get(c["name_ko"], c) for c in REQUIRED[:7] + OVERLAP_A[:4]]
+    # S2 3학년 — dsci A그룹만(B그룹 0) → 그룹최저 부족. 1학년 필수는 전부 이수,
+    # 고학년 필수(회귀분석·머신러닝·딥러닝)만 미이수 — 자연스러운 학년 진행
+    req_y1 = [c for c in REQUIRED if (c.get("grade_level") or 9) <= 1]
+    s2_major = [AI_BY_NAME.get(c["name_ko"], c) for c in req_y1 + OVERLAP_A[:4]]
     s2 = major([c for c in s2_major if c.get("course_id")]) + gened(1) + basic() + etc(6, 5)
 
     # S3 2학년 — 갭 큼 + 잔여 2학기 선언 → blocked·초과학기(D)
@@ -205,18 +209,20 @@ def build_students():
     for r in s3:                                       # 1학년 마친 학생 — 전부 1~2차학기 안으로
         r["pref"] = min(r["pref"], 1) if r["pref"] is not None else None
 
-    # S4 4학년 — 계절+성적우수 → feasible
-    s4_major = [AI_BY_NAME.get(c["name_ko"], c) for c in REQUIRED[:8] + OVERLAP_A[:5]]
-    s4 = major([c for c in s4_major if c.get("course_id")]) + ds_only(DS_ONLY_B[:3]) + gened(3) + basic() + free(2, 2) + etc(11, 14)
+    # S4 4학년 — 계절+성적우수 → feasible. 1학년 필수 전부 + 회귀·머신러닝 이수,
+    # 딥러닝(3~4학년)만 남음 — 졸업반이 막학기에 채우는 그림
+    s4_req = req_y1 + [AI_BY_NAME[n] for n in ("회귀분석", "머신러닝") if n in AI_BY_NAME]
+    s4_major = [AI_BY_NAME.get(c["name_ko"], c) for c in s4_req + OVERLAP_A[:5]]
+    s4 = major([c for c in s4_major if c.get("course_id")]) + ds_only(DS_ONLY_B[:3]) + gened(3) + basic() + free(2, 2) + etc(10, 14)
 
     return [
-        ("S1_졸업반_김융합", "20210001", s1, 7, 2021,
+        ("S1_졸업반_김융합", "20220001", s1, 7, 2022,
          {"current_term": "2026-1", "remaining_semesters": 1, "gpa_min_met": "yes"}),
         ("S2_3학년_박분석", "20220002", s2, 5, 2022,
          {"current_term": "2025-2", "remaining_semesters": 3, "gpa_min_met": "yes"}),
         ("S3_2학년_이지연", "20240003", s3, 2, 2024,
          {"current_term": "2025-1", "remaining_semesters": 2, "gpa_min_met": "unknown"}),
-        ("S4_4학년_최계절", "20210004", s4, 6, 2021,
+        ("S4_4학년_최계절", "20220004", s4, 6, 2022,
          {"current_term": "2026-1", "remaining_semesters": 2,
           "seasonal_semester_allowed": True, "prev_term_gpa_ge_375": True, "gpa_min_met": "yes"}),
     ]

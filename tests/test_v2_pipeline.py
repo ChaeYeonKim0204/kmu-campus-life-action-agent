@@ -61,7 +61,10 @@ def test_audit_detects_gap_and_missing_required(monkeypatch):
                "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
     resp = pipeline.run_audit(payload)
     assert resp.audit.total_gap > 0
-    assert "0910501" in resp.audit.missing_required_course_ids  # 인공지능수학
+    # 연도별 요람 데이터(학과 공식 시트) 도입으로 이름 기반 경로 사용 — 코드 리스트는 비움
+    assert "인공지능수학" in resp.audit.missing_required_names
+    assert "딥러닝" in resp.audit.missing_required_names            # 2025 시트 필수(p.694 누락 복구)
+    assert any("택1" in n for n in resp.audit.missing_required_names)  # S-TEAM·사제동행 그룹
     assert resp.risk.grade in {"B", "C", "D"}
     # 결정론 통합 플래너: 현재 학기 미입력 → 학기 배치는 생략하되 status는 generated(권장 과목 안내)
     assert resp.roadmap.status == "generated"

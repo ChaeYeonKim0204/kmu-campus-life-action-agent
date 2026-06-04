@@ -47,6 +47,21 @@ def _required_names_for_year(program_id: str, year: int | None) -> list[str] | N
     return names, pick
 
 
+def _required_groups_for_year(program_id: str, year: int | None) -> list[dict]:
+    """choose-1 필수 그룹(예: S-TEAM·사제동행 중 택1). nearest-prior 연도 해석."""
+    p = V2_DIR / "required_names_by_year.json"
+    by_year = (json.loads(p.read_text(encoding="utf-8")).get("required_groups", {}) if p.exists() else {}).get(program_id)
+    if not by_year:
+        return []
+    avail = sorted(int(y) for y in by_year)
+    if year is not None and str(year) in by_year:
+        pick = year
+    else:
+        le = [y for y in avail if year is None or y <= year]
+        pick = (le[-1] if le else avail[0])
+    return by_year[str(pick)]
+
+
 def _required_aliases(program_id: str) -> dict:
     """명칭 드리프트 동치(같은 교과목코드, 요람명↔수강내역명). 양방향 그룹으로 반환.
 
@@ -339,6 +354,10 @@ def compute_audit(
                 return True
             return any(a in confirmed_norm for a in aliases.get(nn, []))  # 명칭 드리프트 동치
         missing_names = [rn for rn in req_names if not _taken(rn)]
+        # choose-1 그룹(예: S-TEAM·사제동행 중 택1) — 멤버 중 하나라도 이수했으면 충족
+        for grp in _required_groups_for_year(profile.program_id, year):
+            if not any(_taken(it["name"]) for it in grp.get("items", [])):
+                missing_names.append(grp.get("label") or " · ".join(it["name"] for it in grp["items"]) + " 중 택1")
         missing_ids = []                       # 이름 기준 — 코드 없음
         required_available = True
         if applied_year:

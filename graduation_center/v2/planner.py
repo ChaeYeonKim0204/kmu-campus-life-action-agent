@@ -438,11 +438,26 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     # 카탈로그 매칭은 alias(명칭 드리프트 동치)까지 시도 — 옛 이름으로만 계획하고 신명을 전공 풀에서
     # 또 선택하는 '같은 물리 과목 이중 계획'을 방지(라운드5 검증).
     if audit.missing_required_names:
-        from graduation_center.v2.audit_v2 import _required_aliases
+        from graduation_center.v2.audit_v2 import _required_aliases, _required_groups_for_year
         rmeta = _required_meta(profile.program_id, profile.admission_year)
         alias_groups = _required_aliases(profile.program_id)
+        # choose-1 그룹 라벨 → 배치 후보는 멤버 중 1개(카탈로그 있는 첫 과목)로 해소
+        grp_by_label = {g.get("label"): g for g in _required_groups_for_year(profile.program_id, profile.admission_year)}
         items = []
         for n in audit.missing_required_names:
+            grp = grp_by_label.get(n)
+            if grp:
+                cat_norms = cat.get("by_norm") or {}
+                member = next((it for it in grp["items"] if normalize_name(it["name"]) in cat_norms),
+                              grp["items"][0])
+                items.append({"name_ko": member["name"], "course_id": "",
+                              "credits": float(member.get("credits", 3.0)),
+                              "satisfies": "필수지정(택1)",
+                              "offered_terms": list(member.get("terms") or ["1", "2"]),
+                              "prerequisites": [],
+                              "confidence": "catalog_verified" if member.get("terms") else "name_only",
+                              "manual": not member.get("terms"), "_alias_norms": []})
+                continue
             nn = normalize_name(n)
             m = rmeta.get(nn, {})
             terms = list(m.get("terms") or [])

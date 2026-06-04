@@ -1,5 +1,5 @@
 {
-  "_source": "학번(입학연도)별 요람 교과과정 비고 필수 — 이름 기준(코드 무관). 2023=2023요람 p739-740, 2025=2025요람 p772-773",
+  "_source": "학번(입학연도)별 요람 교과과정 비고 필수 — 이름 기준(코드 무관). 2023=2023요람 p739-740, 2025=2025요람 p772-773 | ai_bigdata=학과 공식 졸업요건 시트(2022~2025_big_graduate.pdf): 2022~2024 필수 11(유레카 제외·택1그룹 포함), 2025 필수 12. 개설학기는 요람 교과과정표.",
   "programs": {
     "mirae_mobility": {
       "2023": [
@@ -165,6 +165,173 @@
         "모빌리티실험및실습",
         "다학제간캡스톤디자인"
       ]
+    },
+    "ai_bigdata": {
+      "2022": [
+        {
+          "name": "현대경영과기업가정신",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영통계",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "회계학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영정보학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "인공지능수학",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅰ",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅱ",
+          "credits": 3,
+          "terms": [
+            "2"
+          ]
+        },
+        {
+          "name": "회귀분석",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "머신러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "딥러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        }
+      ],
+      "2025": [
+        {
+          "name": "현대경영과기업가정신",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영통계",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "회계학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "경영정보학원론",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "인공지능수학",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅰ",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        },
+        {
+          "name": "AI빅데이터프로그래밍Ⅱ",
+          "credits": 3,
+          "terms": [
+            "2"
+          ]
+        },
+        {
+          "name": "회귀분석",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "머신러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "딥러닝",
+          "credits": 3,
+          "terms": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "유레카프로젝트",
+          "credits": 3,
+          "terms": [
+            "1"
+          ]
+        }
+      ]
     }
   },
   "aliases": {
@@ -177,6 +344,14 @@
       ],
       "미래모빌리티AD": [
         "자동차모빌리티 Adventure Design"
+      ]
+    },
+    "ai_bigdata": {
+      "인공지능수학": [
+        "경영수학"
+      ],
+      "머신러닝": [
+        "데이터마이닝"
       ]
     }
   },
@@ -194,8 +369,48 @@
         "English Conversation",
         "글쓰기"
       ]
+    },
+    "ai_bigdata": {
+      "2022": [
+        "글쓰기",
+        "College English",
+        "English Conversation",
+        "글로벌영어"
+      ],
+      "2025": [
+        "글쓰기",
+        "College English",
+        "English Conversation"
+      ]
     }
   },
   "_gen_basic_note": "학번 요람 기초교양 필수 과목명(택1 포함). 학생 수강내역 기초교양 과목명과 부분일치로 이수 판정.",
-  "_required_format": "값은 [문자열] 또는 [{name,credits,terms}] 모두 허용. terms=개설학기(['1'],['2'],['1','2'])."
+  "_required_format": "값은 [문자열] 또는 [{name,credits,terms}] 모두 허용. terms=개설학기(['1'],['2'],['1','2']).",
+  "required_groups": {
+    "ai_bigdata": {
+      "2022": [
+        {
+          "label": "S-TEAM Class·사제동행세미나 중 택1",
+          "items": [
+            {
+              "name": "S-TEAM Class",
+              "credits": 1,
+              "terms": [
+                "1"
+              ]
+            },
+            {
+              "name": "사제동행세미나",
+              "credits": 1,
+              "terms": [
+                "1",
+                "2"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "_required_groups_note": "choose-1 필수 그룹(시트 각주 'S-TEAM Class 미이수 시 사제동행세미나 이수'). 그룹 중 1개 이수 시 충족."
 }

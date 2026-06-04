@@ -49,3 +49,18 @@ def usage_log_path(_isolate_llm_usage_log):
     """Expose the isolated log path for tests that want to read it."""
     return _isolate_llm_usage_log
 
+
+
+@pytest.fixture(autouse=True)
+def _isolate_explain(request, tmp_path, monkeypatch):
+    """규정 근거 해설(explain) 격리 — 테스트가 라이브 LLM을 부르거나 데모 캐시를 오염시키지 않게.
+
+    test_graduation_real_e2e가 모듈 레벨에서 .env를 로드하면 프로세스 전체에 키가 주입돼,
+    미이수 필수가 있는 모든 audit 테스트가 explain 라이브 호출을 하게 된다. live_llm 마크가
+    아니면 클라이언트를 차단하고(명시 주입 fake client는 그대로 동작), 캐시는 tmp로 돌린다.
+    """
+    from graduation_center.v2 import explain as _ex
+    monkeypatch.setattr(_ex, "CACHE_PATH", tmp_path / "explain_cache.json")
+    if "live_llm" not in request.keywords:
+        monkeypatch.setattr(_ex, "_get_client", lambda: None)
+    yield

@@ -15,17 +15,25 @@ from graduation_center.v2.models_v2 import (
 
 
 def _term_order(label: str) -> tuple[int, int]:
-    """학기 라벨('2023학년도 1학기'/'하계'/'동계') → 정렬 키. 클수록 최신."""
-    m = re.search(r"(\d{4})", label or "")
-    year = int(m.group(1)) if m else 0
+    """학기 라벨 → 정렬 키 (1학기 < 하계 < 2학기 < 동계, 클수록 최신).
+
+    실파일 라벨 변형 견고화: '여름/겨울 계절학기', 계절구분 미표기('계절학기'만 — 하계로 간주,
+    학년도 기준 여름이 먼저), 2자리 연도('23학년도'). 미인식 라벨은 (0,0)으로 맨 앞 고정."""
+    label = label or ""
+    m = re.search(r"(\d{4})", label)
+    if m:
+        year = int(m.group(1))
+    else:
+        m2 = re.search(r"(\d{2})\s*학년도", label)
+        year = 2000 + int(m2.group(1)) if m2 else 0
     if "1학기" in label:
         sem = 1
-    elif "하계" in label:
-        sem = 2
+    elif "동계" in label or "겨울" in label:
+        sem = 4
     elif "2학기" in label:
         sem = 3
-    elif "동계" in label:
-        sem = 4
+    elif "하계" in label or "여름" in label or "계절" in label:
+        sem = 2          # 계절구분 미표기는 하계 간주(학년도 내 첫 계절학기)
     else:
         sem = 0
     return (year, sem)

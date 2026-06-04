@@ -226,6 +226,20 @@ def test_convergence_duplicate_credit_cap_and_exclusion():
     assert bu["designated_total"] == total_major    # 부전공도 designated 총합은 동일
 
 
+def test_term_order_one_summer_two_winter():
+    """학기 정렬: 1학기 < 하계 < 2학기 < 동계 + 실파일 라벨 변형(여름/겨울·2자리연도·계절미표기)."""
+    from graduation_center.v2.verification import _term_order
+    seq = ["2023학년도 1학기", "2023학년도 하계 계절학기", "2023학년도 2학기", "2023학년도 동계 계절학기",
+           "2024학년도 1학기"]
+    assert sorted(seq, key=_term_order) == seq
+    assert _term_order("2023학년도 여름 계절학기") == _term_order("2023학년도 하계 계절학기")
+    assert _term_order("2023학년도 겨울 계절학기") == _term_order("2023학년도 동계 계절학기")
+    assert _term_order("2023학년도 계절학기")[1] == 2          # 미표기 → 하계 간주
+    assert _term_order("23학년도 1학기") == (2023, 1)          # 2자리 연도
+    # '동계 계절학기'가 '계절' 매칭에 선점되지 않음(분기 순서 회귀)
+    assert _term_order("2023학년도 동계계절학기")[1] == 4
+
+
 def test_isugubun_mapping_follows_code_table():
     """이수구분 신뢰 전환(2026-06): 코드표 기준 매핑 + substring 섀도잉 회귀 방지."""
     from graduation_center.v2.catalog import area_from_isugubun
@@ -235,6 +249,8 @@ def test_isugubun_mapping_follows_code_table():
         # 비제1전공 계열 — '전공' substring 섀도잉으로 제1전공 오산입되던 잠복 결함
         "다전공": "일반선택", "복수전공": "일반선택", "부전공": "일반선택", "타전공": "일반선택",
         "제2전공_전공": "일반선택", "제3전공_전공기초교양": "일반선택", "연계융합전공_전공": "일반선택",
+        # 실파일 괄호 변형 — '전공' substring으로 새서 제1전공 오산입되던 표기(사용자 실증)
+        "연계융합(전공)": "일반선택", "연계융합(기초)": "일반선택",
         # 교양 계열 (A·B·K·V / Y / E·L·Z)
         "교양필수": "기초교양", "기초공통": "기초교양", "교양기초": "기초교양",
         "핵심교양": "핵심교양", "교양선택": "자유교양", "계열교양": "자유교양",

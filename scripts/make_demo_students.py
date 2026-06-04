@@ -4,13 +4,20 @@ ON국민 수강신청확인서 형식(.xls, 학기당 1파일)으로 4명의 합
 실제 카탈로그(catalog_ai_bigdata / catalog_dsci_convergence / gen_ed_catalog)에서
 과목을 뽑으므로 코드 매칭·중복인정·그룹최저가 실데이터처럼 동작한다.
 
+실제 학생처럼 보이게:
+- 과목 배치는 요람 학년(grade_level)·개설학기(offered_terms) 기준 — 1학년은 교양+기초전공,
+  고학년으로 갈수록 전공·융합 심화.
+- 학기당 학점은 법정 상한(정규 18 · 계절 6, 제32조) 준수 — 넘치면 하계/동계 파일로 분리.
+- 일반선택은 실제 같은 타과 과목명 풀에서, 핵심교양은 교양과정 실과목명에서 학생별로 다르게.
+- 같은 과목 중복 행(재수강 서사)은 두 학기 이상 떨어뜨려 배치.
+
   S1 졸업반   — 잔여 1학기, 제1전공·교양 충족, dsci 겹침 21>캡12(3-way 트레이드오프)
   S2 3학년    — dsci B그룹 0학점(그룹최저 공백), 잔여 3학기 → 로드맵이 B그룹 배치
   S3 2학년    — 잔여 2학기 선언 대비 갭 큼 → blocked + 초과학기 시나리오(D)
   S4 4학년    — 계절 허용 + 직전학기 3.75↑(+3) → feasible 로드맵
 
 실행:  PYTHONPATH=. python scripts/make_demo_students.py
-출력:  data/graduation/v2/demo_students/<학생>/<n>차학기.xls
+출력:  data/graduation/v2/demo_students/<학생>/<n차학기|n학년 하계·동계>.xls
 """
 from __future__ import annotations
 
@@ -29,11 +36,25 @@ GEN = json.loads((V2 / "gen_ed_catalog.json").read_text(encoding="utf-8"))["core
 
 AI_BY_NAME = {c["name_ko"]: c for c in AI["courses"]}
 AI5 = {c["course_id"][:5] for c in AI["courses"] if c.get("course_id")}
+DS_BY_ID5 = {c["course_id"][:5]: c for c in DS["courses"] if c.get("course_id")}
 REQUIRED = [c for c in AI["courses"] if c.get("is_required")]
 ELECTIVE = [c for c in AI["courses"] if not c.get("is_required")]
 OVERLAP_A = [c for c in DS["courses"] if c["course_id"][:5] in AI5 and c.get("group") == "A그룹"]
 OVERLAP_B = [c for c in DS["courses"] if c["course_id"][:5] in AI5 and c.get("group") == "B그룹"]
 DS_ONLY_B = [c for c in DS["courses"] if c["course_id"][:5] not in AI5 and c.get("group") == "B그룹"]
+
+REG_CAP, SEASONAL_CAP = 18.0, 6.0
+
+# 일반선택(타과) — 실제 같은 과목명 풀 (가짜 코드 → 카탈로그 밖 집계로 흐름)
+ETC_POOL = [
+    "심리학개론", "경제와사회", "일본어입문Ⅰ", "중국어회화Ⅰ", "서양미술의이해",
+    "현대사회와법", "스타트업과기업가정신", "소비자행동의이해", "광고와대중문화",
+    "영화로읽는세계사", "환경과인간", "글로벌시사영어", "협상과설득의기술",
+    "디지털콘텐츠기획", "행동경제학입문", "동아시아근현대사", "스포츠마케팅",
+    "미디어와젠더", "도시와공간의사회학", "빅히스토리",
+]
+BASIC_ROWS = [("글쓰기", 3), ("EnglishⅠ", 2), ("컴퓨팅적사고", 2)]   # 기초교양 7학점
+FREE_POOL = [("스포츠와건강", 1), ("생활속의화학", 2), ("클래식음악의이해", 1), ("와인과세계문화", 2)]
 
 _FAKE = [9000000]
 
@@ -44,33 +65,95 @@ def _fc() -> str:
     return str(_FAKE[0])
 
 
+def _pref(course: dict) -> int:
+    """요람 학년·개설학기 → 선호 학기 인덱스(0=1-1)."""
+    gl = course.get("grade_level") or 2
+    term0 = (course.get("offered_terms") or ["1"])[0]
+    return (gl - 1) * 2 + (0 if term0 == "1" else 1)
+
+
 def major(cs):
-    return [(c["course_id"], c["name_ko"], "전공선택", c["credits"]) for c in cs]
+    return [{"code": c["course_id"], "name": c["name_ko"], "area": "전공선택",
+             "credits": c["credits"], "pref": _pref(c)} for c in cs]
 
 
-def ds_only(cs):  # dsci 전용 과목은 일반선택 이수구분으로 수강
-    return [(c["course_id"], c["name_ko"], "일반선택", c["credits"]) for c in cs]
+def ds_only(cs):  # dsci 전용 과목은 일반선택 이수구분으로 수강 — 융합은 보통 2~3학년부터
+    return [{"code": c["course_id"], "name": c["name_ko"], "area": "일반선택",
+             "credits": c["credits"], "pref": max(4, _pref(c))} for c in cs]
 
 
-def gened(n_per_area=1):  # 핵심교양 — 실제 교양과목명(core_area 매핑 가동)
+def gened(offset=0, n_per_area=1):  # 핵심교양 — 실과목명, 학생별 offset으로 다양화. 1~2학년 분산.
     rows = []
-    for _area, cs in GEN["courses_by_area"].items():
-        for c in cs[:n_per_area]:
-            rows.append((_fc(), c["name_ko"], "핵심교양", c["credits"]))
+    for ai_, (_area, cs) in enumerate(GEN["courses_by_area"].items()):
+        for j in range(n_per_area):
+            c = cs[(offset + j) % len(cs)]
+            rows.append({"code": _fc(), "name": c["name_ko"], "area": "핵심교양",
+                         "credits": c["credits"], "pref": ai_ % 4})
     return rows
 
 
 def basic():
-    return [(_fc(), "지성과글", "기초교양", 3), (_fc(), "EnglishⅠ", "기초교양", 2),
-            (_fc(), "컴퓨팅적사고", "기초교양", 2)]
+    return [{"code": _fc(), "name": n, "area": "기초교양", "credits": cr, "pref": i % 2}
+            for i, (n, cr) in enumerate(BASIC_ROWS)]
 
 
-def free():
-    return [(_fc(), "교양테니스", "자유교양", 1), (_fc(), "생활과건강", "자유교양", 2)]
+def free(offset=0, n=2):
+    return [{"code": _fc(), "name": FREE_POOL[(offset + i) % len(FREE_POOL)][0], "area": "자유교양",
+             "credits": FREE_POOL[(offset + i) % len(FREE_POOL)][1], "pref": 2 + i} for i in range(n)]
 
 
-def filler(n, start=1):  # 일반선택 채우기(타과 과목)
-    return [(_fc(), f"타과교양과목{start + i}", "일반선택", 3) for i in range(n)]
+def etc(n, offset=0):  # 일반선택 3학점 × n — 전 학기에 고르게(pref None → 스케줄러가 분산)
+    return [{"code": _fc(), "name": ETC_POOL[(offset + i) % len(ETC_POOL)], "area": "일반선택",
+             "credits": 3, "pref": None} for i in range(n)]
+
+
+def schedule(rows: list[dict], n_terms: int, start_year: int):
+    """학년·개설학기 선호 + 법정 상한(정규 18·계절 6)으로 학기 배치.
+
+    반환: [(파일명, 학기라벨, rows)] — 정규 'n차학기', 넘침은 'n학년 하계/동계'.
+    """
+    # pref None(일반선택)은 전 학기에 고르게 분산
+    nones = [r for r in rows if r["pref"] is None]
+    for i, r in enumerate(nones):
+        r["pref"] = (i * n_terms) // max(1, len(nones))
+    # 같은 과목 중복(재수강 서사)은 두 번째 행을 2학기 뒤로
+    seen: dict[str, int] = {}
+    for r in rows:
+        k = r["code"]
+        if k in seen:
+            r["pref"] = min(n_terms - 1, seen[k] + 2)
+        else:
+            seen[k] = min(n_terms - 1, max(0, r["pref"]))
+    ordered = sorted(rows, key=lambda r: (min(n_terms - 1, max(0, r["pref"])),
+                                          {"기초교양": 0, "핵심교양": 1, "전공선택": 2}.get(r["area"], 3)))
+    reg = [[] for _ in range(n_terms)]
+    season: dict[int, list] = {}                       # 정규 i 뒤 계절(하계=짝수 i, 동계=홀수 i)
+    for r in ordered:
+        p = min(n_terms - 1, max(0, r["pref"]))
+        placed = False
+        for t in list(range(p, n_terms)) + list(range(p - 1, -1, -1)):   # 뒤로 밀고, 안 되면 앞으로
+            if sum(x["credits"] for x in reg[t]) + r["credits"] <= REG_CAP:
+                reg[t].append(r)
+                placed = True
+                break
+        if not placed:                                  # 정규 전부 만석 → 계절학기
+            for t in range(n_terms):
+                pool = season.setdefault(t, [])
+                if sum(x["credits"] for x in pool) + r["credits"] <= SEASONAL_CAP:
+                    pool.append(r)
+                    placed = True
+                    break
+        assert placed, f"배치 실패: {r['name']}"
+    out = []
+    for i in range(n_terms):
+        year, sem = start_year + i // 2, 1 + i % 2
+        if reg[i]:
+            out.append((f"{i + 1}차학기.xls", f"{year}학년도 {sem}학기", reg[i]))
+        if season.get(i):
+            grade = i // 2 + 1
+            kind = "하계" if sem == 1 else "동계"
+            out.append((f"{grade}학년 {kind}.xls", f"{year}학년도 {kind} 계절학기", season[i]))
+    return out
 
 
 def write_xls(path: Path, rows, term_label: str, student_no: str, name: str) -> None:
@@ -84,25 +167,11 @@ def write_xls(path: Path, rows, term_label: str, student_no: str, name: str) -> 
     for col, val in enumerate(header):
         ws.write(4, col, val)
     for i, r in enumerate(rows):
-        vals = [r[0], "01", "", r[1], r[2], "", r[3], "", "", "교수", ""]
+        vals = [r["code"], "01", "", r["name"], r["area"], "", r["credits"], "", "", "교수", ""]
         for col, val in enumerate(vals):
             ws.write(5 + i, col, val)
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(path))
-
-
-def split_terms(rows, n_terms, start_year):
-    """rows를 n_terms개 정규학기로 순서 분할(학기당 1파일, ON국민 형식)."""
-    per = -(-len(rows) // n_terms)
-    out = []
-    for i in range(n_terms):
-        chunk = rows[i * per:(i + 1) * per]
-        if not chunk:
-            break
-        year = start_year + i // 2
-        sem = 1 + i % 2
-        out.append((f"{year}학년도 {sem}학기", chunk))
-    return out
 
 
 def build_students():
@@ -113,18 +182,20 @@ def build_students():
     need = 48 - sum(c["credits"] for c in s1_major)
     ov5 = {o["course_id"][:5] for o in ov7}
     s1_major += [c for c in ELECTIVE if c not in s1_major and c["course_id"][:5] not in ov5][: max(0, int(need // 3) + 1)]
-    s1 = major(s1_major) + ds_only(DS_ONLY_B[:5]) + gened(1) + basic() + free() + filler(15)
+    s1 = major(s1_major) + ds_only(DS_ONLY_B[:5]) + gened(0) + basic() + free(0, 2) + etc(15, 0)
 
-    # S2 3학년 — dsci A그룹만(B그룹 0) → 그룹최저 부족
+    # S2 3학년 — dsci A그룹만(B그룹 0) → 그룹최저 부족. 빅데이터처리와시각화 중복=재수강 서사
     s2_major = [AI_BY_NAME.get(c["name_ko"], c) for c in REQUIRED[:7] + OVERLAP_A[:4]]
-    s2 = major([c for c in s2_major if c.get("course_id")]) + gened(1) + basic() + filler(6)
+    s2 = major([c for c in s2_major if c.get("course_id")]) + gened(1) + basic() + etc(6, 5)
 
     # S3 2학년 — 갭 큼 + 잔여 2학기 선언 → blocked·초과학기(D)
-    s3 = major(REQUIRED[:3]) + ds_only(DS_ONLY_B[:2]) + basic() + gened(1)[:2] + filler(3)
+    s3 = major(REQUIRED[:3]) + ds_only(DS_ONLY_B[:2]) + basic() + gened(2)[:2] + etc(3, 11)
+    for r in s3:                                       # 1학년 마친 학생 — 전부 1~2차학기 안으로
+        r["pref"] = min(r["pref"], 1) if r["pref"] is not None else None
 
     # S4 4학년 — 계절+성적우수 → feasible
     s4_major = [AI_BY_NAME.get(c["name_ko"], c) for c in REQUIRED[:8] + OVERLAP_A[:5]]
-    s4 = major([c for c in s4_major if c.get("course_id")]) + ds_only(DS_ONLY_B[:3]) + gened(1) + basic() + free() + filler(11)
+    s4 = major([c for c in s4_major if c.get("course_id")]) + ds_only(DS_ONLY_B[:3]) + gened(3) + basic() + free(2, 2) + etc(11, 14)
 
     return [
         ("S1_졸업반_김융합", "20210001", s1, 7, 2021,
@@ -143,18 +214,19 @@ def main():
     manifest = {}
     for slug, sid, rows, n_terms, adm_year, ctx in build_students():
         name = slug.split("_")[-1]
+        terms = schedule(rows, n_terms, adm_year)
         files = []
-        for i, (label, chunk) in enumerate(split_terms(rows, n_terms, adm_year), start=1):
-            p = OUT / slug / f"{i}차학기.xls"
-            write_xls(p, chunk, label, sid, name)
-            files.append(p.name)
+        for fname, label, chunk in terms:
+            write_xls(OUT / slug / fname, chunk, label, sid, name)
+            files.append(fname)
         manifest[slug] = {
             "student_no": sid, "admission_year": adm_year, "files": files,
             "context": {"program_id": "ai_bigdata", "admission_year": adm_year,
                         "convergence_program_ids": ["dsci_convergence"],
                         "convergence_tracks": {"dsci_convergence": "다전공"}, **ctx},
         }
-        print(f"{slug}: {len(files)}개 파일, {len(rows)}과목 {sum(r[3] for r in rows):.0f}학점")
+        loads = [f"{l.split('.')[0]}={sum(r['credits'] for r in c):.0f}" for l, _, c in terms]
+        print(f"{slug}: {len(files)}개 파일 {sum(r['credits'] for r in rows):.0f}학점 | {' '.join(loads)}")
     (OUT / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n출력: {OUT}")
 

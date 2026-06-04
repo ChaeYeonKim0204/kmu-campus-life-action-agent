@@ -131,9 +131,14 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
     # (pipeline→report_summary→whatif→pipeline). run_summary=False 경로는 로직 자체 미진입.
     agent_summary, summary_fallback, summary_trace = None, None, []
     if run_summary:
-        from graduation_center.v2.report_summary import run_report_summary
-        agent_summary, summary_fallback, summary_trace = run_report_summary(
-            payload, audit, risk, plan, ctx, run_audit_fn=run_audit, client=client)
+        from graduation_center.v2.report_summary import _skip_trace, run_report_summary
+        try:
+            agent_summary, summary_fallback, summary_trace = run_report_summary(
+                payload, audit, risk, plan, ctx, run_audit_fn=run_audit, client=client)
+        except Exception as exc:                     # 총평 실패는 절대 /audit 500으로 안 샘(codex R1)
+            agent_summary = None
+            summary_fallback = f"총평 생성 오류({type(exc).__name__}) — 결정론 진단·로드맵은 유효"
+            summary_trace = _skip_trace("총평 내부 오류")
         trace += summary_trace
     md = _markdown(ctx, profile, audit, risk, plan, marks, explanations=explanations)
     if agent_summary:                                # markdown은 총평 경로에서만 append(적대 L1)
@@ -152,7 +157,7 @@ def _summary_markdown(s) -> str:
         gt = (f" · 예상 졸업 {sc.graduation_term_before or '미상'}→{sc.graduation_term_after or '미상'}"
               if sc.graduation_term_before != sc.graduation_term_after else "")
         L.append(f"- [{sc.id}] {sc.label}: 리스크 {sc.risk_before}→{sc.risk_after}"
-                 f" · 부족 {sc.total_gap_before:.0f}→{sc.total_gap_after:.0f}{gt}")
+                 f" · 부족 {sc.total_gap_before:g}→{sc.total_gap_after:g}{gt}")   # 카드와 표기 일치(적대②)
     for ln in s.lines:
         L.append(f"- {ln.text} " + "".join(f"[{i}]" for i in ln.fact_ids))
     rejected = [r for r in s.candidates_review if r.verdict == "rejected"]

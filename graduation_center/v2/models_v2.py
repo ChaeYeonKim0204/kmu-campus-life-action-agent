@@ -269,7 +269,10 @@ class ScenarioReview(BaseModel):
     reason_code: str
     rationale: str = ""                              # LLM의 선정 이유(왜 이 갈림길·이 값인가)
     verdict: Literal["accepted", "rejected"]
-    rejected_by: Literal["pre_mismatch", "invalid_delta", "no_op", "post_no_change"] | None = None
+    # sim_cap: 시뮬 상한(4) 밖이라 미실행 — '효과 없음'과 구분(거짓 사유 금지, codex R1)
+    # accept_cap: 효과는 있었으나 채택 상한(3) 초과 — 동일 취지
+    rejected_by: Literal["pre_mismatch", "invalid_delta", "no_op", "post_no_change",
+                         "sim_cap", "accept_cap"] | None = None
 
 
 class ScenarioOutcome(BaseModel):

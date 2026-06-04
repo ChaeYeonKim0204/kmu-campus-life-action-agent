@@ -144,7 +144,10 @@ def test_facts_canonical_and_cache_key_deterministic():
     f1 = report_summary._build_facts(r1.audit, r1.risk, r1.roadmap, r1.context)
     f2 = report_summary._build_facts(r2.audit, r2.risk, r2.roadmap, r2.context)
     assert report_summary._canonical_facts(f1) == report_summary._canonical_facts(f2)
-    assert report_summary._cache_key("m", f1) == report_summary._cache_key("m", f2)
+    assert report_summary._cache_key("m", f1, r1.context) == report_summary._cache_key("m", f2, r2.context)
+    # 같은 수치라도 학생 정체성(전공·학번)이 다르면 키 분리(codex R1 — 동수치 타학생 충돌)
+    other = r1.context.model_copy(update={"admission_year": 2023})
+    assert report_summary._cache_key("m", f1, r1.context) != report_summary._cache_key("m", f1, other)
 
 
 def test_cache_hit_zero_llm_calls():
@@ -261,6 +264,39 @@ def test_validator_drops_grade_contradiction():
     ])
     s = resp.agent_summary
     assert s is not None and len(s.lines) == 1 and other not in s.lines[0].text
+
+
+def test_validator_grade_korean_adjacency_and_headline():
+    """'D등급'처럼 한글 인접 등급도 모순 검출 + headline도 수치·등급·판정 검증(적대① R1)."""
+    facts = [{"id": "F1", "text": "총 이수 45/130학점 · 총 부족 85학점"},
+             {"id": "F4", "text": "리스크 C(주의) · 점수 40"}]
+    raw = {"headline": "120학점만 더 들으면 D등급 위험 졸업 불가",   # 위조 120·D·판정 단정
+           "recommendation": "유지 권장",
+           "lines": [{"text": "리스크 D등급으로 위험", "fact_ids": ["F4"]},   # 한글 인접 등급 모순
+                     {"text": "8학기 더 필요", "fact_ids": ["F1"]},           # 단위 동반 1자리 위조
+                     {"text": "총 부족 85학점 — F1 참조", "fact_ids": ["F1"]}]}
+    s, issues = report_summary._validate_summary(raw, facts, [], "C")
+    assert s is not None and len(s.lines) == 1 and "85" in s.lines[0].text
+    assert s.headline == ""                                # headline 위반 → 비표시
+    assert any("등급" in i for i in issues) and any("headline" in i for i in issues)
+
+
+def test_cap_rejections_recorded_with_honest_reasons():
+    """채택 상한 초과(효과 있음)는 accept_cap, 시뮬 상한 밖은 sim_cap — post_no_change 거짓
+    라벨 금지(codex R1·비타협 ②). 채택은 정확히 MAX_ACCEPTED."""
+    payload = _payload(CTX)
+    # 휴학 1~4학기: 전부 timeline_extend pre 통과 + 효과(졸업 지연) 기대 → 5번째는 sim_cap
+    cands = [(_delta(calendar_delay_terms=k), "timeline_extend", f"휴학 {k}") for k in (1, 2, 3, 4)]
+    cands.append((_delta(remaining_semesters_change=2), "timeline_extend", "잔여 +2"))
+    fake = SeqFake([_sel_raw(*cands), _sum_raw([("관찰값은 S1 참조", ["S1"])])])
+    resp = pipeline.run_audit(payload, client=fake, run_summary=True)
+    s = resp.agent_summary
+    assert s is not None
+    assert len(s.scenarios) == report_summary.MAX_ACCEPTED
+    by_reason = [r.rejected_by for r in s.candidates_review if r.verdict == "rejected"]
+    assert "sim_cap" in by_reason                          # 5번째 후보 — 미실행 정직 표기
+    assert "accept_cap" in by_reason                       # 4번째 효과 있었으나 상한
+    assert "post_no_change" not in by_reason               # 거짓 사유 없음
 
 
 # ---------- 노드명 disjoint (적대 M3) ----------

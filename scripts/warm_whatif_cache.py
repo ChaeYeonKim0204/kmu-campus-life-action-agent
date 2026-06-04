@@ -31,6 +31,8 @@ MANIFEST = ROOT / "data/graduation/v2/demo_students/manifest.json"
 # cwd 무관 동작 — whatif.CACHE_PATH는 상대 경로 관례라 root 밖 실행 시 엉뚱한 위치에 생성됨(코드R3)
 whatif.CACHE_PATH = ROOT / "data/graduation/v2/whatif_cache.json"
 report_summary.CACHE_PATH = ROOT / "data/graduation/v2/summary_cache.json"
+from graduation_center.v2 import explain  # noqa: E402
+explain.CACHE_PATH = ROOT / "data/graduation/v2/explain_cache.json"  # 총평이 explain도 동반 실행(적대③)
 
 # 프론트 whatifChips()와 동일 로직 — 칩 라벨이 바뀌면 여기도 함께 갱신
 def chips(ctx: dict) -> list[str]:
@@ -91,6 +93,7 @@ def main() -> int:
     # ---- 에이전트 총평(능동 시나리오 탐색) 워밍업 + 다양성 검수 (계획 §5) ----
     # run_summary=True opt-in — 허용 경로는 /audit 라우트와 이 스크립트뿐(계획 §1).
     print("\n==== 에이전트 총평 워밍업 ====")
+    bad_chip, bad = bad, 0    # 섹션별 분리 집계 — exit code 오염 방지(적대③)
     rows, recs = [], set()
     for sid, spec in manifest.items():
         sdir = MANIFEST.parent / sid
@@ -124,8 +127,8 @@ def main() -> int:
         bad += 1
         print("  ⚠️ 다양성 경고: 전 학생의 채택 reason_code 조합·권고가 동일 — "
               "에이전트가 아니라 라우터처럼 보임. selector 프롬프트 보강 후 캐시 삭제·재워밍업 요망.")
-    print("✅ 총평 워밍업 완료" if not bad else f"⚠️ 총 {bad}건 검수 필요")
-    return 1 if bad else 0
+    print(f"검수 결과: 상담 {bad_chip}건 · 총평 {bad}건" if (bad_chip or bad) else "✅ 총평 워밍업 완료")
+    return 1 if (bad_chip or bad) else 0
 
 
 if __name__ == "__main__":

@@ -385,6 +385,7 @@ export default function GraduationV2({ apiBase }) {
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       const result = await r.json();
       setAudit(result);
+      setSummaryOpen(false);  // 학생 전환 시 총평 기본 접힘 유지(적대②)
       setAuditPayload(payload);            // what-if 동결 payload — 이후 테이블 편집과 분리
       setWhatif(null); setQuestion(""); setShowAfterPlan(false); setWhatifError("");
       setPrimaryAlloc({});                 // 3-way 배정 보정 초기화(새 사정 = 기본 배정)
@@ -732,7 +733,7 @@ export default function GraduationV2({ apiBase }) {
                                 <tr key={sc.id} style={{ borderTop: "1px solid #eef1f5" }}>
                                   <td style={{ padding: "5px 6px", fontWeight: 600 }}>[{sc.id}] {sc.label}</td>
                                   <td>{sc.risk_before}→{sc.risk_after}</td>
-                                  <td>{sc.total_gap_before}→{sc.total_gap_after}</td>
+                                  <td>{fmtNum(sc.total_gap_before)}→{fmtNum(sc.total_gap_after)}</td>
                                   <td>{sc.graduation_term_before === sc.graduation_term_after
                                     ? "동일" : `${sc.graduation_term_before || "미상"}→${sc.graduation_term_after || "미상"}`}</td>
                                 </tr>
@@ -759,7 +760,10 @@ export default function GraduationV2({ apiBase }) {
                                 · {r.label} <span style={{ color: "#94a3b8" }}>
                                   ({r.rejected_by === "pre_mismatch" ? "전제 불일치"
                                     : r.rejected_by === "post_no_change" ? "효과 없음"
-                                    : r.rejected_by === "no_op" ? "변경 없음" : "해석 불가"})</span></div>
+                                    : r.rejected_by === "no_op" ? "변경 없음"
+                                    : r.rejected_by === "sim_cap" ? "시뮬레이션 상한(미실행)"
+                                    : r.rejected_by === "accept_cap" ? "효과 있음 — 채택 상한 초과"
+                                    : "해석 불가"})</span></div>
                             ))}
                           </div>
                         )}
@@ -1064,6 +1068,13 @@ export default function GraduationV2({ apiBase }) {
                       </div>
                     </div>
                   </div>
+                  {/* 총평에서 이미 다룬 갈림길이면 안내 — 같은 비교표 2회 노출 인상 방지(계획 §4) */}
+                  {audit?.agent_summary?.scenarios?.some((sc) =>
+                    JSON.stringify(sc.applied_changes) === JSON.stringify(whatif.applied_changes)) && (
+                    <div style={{ fontSize: 12, color: C.muted, margin: "2px 0 6px" }}>
+                      ℹ️ 에이전트 총평에서 이미 다룬 갈림길입니다 — 위 총평 카드의 시나리오 비교와 동일한 결정론 계산.
+                    </div>
+                  )}
                   {(whatif.applied_changes?.length > 0 || whatif.diff.convergence_changes?.length > 0 || whatif.diff.changed_areas?.length > 0) && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 16px 10px" }}>
                       {(whatif.applied_changes || []).map((c, i) => (

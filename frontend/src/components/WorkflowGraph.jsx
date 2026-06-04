@@ -104,7 +104,8 @@ export default function WorkflowGraph({ trace, compact = false }) {
   const height = TOP + nodes.length * STEP;
   const W = SX + SW + 12;
   const statusStroke = (evt, base) =>
-    evt?.status === "fail" ? "#EF4444" : evt?.status === "warn" ? "#D97706" : base;
+    evt?.status === "fail" ? "#EF4444" : evt?.status === "warn" ? "#D97706"
+    : evt?.status === "skip" ? "#94a3b8" : base;   // skip은 회색 — '실행됨'과 시각 구분(적대②)
 
   if (!execKeys.length) {
     return <div style={{ fontSize: 13, color: "#9aa6b8", padding: 20, textAlign: "center" }}>아직 실행된 워크플로우가 없습니다. 졸업사정을 먼저 실행하세요.</div>;

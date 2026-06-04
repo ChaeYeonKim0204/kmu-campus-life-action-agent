@@ -28,7 +28,7 @@ from graduation_center.v2.whatif import (
 )
 
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data/graduation/v2/summary_cache.json"
-SUMMARY_SCHEMA_VERSION = 1        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
+SUMMARY_SCHEMA_VERSION = 2        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
 MAX_CANDIDATES = 5                # LLM 제안 상한(Thought의 폭)
 MAX_SIMULATIONS = 4               # pre 통과 후보 시뮬레이션 상한(비용 가드)
 MAX_ACCEPTED = 3                  # 최종 채택 상한
@@ -53,8 +53,9 @@ def _build_facts(audit, risk, plan, ctx: StudentContext) -> list[dict]:
     def add(text: str) -> None:
         facts.append({"id": f"F{len(facts) + 1}", "text": text})
 
-    add(f"총 이수 {audit.total_earned:.0f}/{audit.total_required:.0f}학점 · 총 부족 {audit.total_gap:.0f}학점")
-    gaps = [f"{g.area} {g.earned:.0f}/{g.required:.0f}(부족 {g.gap:.0f})"
+    # :g — .5 단위 보존(서로 다른 학생이 :.0f 라운딩으로 같은 캐시 키가 되는 충돌 방지, 적대① R1)
+    add(f"총 이수 {audit.total_earned:g}/{audit.total_required:g}학점 · 총 부족 {audit.total_gap:g}학점")
+    gaps = [f"{g.area} {g.earned:g}/{g.required:g}(부족 {g.gap:g})"
             for g in audit.area_gaps if g.gap > 0]
     add("영역 부족: " + (", ".join(gaps) if gaps else "없음"))
     add("미이수 필수: " + (", ".join(audit.missing_required_names) if audit.missing_required_names else "없음"))
@@ -63,9 +64,9 @@ def _build_facts(audit, risk, plan, ctx: StudentContext) -> list[dict]:
     add(f"로드맵 {plan.status} · 배치 {len(plan.terms)}학기 · feasible {plan.feasible}"
         + (f" · 초과 {o.extra_semesters}학기(예상 {o.projected_graduation_term or '미상'})" if o else ""))
     for cc in audit.convergence_checks:
-        add(f"{cc['name']}({cc['track']}): {cc['earned']:.0f}/{cc['required']:.0f}"
-            f"(부족 {cc['gap']:.0f}) · 겹침 {cc['overlap_credits']:.0f} 중 중복인정 "
-            f"{cc['double_recognizable']:.0f}/{cc['double_cap']:.0f}")
+        add(f"{cc['name']}({cc['track']}): {cc['earned']:g}/{cc['required']:g}"
+            f"(부족 {cc['gap']:g}) · 겹침 {cc['overlap_credits']:g} 중 중복인정 "
+            f"{cc['double_recognizable']:g}/{cc['double_cap']:g}")
     add(f"잔여 수강 학기 {ctx.remaining_semesters} · 계절학기 {'허용' if ctx.seasonal_semester_allowed else '불가'}"
         + (f" · 학기당 상한 {ctx.max_credits_per_term:g}학점" if ctx.max_credits_per_term else ""))
     return facts
@@ -187,7 +188,8 @@ def _post_check(reason_code: str, diff) -> bool:
         return (diff.feasible_before != diff.feasible_after
                 or diff.risk_before != diff.risk_after or gt_b != gt_a)
     if reason_code == "timeline_extend":
-        return ((gt_b or "") < (gt_a or "")
+        # 지연 표시는 양쪽 모두 산출일 때만 — None(배치불가)→산출은 '개선'이라 별항(적대① R1)
+        return ((gt_b is not None and gt_a is not None and gt_a > gt_b)
                 or (diff.overflow_before and not diff.overflow_after)
                 or (diff.feasible_before is not True and diff.feasible_after is True))
     return False
@@ -220,7 +222,7 @@ def _scenario_facts(outcomes: list[ScenarioOutcome]) -> list[dict]:
         gt = (f"{sc.graduation_term_before or '미상'}→{sc.graduation_term_after or '미상'}"
               if sc.graduation_term_before != sc.graduation_term_after else "졸업시점 동일")
         out.append({"id": sc.id, "text": f"[{sc.label}] 리스크 {sc.risk_before}→{sc.risk_after} · "
-                    f"총 부족 {sc.total_gap_before:.0f}→{sc.total_gap_after:.0f} · {gt}"
+                    f"총 부족 {sc.total_gap_before:g}→{sc.total_gap_after:g} · {gt}"
                     + (" · 초과학기 발생" if sc.overflow_after else "")})
     return out
 
@@ -239,7 +241,8 @@ def _summary_prompt(facts: list[dict], scen_facts: list[dict],
 시뮬레이션 관찰값(채택 시나리오):
 {s_txt}
 
-검토했지만 제외된 시나리오(참고 — 효과 없음/전제 불일치):
+검토했지만 제외된 시나리오(참고 — post_no_change=효과 없음, pre_mismatch=전제 불일치,
+sim_cap/accept_cap=상한 초과로 미채택일 뿐 효과 없음이 아님 — '개선 없음'으로 단정 금지):
 {rej}
 
 규칙:
@@ -249,34 +252,64 @@ def _summary_prompt(facts: list[dict], scen_facts: list[dict],
 - headline은 이 학생의 핵심 갈림길 한 문장(예: "다전공 유지 시 +1학기 vs 포기 시 적시 졸업 — 이게 핵심 선택")."""
 
 
+# 한글 인접("A등급"·"D입니다")도 잡는 등급 패턴 — 영문 단어 내부(AI·CLASS)는 제외(codex R1)
+_GRADE_RE = re.compile(r"(?<![A-Za-z])([A-D])(?![A-Za-z])")
+
+
+_UNIT_NUM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?=학점|학기|과목|점)")  # 단위 동반 수치(1자리 포함)
+
+
+def _norm_num(n: str) -> str:
+    """수치 토큰 정규화 — '12.0'≡'12', '08'≡'8' 양변 대칭(적대① lstrip 비대칭 수정)."""
+    if "." in n:
+        n = n.rstrip("0").rstrip(".")
+    return n.lstrip("0") or "0"
+
+
+def _text_violations(text: str, allowed_nums: set, allowed_grades: str) -> str | None:
+    """한 문장의 위반 사유(없으면 None) — 본문·headline 공용.
+    검사 대상: 단위(학점·학기·과목·점) 동반 수치는 1자리도 검사(적대① — '8학기' 위조),
+    그 외 bare 수치는 2자리 이상. '졸업 가능/불가' 단정은 LLM 금지 영역(판정은 결정론)."""
+    if _SID_RE.search(text):
+        return "학번 패턴"
+    allowed = {_norm_num(a) for a in allowed_nums}
+    nums = set(_UNIT_NUM_RE.findall(text))
+    nums |= {n for n in _NUM_RE.findall(text) if len(n.replace(".", "")) >= 2}
+    if any(_norm_num(n) not in allowed for n in nums):
+        return "근거 밖 수치"
+    if any(g not in allowed_grades for g in _GRADE_RE.findall(text)):
+        return "등급 모순"
+    if re.search(r"졸업\s*(불가|가능)", text):
+        return "판정 단정"
+    return None
+
+
 def _validate_summary(raw: dict, facts: list[dict], scen_facts: list[dict],
                       risk_grade: str) -> tuple[AgentSummary | None, list[str]]:
-    """문장별 fact 해소·수치 대조·판정 모순·마스킹 — 위반 줄 폐기(설명 표시 아닌 폐기가 정직)."""
+    """문장별 fact 해소·수치 대조·판정 모순·마스킹 — 위반 줄 폐기(설명 표시 아닌 폐기가 정직).
+    headline도 동일 검증(전체 fact 수치 기준 — codex R1: 환각이 headline으로 새는 경로 차단)."""
     by_id = {f["id"]: f["text"] for f in facts + scen_facts}
+    all_nums: set = set()
+    for t in by_id.values():
+        all_nums |= set(_NUM_RE.findall(t))
+    all_grades = " ".join(by_id.values()) + f" {risk_grade}"
     issues: list[str] = []
     lines: list[SummaryLine] = []
     for ln in raw.get("lines", []):
         text, ids = (ln.get("text") or "").strip(), ln.get("fact_ids") or []
         if not text:
             continue
-        if _SID_RE.search(text):
-            issues.append("학번 패턴 노출 줄 폐기")
-            continue
         if not ids or any(i not in by_id for i in ids):
             issues.append(f"근거 미해소: {text[:30]}…")
             continue
         allowed = set()
+        ref_txt = f"{risk_grade} "
         for i in ids:
             allowed |= set(_NUM_RE.findall(by_id[i]))
-        nums = [n for n in _NUM_RE.findall(text) if len(n.replace(".", "")) >= 2]
-        if any(n not in allowed and n.lstrip("0") not in allowed for n in nums):
-            issues.append(f"근거 밖 수치: {text[:30]}…")
-            continue
-        # 판정 모순 — 등급 문자를 언급하면 참조 fact에 실제로 있는 등급이어야 함
-        graded = re.findall(r"\b([A-D])\b", text)
-        ref_txt = " ".join(by_id[i] for i in ids) + f" {risk_grade}"
-        if any(g not in ref_txt for g in graded):
-            issues.append(f"등급 모순: {text[:30]}…")
+            ref_txt += by_id[i] + " "
+        bad = _text_violations(text, allowed, ref_txt)
+        if bad:
+            issues.append(f"{bad}: {text[:30]}…")
             continue
         lines.append(SummaryLine(text=text, fact_ids=ids))
     if not lines:
@@ -285,15 +318,23 @@ def _validate_summary(raw: dict, facts: list[dict], scen_facts: list[dict],
     if rec not in RECOMMENDATIONS:
         rec = "학과 상담 권장"
     headline = (raw.get("headline") or "").strip()[:120]
-    if _SID_RE.search(headline):
+    if headline and _text_violations(headline, all_nums, all_grades):
+        issues.append("headline 위반 — 비표시")
         headline = ""
     return AgentSummary(headline=headline, lines=lines, recommendation=rec), issues
 
 
 # ---------- 캐시 (검증 통과분만 — candidates_review 포함, R4) ----------
-def _cache_key(model: str, facts: list[dict]) -> str:
+def _cache_key(model: str, facts: list[dict], ctx: StudentContext) -> str:
+    """facts(수치)만으론 동수치 타학생·타전공 충돌 가능(codex R1) — 학생 정체성(전공·학번·
+    학기·융합 선언)을 키에 포함."""
+    ident = json.dumps({
+        "pid": ctx.program_id, "yr": ctx.admission_year, "term": ctx.current_term,
+        "conv": sorted(ctx.convergence_program_ids),
+        "tracks": dict(sorted(ctx.convergence_tracks.items())),
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(
-        f"{model}|v{SUMMARY_SCHEMA_VERSION}|{_canonical_facts(facts)}".encode()).hexdigest()
+        f"{model}|v{SUMMARY_SCHEMA_VERSION}|{ident}|{_canonical_facts(facts)}".encode()).hexdigest()
 
 
 def _cache_get(key: str):
@@ -303,14 +344,27 @@ def _cache_get(key: str):
         return None
 
 
+def _cache_evict(key: str) -> None:
+    try:
+        data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        if key in data:
+            del data[key]
+            CACHE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _cache_put(key: str, value: dict) -> None:
     try:
+        import os
         data = {}
         if CACHE_PATH.exists():
             data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
         data[key] = value
         CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CACHE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp = CACHE_PATH.with_suffix(".tmp")          # 원자적 쓰기 — explain과 동일(적대③ 동시성)
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, CACHE_PATH)
     except Exception:
         pass                                          # 캐시 실패는 본체에 영향 없음
 
@@ -367,17 +421,23 @@ def run_report_summary(payload: dict, audit, risk, plan, ctx: StudentContext,
     """반환: (agent_summary | None, summary_fallback | None, trace 4노드)."""
     facts = _build_facts(audit, risk, plan, ctx)
     model = _model()
-    key = _cache_key(model, facts)
+    key = _cache_key(model, facts, ctx)
     cached = _cache_get(key)
     if cached:
-        summary = AgentSummary.model_validate(cached)
+        try:
+            summary = AgentSummary.model_validate(cached)
+        except Exception:                            # corrupt cache → 미스 취급 + 제거(codex R1)
+            _cache_evict(key)
+            cached = None
+    if cached:
         n_acc = sum(1 for r in summary.candidates_review if r.verdict == "accepted")
         return summary, None, [
             NodeTraceEvent(node="갈림길 선정", kind="llm", summary="캐시 적중(동일 진단)",
                            branch_taken=f"후보 {len(summary.candidates_review)} → 채택 {n_acc}"),
             NodeTraceEvent(node="갈림길 시뮬레이션", kind="tool",
                            summary=f"시나리오 {len(summary.scenarios)}건 관찰값(캐시)", branch_taken="캐시"),
-            NodeTraceEvent(node="총평 생성", kind="llm", summary="캐시 적중", branch_taken="캐시"),
+            NodeTraceEvent(node="총평 생성", kind="llm", summary="캐시 적중",
+                           branch_taken=summary.recommendation),   # 미스 경로와 라벨 정합(적대① R1)
             NodeTraceEvent(node="총평 검증", kind="validator", summary="검증 통과분 캐시", branch_taken="통과"),
         ]
 
@@ -425,19 +485,35 @@ def run_report_summary(payload: dict, audit, risk, plan, ctx: StudentContext,
 
     # ② 시뮬레이션 (결정론 — Action) + post 판정 (Observation)
     # before는 본 보고서 객체 재사용 금지 — skip_explain=True로 깨끗하게 1회 재계산(적대 H3)
-    before = run_audit_fn(payload, skip_explain=True)
+    try:
+        before = run_audit_fn(payload, skip_explain=True)
+    except Exception as exc:
+        return (None, f"시뮬레이션 기준 계산 실패({type(exc).__name__}) — 총평 생략",
+                _skip_trace("before 재계산 실패"))
     outcomes: list[ScenarioOutcome] = []
+    # cap 밖 후보도 정직하게 기록 — 미시뮬은 '효과 없음'이 아니라 sim_cap(거짓 사유 금지, codex R1)
+    for delta, reason, rationale, label in pre_ok[MAX_SIMULATIONS:]:
+        review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
+                                     verdict="rejected", rejected_by="sim_cap"))
     for delta, reason, rationale, label in pre_ok[:MAX_SIMULATIONS]:
         new_ctx, changes, assumptions, unsupported = apply_delta(ctx, delta, profile)
         if new_ctx is None:
             review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
                                          verdict="rejected", rejected_by="no_op"))
             continue
-        after = run_audit_fn({**payload, "context": new_ctx.model_dump()}, skip_explain=True)
-        diff = build_diff(before, after, delta)
-        if not _post_check(reason, diff) or len(outcomes) >= MAX_ACCEPTED:
+        try:
+            after = run_audit_fn({**payload, "context": new_ctx.model_dump()}, skip_explain=True)
+        except Exception:
             review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
-                                         verdict="rejected", rejected_by="post_no_change"))
+                                         verdict="rejected", rejected_by="no_op"))
+            continue
+        diff = build_diff(before, after, delta)
+        effective = _post_check(reason, diff)
+        if not effective or len(outcomes) >= MAX_ACCEPTED:
+            review.append(ScenarioReview(
+                label=label, reason_code=reason, rationale=rationale, verdict="rejected",
+                # 효과가 있었는데 채택 상한에 걸린 것은 accept_cap — post_no_change와 구분
+                rejected_by=("accept_cap" if effective else "post_no_change")))
             continue
         review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
                                      verdict="accepted"))

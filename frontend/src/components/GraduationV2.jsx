@@ -368,7 +368,11 @@ export default function GraduationV2({ apiBase }) {
     const c = auditPayload?.context || {};
     const chips = [];
     if (c.current_term) chips.push("다음 학기 휴학하면?");
-    if ((c.convergence_program_ids || []).length) chips.push("다전공·부전공을 빼면?");
+    if ((c.convergence_program_ids || []).length) {
+      // 신청 트랙 기반 문구 — "다전공·부전공" 병기는 LLM이 모호해해 추출 실패(실가동 검정)
+      const tracks = [...new Set(Object.values(c.convergence_tracks || {}))];
+      chips.push(`${tracks.length === 1 ? tracks[0] : "다전공"}을 빼면?`);
+    }
     chips.push(c.seasonal_semester_allowed ? "계절학기를 못 듣게 되면?" : "계절학기를 들으면?");
     chips.push("한 학기에 15학점씩만 들으면?");
     return chips.slice(0, 4);   // slice(0,3)은 '15학점' 칩(임팩트 큰 질문)을 잘라먹음(검증 코드R3)

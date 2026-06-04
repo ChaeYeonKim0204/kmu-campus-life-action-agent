@@ -118,6 +118,7 @@ def _prompt(question: str, ctx: StudentContext, conv_names: list[str]) -> str:
 - max_credits_per_term: 학기당 수강 학점 상한 변경. "15학점씩만 들으면"=15. 허용 9~24의 정수 권장.
 - prev_term_gpa_ge_375: 직전학기 평점 3.75 이상 여부(신청학점 +{PREV_GPA_BONUS:.0f} 보너스).
 - add_convergence / drop_convergence: 융합·연계전공 추가/포기.
+  예: "다전공·부전공을 빼면?"·"부전공 포기하면?" → drop_convergence에 위 '신청 융합전공'의 id를 넣어라(빈 배열 금지).
 
 규칙:
 - 위 필드로 표현 불가한 질문(조기졸업 요건, 전과, 성적포기, 특정 과목, "이번 학기 안에"류 절대 시점)은 interpretable=false.
@@ -528,7 +529,6 @@ def run_whatif(payload: dict, client=None) -> WhatIfResponse:
                                    branch_taken="해석 실패")])
         try:
             delta = WhatIfDelta.model_validate(raw.get("delta") or {})
-            break
         except Exception:
             _cache_evict(key)        # 오염·구형식(extra 필드) 엔트리 제거
             if cached:
@@ -542,6 +542,22 @@ def run_whatif(payload: dict, client=None) -> WhatIfResponse:
                                summary=f"\"{question[:40]}\"", branch_taken="한도 초과"),
                 NodeTraceEvent(node="매개변수 추출", kind="llm", status="warn",
                                summary="해석값이 지원 한도 초과", branch_taken="한도 초과")])
+        # 자기모순 출력 가드(실가동 점검 발견): interpretable=true인데 delta가 전부 비면
+        # 추출 실패다 — 캐시되면 해당 질문이 영구 '범위 밖'이 됨(S1 '다전공 빼면?' 실사례).
+        # evict+재해석 1회, 그래도 비면 캐시 없이 재시도 안내. interpretable=false+빈 delta는
+        # 정당한 '범위 밖' 해석이라 캐시·안내 유지.
+        if raw.get("interpretable", False) and delta.is_empty():
+            _cache_evict(key)
+            if cached:
+                continue
+            return _unsupported(question[:40], None,
+                                "질문에서 변경 조건을 추출하지 못했습니다 — 조금 더 구체적으로"
+                                "(예: '부전공을 빼면?', '다음 학기 휴학하면?') 다시 시도해 주세요.", [
+                NodeTraceEvent(node="질문 분류", kind="llm",
+                               summary=f"\"{question[:40]}\"", branch_taken="추출 실패"),
+                NodeTraceEvent(node="매개변수 추출", kind="llm", status="warn",
+                               summary="해석은 됐으나 변경 조건이 비어 있음", branch_taken="추출 실패")])
+        break
 
     # 의미 오염 가드(결정론) — 캐시 전·후 어느 경로든 동일 적용되어 결과 결정론 유지
     delta, guard_notes = _semantic_guard(question, delta)

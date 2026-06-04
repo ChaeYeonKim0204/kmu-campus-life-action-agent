@@ -483,6 +483,35 @@ def test_leave_headline_covers_after_only_direction():
     assert "휴학" in diff.headline
 
 
+# ---------- ⑪ 실가동 점검 회귀 ----------
+def test_inconsistent_extraction_not_cached_and_retried():
+    # 실가동 발견: interpretable=true + 빈 delta(추출 실패)가 캐시되면 해당 질문 영구 '범위 밖'.
+    ctx = {**CTX, "convergence_program_ids": ["dsci_convergence"],
+           "convergence_tracks": {"dsci_convergence": "다전공"}}
+    payload = {**_payload(ctx), "question": "다전공·부전공을 빼면?"}
+    sctx = StudentContext.model_validate(payload["context"])
+    add_ids, _ = whatif._candidates(sctx)
+    key = whatif._cache_key("gpt-5-mini", "다전공·부전공을 빼면?", sctx, add_ids)
+    # ① 오염 주입: 해석됨+빈 delta (실서버 S1 실사례 재현)
+    bad = _raw("계절학기", "다전공 포기 문의")          # delta 전부 null
+    whatif._cache_put(key, bad)
+    # ② 정상 재해석 클라이언트로 호출 → evict+재해석으로 자가 치유
+    good = _raw("다전공변경", "융합 포기", drop_convergence=["dsci_convergence"])
+    resp = whatif.run_whatif(payload, client=_fake_client(good))
+    assert resp.status == "ok" and resp.category == "다전공변경"
+    assert whatif._cache_get(key)["delta"]["drop_convergence"] == ["dsci_convergence"]
+    # ③ 신규 출력 자체가 빈 추출이면: 캐시 미저장 + 재시도 안내(한도 메시지 아님)
+    whatif._cache_evict(key)
+    resp2 = whatif.run_whatif(payload, client=_fake_client(bad))
+    assert resp2.status == "unsupported" and "추출하지 못했습니다" in resp2.unsupported_reason
+    assert whatif._cache_get(key) is None                  # 자기모순 출력 캐시 금지
+    # ④ interpretable=false + 빈 delta는 정당한 '범위 밖' — 캐시 유지(기존 정책 불변)
+    out = _raw("기타", "조기졸업 문의"); out["interpretable"] = False
+    resp3 = whatif.run_whatif(payload, client=_fake_client(out))
+    assert resp3.status == "unsupported" and "범위 밖" in resp3.unsupported_reason
+    assert whatif._cache_get(key) is not None
+
+
 # ---------- ⑦ API 레벨 ----------
 def test_api_validation_and_degrade(monkeypatch):
     from fastapi.testclient import TestClient

@@ -22,6 +22,9 @@ if sys.version_info < (3, 10):
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from dotenv import load_dotenv  # noqa: E402
+load_dotenv(dotenv_path=ROOT / ".env", override=False)   # OPENAI_API_KEY — 서버와 동일 로드(실가동 발견)
+
 from graduation_center.v2 import pipeline, whatif  # noqa: E402
 
 MANIFEST = ROOT / "data/graduation/v2/demo_students/manifest.json"
@@ -34,7 +37,9 @@ def chips(ctx: dict) -> list[str]:
     if ctx.get("current_term"):
         out.append("다음 학기 휴학하면?")
     if ctx.get("convergence_program_ids"):
-        out.append("다전공·부전공을 빼면?")
+        # 신청 트랙 기반 문구 — "다전공·부전공" 병기는 LLM 추출 실패 빈발(실가동 검정)
+        tracks = sorted(set((ctx.get("convergence_tracks") or {}).values()))
+        out.append(f"{tracks[0] if len(tracks) == 1 else '다전공'}을 빼면?")
     out.append("계절학기를 못 듣게 되면?" if ctx.get("seasonal_semester_allowed")
                else "계절학기를 들으면?")
     out.append("한 학기에 15학점씩만 들으면?")
@@ -71,6 +76,15 @@ def main() -> int:
                 whatif._cache_evict(whatif._cache_key(
                     __import__("os").getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini"), q, sctx, aid))
                 print("    ⚠️ 환각 의심: 질문에 없는 융합전공 변경 — 해당 캐시 키 자동 삭제(재실행 요망)")
+            # 칩 질문은 전부 지원 범위 — unsupported가 나오면 추출 실패(자기모순 출력 등) 신호
+            if resp.status != "ok":
+                bad += 1
+                from graduation_center.v2.models_v2 import StudentContext
+                sctx = StudentContext.model_validate(payload["context"])
+                aid, _ = whatif._candidates(sctx)
+                whatif._cache_evict(whatif._cache_key(
+                    __import__("os").getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini"), q, sctx, aid))
+                print("    ⚠️ 칩 질문이 unsupported — 추출 실패 의심, 캐시 키 삭제(재실행 요망)")
     print(f"\n{'⚠️ 환각 의심 ' + str(bad) + '건 — whatif_cache.json 검수 후 해당 키 삭제 요망' if bad else '✅ 환각 의심 없음 — 캐시 적재 완료'}")
     return 1 if bad else 0
 

@@ -440,7 +440,10 @@ export default function GraduationV2({ apiBase }) {
           {/* ② 학기 */}
           <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>② 학기</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="현재 학기" hint="형식: 연도-학기 (1=1학기, 2=2학기). 예: 2026-1">
+            <Field label="현재 학기"
+              hint={ctx.current_term && !/^20\d{2}-(1|2|S|W)$/.test(ctx.current_term)
+                ? "⚠️ 형식이 올바르지 않습니다 — 연도 4자리-학기 (예: 2026-1)"
+                : "형식: 연도-학기 (1=1학기, 2=2학기). 예: 2026-1"}>
               <input style={inputStyle} placeholder="예: 2026-1" value={ctx.current_term} onChange={(e) => setCtx({ ...ctx, current_term: e.target.value })} /></Field>
             <Field label="남은 학기" hint="현재 학기 다음부터 들을 정규학기 수 (현재 학기는 수강내역에 포함 → 제외)">
               <input style={inputStyle} type="number" value={ctx.remaining_semesters} onChange={(e) => setCtx({ ...ctx, remaining_semesters: e.target.value })} /></Field>

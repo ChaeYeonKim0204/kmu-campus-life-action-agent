@@ -134,9 +134,10 @@ def _markdown(ctx, profile, audit, risk, plan) -> str:
             L.append(f"  - 왜 이 계획: {plan.why_this_plan}")
     if plan.overflow:
         o = plan.overflow
+        # note에 사유(용량/개설학기 제약)가 담겨 있으므로 그대로 사용 — '12<19인데 왜 못 채움'
+        # 같은 단독 문장 어색함 방지(개설학기 제약 캐비엣 포함)
         L += ["", "## ⚠️ 초과학기 예상 시나리오",
-              f"- 잔여 {o.remaining_semesters}학기로는 부족 {o.shortfall_credits:.0f}학점을 채울 수 없습니다."
-              f" (학기당 최대 {o.per_term_credit_cap:.0f}학점)",
+              f"- {o.note}",
               f"- 졸업까지 최소 **{o.total_semesters_needed}학기**(초과학기 **{o.extra_semesters}학기**) 필요"
               + (f" · 예상 졸업: **{o.projected_graduation_term}**" if o.projected_graduation_term else "")]
     return "\n".join(L)

@@ -103,7 +103,11 @@ def compute_risk(
 
     if roadmap_feasible is False:
         grade = _worse(grade, "C")
-        reasons.append(RiskReason(factor="로드맵", detail="잔여 학기 내 실현 가능한 계획 없음", severity=15))
+        # 초과학기 시나리오(overflow)가 있으면 '계획 없음' 대신 그것을 가리킨다 —
+        # C등급에서도 '계획 없음' 문구와 초과학기 카드가 병치되는 모순 방지(시뮬레이션 검증)
+        detail = (f"잔여 학기 내 전체 배치 불가 — 초과학기 약 {overflow.extra_semesters}학기 예상"
+                  if overflow is not None else "잔여 학기 내 실현 가능한 계획 없음")
+        reasons.append(RiskReason(factor="로드맵", detail=detail, severity=15))
     elif roadmap_feasible is True and grade == "D" and context.gpa_min_met != "no" \
             and gap <= capacity + 0.01:
         # 절대 학점차(gap>15 등)만으로 D였더라도, 실현 가능한 완성 로드맵이 있고 수용량 내면

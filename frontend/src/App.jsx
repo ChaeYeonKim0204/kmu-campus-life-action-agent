@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import ActionForm from "./components/ActionForm.jsx";
-import AdminDashboard from "./components/AdminDashboard.jsx";
+// AdminDashboard(/ingest 관리)는 백엔드 라우트 정리로 unused/frontend_components/ 보관
 import ProcessingStatusPanel from "./components/ProcessingStatusPanel.jsx";
 import SourcePanel from "./components/SourcePanel.jsx";
 import ToolLogPanel from "./components/ToolLogPanel.jsx";
@@ -1135,11 +1135,7 @@ function App() {
                   <ToolLogPanel toolLogs={toolLogs} />
                 </div>
 
-                {/* 관리자 */}
-                <div className="lab-section">
-                  <h4>🛡 관리자 대시보드</h4>
-                  <AdminDashboard apiBase={API_BASE} />
-                </div>
+                {/* 관리자 대시보드(/ingest) — 백엔드 라우트 정리로 비활성, unused/ 보관 */}
               </div>
             </div>
           </div>

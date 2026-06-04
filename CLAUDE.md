@@ -28,8 +28,8 @@ This is a course **team project**; the professor's grading rubric below is a bin
 
 곁다리(캠퍼스라이프 `/ask` 파이프라인)와 메인 축(졸업센터)을 분리해 3티어로 정리한다. codex 2차 검토 반영:
 
-- **티어1 — 제거 대상 (곁다리, 졸업센터 미사용):** `agent/`, `tools/`, `llm_client.py`, `app.py`의 `/ask`·`/actions/*` 라우트와 관련 헬퍼(~850줄), 그리고 그 테스트 19종.
-- **티어2 — 동결 (코드·데이터 보존 + 제품 노출만 제거):** `crawler/`, `ingestion/`, `retriever/`, `/ingest/*`·`/sources` 라우트, `data/raw·processed·vector·state`. 두 번째 주제가 무엇이 되든 공식 일정·규정 수집/검색 인프라는 재필요할 확률이 높다. **삭제하지 말고** 라우트/UI 노출만 끄거나 flag로 격리한다.
+- **티어1 — ✅ 정리 완료 (2026-06-04, `unused/` 보관):** `agent/`, `tools/`, `llm_client.py`, `app.py`의 `/ask`·`/actions/*` 라우트와 관련 헬퍼, 테스트 18종 — 전부 `unused/`로 git mv(이력 보존, 슬림화 전 app.py 전체본은 `unused/legacy_app_with_ask.py`). 복구 절차는 `unused/README.md`.
+- **티어2 — ✅ 노출 종료·코드 보관 (2026-06-04):** `crawler/`, `ingestion/`, `retriever/`는 `unused/`로 이동(삭제 아님 — 상호 import라 묶음 보관, 두 번째 주제 시 묶음 복구), `/ingest/*`·`/sources` 라우트 제거. **`data/raw·processed·vector·state`는 루트 유지** — `graduation_center/service.py`가 `data/processed/chunks.jsonl`을 런타임에 읽는다.
 - **티어3 — 유지 (메인 축):** `graduation_center/`, `data/graduation/`, `/graduation/*`, `/health`, `/`(정적), `tests/test_graduation_*`.
 
 **선행 의존 이관 (중요):** `graduation_center/service.py:_official_policy_sources()`가 `data/processed/chunks.jsonl`(티어2 데이터)을 **직접 읽는다**(early_graduation·credit_drop 공식 근거용). 졸업센터는 import 레벨에선 독립이지만 이 **런타임 파일 의존**이 있으므로, 티어2 데이터를 건드리기 전에 해당 정책 chunk를 `data/graduation/policies.json`으로 이관하고 이 함수를 고쳐야 근거가 조용히 빠지지 않는다.
@@ -56,7 +56,7 @@ Tests:
 pytest                                       # tests/conftest.py injects repo root onto sys.path
 pytest tests/test_graduation_center.py       # 졸업센터 단위 테스트
 ```
-`tests/` (plural) is the real pytest suite. 재설계 중 티어1 테스트(`test_actions`, `test_classifier`, `test_retriever` 등 19종)는 제거 대상이고, `tests/test_graduation_*` 3종이 메인 축 회귀 테스트다. `test/` (singular, 단수) is a **separate, standalone graduation-RAG prototype** with its own `requirements.txt`/`.env`/scripts — not part of the app's test run and predates the `graduation_center/` package that productized it. Don't conflate the two.
+`tests/` (plural) is the real pytest suite — 정리(2026-06-04) 후 잔존 6종: `test_graduation_*` 3종(졸업센터 회귀) + `test_v2_*` 3종(v2 파이프라인·해설·상담 Agent). 티어1·2 테스트 18종은 `unused/tests_tier1/`에 보관(수집 경로 밖). 옛 `test/` (singular) graduation-RAG 프로토타입은 `unused/prototype_test/`로 이동 — `scripts/build_graduation_index.py`의 요람 PDF 경로가 그곳을 가리킨다.
 
 There is no linter or formatter wired into the repo.
 

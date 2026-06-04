@@ -26,7 +26,7 @@ PDF_PATH_ENV = "REAL_TRANSCRIPT_PDF_PATH"
 def _real_transcript_path() -> Path:
     if os.getenv(RUN_FLAG) != "1":
         pytest.skip(f"{RUN_FLAG}=1 이 설정된 경우에만 실제 성적증명서 E2E를 실행합니다.")
-    load_dotenv(dotenv_path=Path("test/.env"), override=False)
+    load_dotenv(dotenv_path=Path("unused/prototype_test/.env"), override=False)  # 프로토타입 폴더 이동 반영
     if not os.getenv("OPENAI_API_KEY", "").strip():
         pytest.skip("OPENAI_API_KEY가 없어 실제 성적증명서 E2E를 건너뜁니다.")
     raw_path = os.getenv(PDF_PATH_ENV, "").strip()

@@ -16,9 +16,10 @@ data/graduation/chroma/
 data/graduation/index_stats.json
 data/state/llm_usage.jsonl
 data/state/agent_usage.jsonl
-test/chroma_db/
-test/*.pdf
-test/index_stats.json
+unused/prototype_test/chroma_db/
+unused/prototype_test/*.pdf
+unused/prototype_test/.env
+unused/prototype_test/index_stats.json
 *.sqlite3
 *Zone.Identifier*
 
@@ -29,7 +30,6 @@ frontend/node_modules/
 # Local secrets and private test fixtures
 .env
 *.env
-test/.env
 private/
 *.docx
 *성적증명서*.pdf

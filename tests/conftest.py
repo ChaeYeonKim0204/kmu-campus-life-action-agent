@@ -31,24 +31,9 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_live)
 
 
-@pytest.fixture(autouse=True)
-def _isolate_llm_usage_log(tmp_path, monkeypatch):
-    """Redirect llm_client.USAGE_LOG_PATH to a per-test tmp file.
-
-    P1의 usage 로그는 항상 파일에 쓰는데, 테스트 중에 실제
-    `data/state/llm_usage.jsonl`을 오염시키면 안 된다. 모든 테스트에 자동 적용,
-    경로가 필요한 테스트는 `usage_log_path` 픽스처로 받는다.
-    """
-    log_path = tmp_path / "llm_usage.jsonl"
-    monkeypatch.setattr("llm_client.USAGE_LOG_PATH", log_path, raising=False)
-    yield log_path
-
-
-@pytest.fixture
-def usage_log_path(_isolate_llm_usage_log):
-    """Expose the isolated log path for tests that want to read it."""
-    return _isolate_llm_usage_log
-
+# (티어1 정리: llm_client usage-log 격리 fixture 제거 — llm_client는 unused/ 보관,
+#  문자열 monkeypatch 타깃이 모듈 import를 유발해 이동 후 전 테스트 ERROR를 내던 지점.
+#  잔존 테스트 6종의 사용 0건 확인. 원본은 unused/tests_tier1/ 복구 시 함께 되돌릴 것.)
 
 
 @pytest.fixture(autouse=True)

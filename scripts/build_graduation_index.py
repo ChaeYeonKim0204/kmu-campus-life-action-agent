@@ -14,7 +14,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-PDF_PATH = Path("test/2025국민대학교요람_20250910.pdf")
+# 요람 PDF는 졸업RAG 프로토타입 폴더와 함께 unused/로 이동(untracked 로컬 자산)
+PDF_PATH = Path("unused/prototype_test/2025국민대학교요람_20250910.pdf")
 CHROMA_DIR = Path("data/graduation/chroma")
 COLLECTION_NAME = "kmu_graduation_yoram"
 EMBED_MODEL = "text-embedding-3-small"

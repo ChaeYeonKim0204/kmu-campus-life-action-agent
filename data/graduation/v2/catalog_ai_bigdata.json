@@ -756,7 +756,9 @@
       "course_id": "1567202",
       "name_ko": "대화형AI와비즈니스",
       "name_norm": "대화형ai와비즈니스",
-      "aliases": [],
+      "aliases": [
+        "생성형AI와비즈니스"
+      ],
       "credits": 3.0,
       "requirement_area": "전공",
       "is_required": false,

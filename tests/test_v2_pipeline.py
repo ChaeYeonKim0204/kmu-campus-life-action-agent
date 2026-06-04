@@ -376,6 +376,8 @@ def test_gen_basic_college_english_unnumbered_counts():
     view = {v["name_ko"]: v["taken"] for v in _gen_basic_view(vt, "ai_bigdata", 2023)}
     assert view["College EnglishⅠ·Ⅱ 중 택1"] is True
     assert view["글쓰기"] is True
+    # EC는 별도 필수 3종째(2026-06-05 사용자 정정 — 누락 표시 이슈) · 이 학생은 미이수
+    assert view["English Conversation"] is False
 
 
 def test_gen_ed_gap_planned_as_slot():

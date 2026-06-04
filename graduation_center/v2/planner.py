@@ -590,7 +590,12 @@ def plan_greedy(selected: list[dict], terms: list[list],
     item_norms = {normalize_name(c["name_ko"]) for c in items}
 
     def _seq_prev(it):
-        """Ⅰ/Ⅱ류 번호 시퀀스: 끝자리 숫자 n≥2면 같은 베이스의 n-1 정규화명 반환."""
+        """Ⅰ/Ⅱ류 번호 시퀀스: 끝자리 숫자 n≥2면 같은 베이스의 n-1 정규화명 반환.
+
+        generic_slot('일반선택 과목 #2' 등)은 제외 — 슬롯 번호는 단순 분할 인덱스라
+        시퀀스로 오인하면 후속 슬롯이 전부 defer→미배치되어 초과학기를 과대 산정한다."""
+        if it.get("confidence") == "generic_slot":
+            return None
         nn = normalize_name(it["name_ko"])
         if nn and nn[-1].isdigit() and int(nn[-1]) >= 2:
             return nn[:-1] + str(int(nn[-1]) - 1)

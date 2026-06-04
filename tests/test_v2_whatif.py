@@ -301,6 +301,86 @@ def test_leave_plus_already_met_headline_mentions_delay():
     assert "휴학" in diff.headline and "늦어" in diff.headline
 
 
+# ---------- ⑧ 코드 검증 라운드1 회귀 ----------
+def test_out_of_range_is_not_cached_and_message_mentions_limit():
+    # 캐시 포이즈닝 방지(코드R2 HIGH): 검증 실패 raw는 캐시 미저장 + 한도 안내 메시지
+    payload = {**_payload(CTX), "question": "10년 휴학하면?"}
+    client = _fake_client(_raw("휴학", "휴학 20학기", calendar_delay_terms=20))
+    first = whatif.run_whatif(payload, client=client)
+    assert first.status == "unsupported" and "한도" in first.unsupported_reason
+    # 미캐시 증명: client 없이 재시도 → 캐시 히트가 아니라 'LLM 미설정'으로 떨어져야 함
+    second = whatif.run_whatif(payload, client=None)
+    assert "LLM 미설정" in second.unsupported_reason
+
+
+def test_leave_when_blocked_headline_still_mentions_delay():
+    # 코드R1 HIGH: 교양 부족 blocked(overflow 없음) 학생의 휴학 → '변화 없음' 금지
+    mk = lambda: SimpleNamespace(
+        risk=RiskAssessment(grade="C", label="주의"),
+        audit=AuditResult(total_required=130, total_earned=90, total_gap=40,
+                          area_gaps=[AreaGap(area="기초교양", required=7, earned=0, gap=7)],
+                          convergence_checks=[], to_fusion_total=0.0,
+                          missing_required_course_ids=[]),
+        roadmap=RoadmapPlan(status="blocked", feasible=False, terms=[], overflow=None))
+    diff = whatif.build_diff(mk(), mk(), WhatIfDelta(calendar_delay_terms=1))
+    assert "휴학" in diff.headline and "변화가 없습니다" not in diff.headline
+
+
+def test_remaining_change_clamped_to_12_no_400():
+    # 코드R1 MEDIUM: 12+4=16이 StudentContext le=12에 걸려 400으로 새는 경로 차단
+    ctx = {**CTX, "remaining_semesters": 12}
+    payload = {**_payload(ctx), "question": "두 학기 더 다니면?"}
+    client = _fake_client(_raw("수강학기변경", "잔여 +4", remaining_semesters_change=4))
+    resp = whatif.run_whatif(payload, client=client)
+    assert resp.status in ("ok", "unsupported")        # 예외·400 금지
+    if resp.status == "ok":
+        assert resp.after.context.remaining_semesters == 12
+
+
+def test_low_credit_cap_rejected_with_range():
+    # 코드R2 MEDIUM: 0.5학점 상한 → '0학점으로 제한'+'변화 없음' 모순 카드 방지
+    payload = {**_payload(CTX), "question": "0.5학점만 들으면?"}
+    client = _fake_client(_raw("학점상한", "상한 0.5", max_credits_per_term=0.5))
+    resp = whatif.run_whatif(payload, client=client)
+    assert resp.status == "unsupported" and "9~" in resp.unsupported_reason
+
+
+def test_leave_with_gpa_request_is_noted_not_silent():
+    # 코드R1 MEDIUM: 휴학+3.75 동시 요청 — 침묵 무시 금지, 가정으로 명시
+    payload = {**_payload(CTX), "question": "휴학하고 복학해서 3.75 받으면?"}
+    client = _fake_client(_raw("휴학", "휴학+성적우수", calendar_delay_terms=1,
+                               prev_term_gpa_ge_375=True))
+    resp = whatif.run_whatif(payload, client=client)
+    assert resp.status == "ok"
+    assert resp.after.context.prev_term_gpa_ge_375 is False
+    assert any("3.75" in a for a in resp.assumptions)
+
+
+def test_next_actions_no_contradiction_when_overflow_resolved():
+    # 코드R1 MEDIUM: 초과학기 해소인데 '변경 전이 더 안전'·등록금 경고 동시 출력 금지
+    diff = whatif.WhatIfDiff(
+        risk_before="B", risk_after="C", total_gap_before=10, total_gap_after=10,
+        graduation_term_before="2027-1", graduation_term_after="2027-2",
+        overflow_before=True, overflow_after=False, headline="x")
+    acts = whatif.suggest_next_actions(diff, WhatIfDelta(seasonal_semester_allowed=True),
+                                       StudentContext.model_validate(CTX))
+    assert any("해소" in a for a in acts)
+    assert not any("변경 전 계획이 더 안전" in a for a in acts)
+    assert not any("등록금" in a for a in acts)
+
+
+def test_run_audit_failure_degrades_to_unsupported(monkeypatch):
+    # 코드R1 LOW·계획 §6-12: 재실행 내부 예외 → 200 + unsupported (500·400 금지)
+    payload = {**_payload(CTX), "question": "다음 학기 휴학하면?"}
+    client = _fake_client(_raw("휴학", "휴학 1학기", calendar_delay_terms=1))
+    def boom(*a, **k):
+        raise KeyError("broken_program")
+    monkeypatch.setattr(whatif, "run_audit", boom)
+    resp = whatif.run_whatif(payload, client=client)
+    assert resp.status == "unsupported"
+    assert "시뮬레이션할 수 없습니다" in resp.unsupported_reason
+
+
 # ---------- ⑦ API 레벨 ----------
 def test_api_validation_and_degrade(monkeypatch):
     from fastapi.testclient import TestClient

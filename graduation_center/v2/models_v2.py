@@ -10,7 +10,7 @@ from typing import Literal
 import math
 import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # 졸업요건 영역 (집계 카테고리). 융합전공은 연계·융합전공 카탈로그 과목 표시용.
 Area = Literal["전공", "기초교양", "핵심교양", "자유교양", "일반선택", "융합전공"]
@@ -279,6 +279,7 @@ WhatIfCategory = Literal["휴학", "수강학기변경", "계절학기", "학점
 
 
 class ConvChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")        # 캐시 오염·구버전 raw의 미지 필드 차단(검증 코드R1)
     program_id: str
     track: Literal["다전공", "부전공"] = "다전공"
 
@@ -286,6 +287,7 @@ class ConvChange(BaseModel):
 class WhatIfDelta(BaseModel):
     """LLM 출력의 유일한 통로 — 전 필드 None/빈 리스트 = 변경 없음.
     범위 밖 값은 ValidationError → 호출측이 unsupported로 degrade."""
+    model_config = ConfigDict(extra="forbid")
     calendar_delay_terms: int | None = Field(default=None, ge=0, le=4)   # 휴학: 시작만 지연
     remaining_semesters_change: int | None = Field(default=None, ge=-4, le=4)
     seasonal_semester_allowed: bool | None = None

@@ -237,6 +237,19 @@ export default function GraduationV2({ apiBase }) {
   const [whatif, setWhatif] = React.useState(null);
   const [question, setQuestion] = React.useState("");
   const [showAfterPlan, setShowAfterPlan] = React.useState(false);
+  const [whatifError, setWhatifError] = React.useState("");   // 상담 카드 인라인 표시(상단 error와 분리)
+
+  // #workflow 전용 페이지용 trace를 단일 effect로 동기화 — 이벤트 핸들러의 stale closure로
+  // 옛 audit trace가 섞여 저장되는 경로 차단(검증 코드R3). 계약: whatif.node_trace만,
+  // whatif.after.node_trace는 audit 노드명과 겹쳐 덮어쓰기를 유발하므로 절대 미포함.
+  React.useEffect(() => {
+    if (!verify && !audit) return;
+    try {
+      localStorage.setItem("v2_workflow_trace",
+        JSON.stringify([...(verify?.node_trace || []), ...(audit?.node_trace || []),
+                        ...(whatif?.node_trace || [])]));
+    } catch { /* storage 불가 무시 */ }
+  }, [verify, audit, whatif]);
 
   React.useEffect(() => {
     fetch(`${apiBase}/graduation/v2/status`).then((r) => r.json())
@@ -305,6 +318,7 @@ export default function GraduationV2({ apiBase }) {
   const runVerify = async () => {
     if (!files.length) { setError("수강내역 엑셀(.xls/.xlsx)을 업로드하세요."); return; }
     setBusy("verify"); setError(""); setAudit(null);
+    setAuditPayload(null); setWhatif(null); setQuestion(""); setWhatifError("");  // stale 상담 상태 정리
     try {
       const form = new FormData();
       files.forEach((f) => form.append("files", f));
@@ -339,12 +353,8 @@ export default function GraduationV2({ apiBase }) {
       const result = await r.json();
       setAudit(result);
       setAuditPayload(payload);            // what-if 동결 payload — 이후 테이블 편집과 분리
-      setWhatif(null); setQuestion(""); setShowAfterPlan(false);
-      // 워크플로우 전용 페이지(#workflow)가 읽도록 trace 저장
-      try {
-        localStorage.setItem("v2_workflow_trace",
-          JSON.stringify([...(verify?.node_trace || []), ...(result.node_trace || [])]));
-      } catch { /* storage 불가 무시 */ }
+      setWhatif(null); setQuestion(""); setShowAfterPlan(false); setWhatifError("");
+      // (#workflow trace 저장은 useEffect([verify, audit, whatif])가 단일 책임)
     } catch (e) { setError(String(e.message || e)); }
     setBusy("");
   };
@@ -361,12 +371,12 @@ export default function GraduationV2({ apiBase }) {
     if ((c.convergence_program_ids || []).length) chips.push("다전공·부전공을 빼면?");
     chips.push(c.seasonal_semester_allowed ? "계절학기를 못 듣게 되면?" : "계절학기를 들으면?");
     chips.push("한 학기에 15학점씩만 들으면?");
-    return chips.slice(0, 3);
+    return chips.slice(0, 4);   // slice(0,3)은 '15학점' 칩(임팩트 큰 질문)을 잘라먹음(검증 코드R3)
   };
   const runWhatIf = async (q) => {
     const text = String(q ?? question).trim();
     if (!text || !auditPayload || tableDirty) return;
-    setBusy("whatif"); setError(""); setShowAfterPlan(false);
+    setBusy("whatif"); setWhatifError(""); setShowAfterPlan(false);
     try {
       const r = await fetch(`${apiBase}/graduation/v2/whatif`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -374,17 +384,11 @@ export default function GraduationV2({ apiBase }) {
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       const d = await r.json();
       setWhatif(d); setQuestion(text);
-      // 그래프 합성 계약: whatif.node_trace만 — after.node_trace는 노드명이 audit과 겹쳐
-      // byNode 덮어쓰기(본 보고서 노드가 what-if 값으로 표시)를 유발하므로 절대 금지.
-      // 인라인 그래프와 #workflow 전용 페이지(localStorage) 양쪽에 동일 적용(검증 라운드3).
-      try {
-        localStorage.setItem("v2_workflow_trace",
-          JSON.stringify([...(verify?.node_trace || []), ...(audit?.node_trace || []),
-                          ...(d.node_trace || [])]));
-      } catch { /* storage 불가 무시 */ }
-    } catch (e) { setError(String(e.message || e)); }
+      // (#workflow trace 저장은 useEffect가 단일 책임 — stale closure 방지)
+    } catch (e) { setWhatifError(String(e.message || e)); }   // 상담 카드 안에 표시(상단까지 안 가도 보임)
     setBusy("");
   };
+  const fmtNum = (x) => (Number.isInteger(x) ? x : Number(x).toFixed(1));
   const termKo = (lab) => {
     if (!lab) return "산출 불가";
     const [y, s] = String(lab).split("-");
@@ -524,7 +528,7 @@ export default function GraduationV2({ apiBase }) {
             <span style={{ fontSize: 12.5, color: C.muted }}>
               {files.length ? `${files.length}개 학기 파일 선택됨` : "ON국민 수강내역(.xls)을 학기별로 모두 선택"}
             </span>
-            <button style={{ ...btnPrimary(busy !== "verify"), marginLeft: "auto" }} onClick={runVerify} disabled={busy === "verify"}>
+            <button style={{ ...btnPrimary(!busy), marginLeft: "auto" }} onClick={runVerify} disabled={!!busy}>
               {busy === "verify" ? "검증 중…" : "① 검증 실행"}
             </button>
           </div>
@@ -586,7 +590,7 @@ export default function GraduationV2({ apiBase }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", marginTop: 12 }}>
               {verify.unresolved?.length > 0 && <span style={{ fontSize: 12, color: "#b45309" }}>미해소(확인 필요): {verify.unresolved.length}건</span>}
-              <button style={{ ...btnPrimary(busy !== "audit"), marginLeft: "auto" }} onClick={runAudit} disabled={busy === "audit"}>
+              <button style={{ ...btnPrimary(!busy), marginLeft: "auto" }} onClick={runAudit} disabled={!!busy}>
                 {busy === "audit" ? "사정 중…" : "② 졸업사정 실행"}
               </button>
             </div>
@@ -854,6 +858,12 @@ export default function GraduationV2({ apiBase }) {
               <p style={{ fontSize: 10.5, color: C.muted, margin: "2px 0 0" }}>
                 ※ 시뮬레이션은 서버 기본 겹침 배정 기준이며, 지원 범위: 휴학 · 잔여 학기 · 계절학기 · 학점 상한 · 다전공/부전공 변경
               </p>
+              {whatifError && (
+                <div style={{ marginTop: 10, padding: "9px 12px", background: "#fef2f2",
+                  border: "1px solid #fecaca", borderRadius: 8, fontSize: 12.5, color: C.danger }}>
+                  시뮬레이션 요청 실패: {whatifError}
+                </div>
+              )}
 
               {whatif && whatif.status === "unsupported" && (
                 <div style={{ marginTop: 12, padding: "12px 14px", background: "#f6f8fb",
@@ -876,18 +886,21 @@ export default function GraduationV2({ apiBase }) {
                         <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 500, marginLeft: 5 }}>{whatif.diff.risk_label_after}</span>
                       </div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: C.muted }}>예상 졸업</div>
-                      <div style={{ fontSize: 15, fontWeight: 700 }}>
-                        {whatif.diff.already_met_after && !whatif.diff.graduation_term_after
-                          ? "추가 수강 불요(충족 유지)"
-                          : <>{termKo(whatif.diff.graduation_term_before)} <span style={{ color: C.muted, fontWeight: 400 }}>→</span> {termKo(whatif.diff.graduation_term_after)}</>}
+                    {/* 양쪽 다 산출 불가면 블록 자체를 숨김 — "산출 불가 → 산출 불가" 무의미 표시 방지(코드R3) */}
+                    {(whatif.diff.already_met_after || whatif.diff.graduation_term_before || whatif.diff.graduation_term_after) && (
+                      <div>
+                        <div style={{ fontSize: 11, color: C.muted }}>예상 졸업</div>
+                        <div style={{ fontSize: 15, fontWeight: 700 }}>
+                          {whatif.diff.already_met_after && !whatif.diff.graduation_term_after
+                            ? "추가 수강 불요(충족 유지)"
+                            : <>{termKo(whatif.diff.graduation_term_before)} <span style={{ color: C.muted, fontWeight: 400 }}>→</span> {termKo(whatif.diff.graduation_term_after)}</>}
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div>
                       <div style={{ fontSize: 11, color: C.muted }}>총 부족 학점</div>
                       <div style={{ fontSize: 15, fontWeight: 700 }}>
-                        {whatif.diff.total_gap_before} <span style={{ color: C.muted, fontWeight: 400 }}>→</span> {whatif.diff.total_gap_after}
+                        {fmtNum(whatif.diff.total_gap_before)} <span style={{ color: C.muted, fontWeight: 400 }}>→</span> {fmtNum(whatif.diff.total_gap_after)}
                       </div>
                     </div>
                   </div>

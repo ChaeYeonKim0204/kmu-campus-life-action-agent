@@ -8,7 +8,7 @@
 > 기준 서비스: KMU Campus Life Action Agent  
 > 개발 프론트 주소: `http://127.0.0.1:5173`  
 > 개발 API 주소: `http://127.0.0.1:8001`  
-> 관련 문서: `docs/frontend_product_planning.md`, `docs/backend_product_planning.md`, `docs/agent_product_planning.md`
+> 관련 문서: `docs/legacy/frontend_product_planning.md`, `docs/legacy/backend_product_planning.md`, `docs/legacy/agent_product_planning.md`
 
 ---
 
@@ -887,13 +887,13 @@
 
 | 문서 | 역할 |
 | --- | --- |
-| `docs/service_product_planning.md` | 전체 서비스 기획 문서 |
-| `docs/frontend_product_planning.md` | 화면 구조, 사용자 여정, UI 상태, 프론트 개선 과제 |
-| `docs/backend_product_planning.md` | API, RAG, ingest, 데이터, 운영/보안 기준 |
-| `docs/agent_product_planning.md` | 에이전트 판단 흐름, guard, action, LLM 정책 |
-| `docs/current_service_plan.md` | 기존 서비스 계획과 구현 현황 기록 |
-| `docs/kmu_agent_project_proposal.md` | 프로젝트 제안/배경 성격의 문서 |
-| `docs/next_agent_handoff.md` | 다음 작업자를 위한 인수인계 |
+| `docs/legacy/service_product_planning.md` | 전체 서비스 기획 문서 |
+| `docs/legacy/frontend_product_planning.md` | 화면 구조, 사용자 여정, UI 상태, 프론트 개선 과제 |
+| `docs/legacy/backend_product_planning.md` | API, RAG, ingest, 데이터, 운영/보안 기준 |
+| `docs/legacy/agent_product_planning.md` | 에이전트 판단 흐름, guard, action, LLM 정책 |
+| `docs/legacy/current_service_plan.md` | 기존 서비스 계획과 구현 현황 기록 |
+| `docs/legacy/kmu_agent_project_proposal.md` | 프로젝트 제안/배경 성격의 문서 |
+| `docs/legacy/next_agent_handoff.md` | 다음 작업자를 위한 인수인계 |
 
 ---
 

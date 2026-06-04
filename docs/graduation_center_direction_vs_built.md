@@ -37,7 +37,7 @@
 
 **왜 바뀌었나:**
 1. **루브릭 직격** — 교수가 구두 강조한 "출력 무작위성 통제·매번 일관된 결과". LLM 계획은 같은 입력에도 흔들리고, repair 루프는 데모 시간·신뢰도 리스크.
-2. 초기 LLM 시안의 품질이 낮았음 ("시나리오가 너무 거지같음") → codex와 설계 협의(`codex_llm_placement.md`) 결과 **"배치는 제약충족 문제라 결정론이 정답, LLM은 도구 선택(ReAct 컨트롤러)·RAG Q&A에 배치"** 권고 채택.
+2. 초기 LLM 시안의 품질이 낮았음 ("시나리오가 너무 거지같음") → codex와 설계 협의(`reviews/codex_llm_placement.md`) 결과 **"배치는 제약충족 문제라 결정론이 정답, LLM은 도구 선택(ReAct 컨트롤러)·RAG Q&A에 배치"** 권고 채택.
 3. 결정론이 되면서 검증·회귀가 가능해짐 → 수렴 루프에서 "동일 입력 3회 해시 동일"을 보장.
 
 **남는 것:** direction의 "계산은 컴퓨터, 판단은 LLM" 원칙 자체는 폐기가 아니라 **LLM의 자리를 이동** — 차기 작업인 RAG Q&A(요람 근거 인용 답변)와 bounded ReAct 컨트롤러(어떤 도구를 쓸지 선택)로 간다. CLAUDE.md의 ReAct 가드레일("LLM은 next_tool만 고른다") 방향과 합류.
@@ -94,7 +94,7 @@
 
 1. **워크플로우 그래프 시각화** (`WorkflowGraph.jsx`, `#workflow` 별도 페이지) — direction엔 없고 루브릭("Dify처럼 노드 분기를 눈으로")에서 옴. 백엔드가 `node_trace`(9노드: 요람 로딩→…→리스크 산정→리포트, branch_taken 포함)를 방출하고 프론트가 점등 리플레이.
 2. **데모 학생 패키지** (`data/graduation/v2/demo_students/` + `scripts/make_demo_students.py`) — ai_bigdata+데이터사이언스 다전공 합성 학생 4명(.xls 20개): 겹침>캡 3-way(S1)·그룹 공백(S2)·초과학기 D(S3)·계절+성적우수(S4). direction §8의 "깨끗한 샘플" 요구를 시나리오별 검증 자산으로 확장.
-3. **검증 캠페인 기록** (`docs/review_round*.md`) — 적대리뷰 5라운드(+codex 동수) 후 수렴 루프 7라운드: 라운드당 서브에이전트 3+codex 3, CRITICAL 0건(R7 전원)까지. 잡은 실결함 ≈ 16건(슬롯 시퀀스 오인 대량미배치, credits 오염 OOM, 표면 모순 등).
+3. **검증 캠페인 기록** (`docs/reviews/review_round*.md`) — 적대리뷰 5라운드(+codex 동수) 후 수렴 루프 7라운드: 라운드당 서브에이전트 3+codex 3, CRITICAL 0건(R7 전원)까지. 잡은 실결함 ≈ 16건(슬롯 시퀀스 오인 대량미배치, credits 오염 OOM, 표면 모순 등).
 
 ---
 

@@ -3,7 +3,7 @@
 > **한 줄 요약**: ON국민 수강내역 .xls × 학번별 요람 × 학사규정으로 **① 졸업 진단 ② 다전공 중복인정 ③ 학기별 로드맵(불가 시 초과학기 시나리오) ④ 요람 인용 달린 규정 해설 ⑤ 자연어 후속 질문 시뮬레이션(졸업 시나리오 상담 Agent)**까지 내놓는 **결정론 졸업사정 컨설팅 에이전트** — 완성, 데모 가능 상태.
 >
 > 상태: **구현 완료 · 검증 수렴(상담 Agent 포함) · 데모 리허설 단계** · 갱신 2026-06-04 (발표 D-5)
-> 기획 문서: [`graduation_center_direction.md`](./graduation_center_direction.md) · 기획 대비 변경 사유: [`graduation_center_direction_vs_built.md`](./graduation_center_direction_vs_built.md) · 데모 진행: [`demo_script_2026-06-09.md`](./demo_script_2026-06-09.md) · 상담 Agent 설계·검증 대장: [`whatif_consult_agent_plan.md`](./whatif_consult_agent_plan.md)
+> 기획 문서: [`graduation_center_direction.md`](./graduation_center_direction.md) · 기획 대비 변경 사유: [`graduation_center_direction_vs_built.md`](./graduation_center_direction_vs_built.md) · 데모 진행: [`demo_script_2026-06-09.md`](./demo_script_2026-06-09.md) · 상담 Agent 설계·검증 대장: [`plans/whatif_consult_agent_plan.md`](./plans/whatif_consult_agent_plan.md)
 
 ---
 
@@ -100,7 +100,7 @@ flowchart TD
 
 - **학사규정 부합 감사**(서브 3+codex 3): 제32조·제77조·제74조⑤ 등 조문 단위 대조 — 불일치 2건(캡 15분기·교양 50 상한) 수정, 범위외 규정(논문·등록학기 등)은 보고서 caveat로 명시.
 - **검증 캠페인(본체)**: 적대적 리뷰 5라운드 → 수렴 루프 7라운드(라운드당 서브에이전트 3+codex 3, CRITICAL 0까지) → 교수 페르소나 평가 6인 → 신규코드 라운드 → 데모 시나리오 라운드(변주 3종 포함). 누적 발견·수정 ≈ 25건(슬롯 시퀀스 오인 대량미배치, credits 오염 OOM, 표면 모순 계열, 캐시 trace 거짓 '통과' 등).
-- **검증 캠페인(상담 Agent)**: 계획 3라운드(발견 37건 반영 후 착수) + 코드 4라운드(라운드당 적대 서브 3+codex, **실서버 e2e·데모 리허설 라운드 포함**) → 발견 ~40건 중 수정 30+, 거짓양성 5 기각, HIGH 0으로 수렴. 하이라이트: 리허설에서 LLM 환각(질문에 없는 융합 포기) 실증 → 결정론 가드 도입 → 재워밍업 환각 0건 라이브 검증. 상세 대장: `whatif_consult_agent_plan.md` §7.
+- **검증 캠페인(상담 Agent)**: 계획 3라운드(발견 37건 반영 후 착수) + 코드 4라운드(라운드당 적대 서브 3+codex, **실서버 e2e·데모 리허설 라운드 포함**) → 발견 ~40건 중 수정 30+, 거짓양성 5 기각, HIGH 0으로 수렴. 하이라이트: 리허설에서 LLM 환각(질문에 없는 융합 포기) 실증 → 결정론 가드 도입 → 재워밍업 환각 0건 라이브 검증. 상세 대장: `plans/whatif_consult_agent_plan.md` §7.
 - **테스트**: **236 passed** (파이프라인·사정·해설 validator·상담 35종·API), 결정론 3회 해시 동일.
 - **장애 내성**: OpenAI/Chroma 다운 → 해설·상담만 degrade(본체 무영향, 상담은 캐시된 칩 질문 정상 동작·500 금지 계약), 손상 엑셀 422, 오염 입력 400, 완전 오프라인 데모 가능(캐시).
 

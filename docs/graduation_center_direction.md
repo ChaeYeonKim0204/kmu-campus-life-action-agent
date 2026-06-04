@@ -2,7 +2,7 @@
 
 > **한 줄 요약**: 내 수강 데이터 + 내 학번·전공 요람으로 **① 졸업 가능한지 진단**하고 **② 남은 학기에 뭘 들어야 안전하게 졸업하는지**를 **컨설팅 보고서**로 알려주는 에이전트.
 >
-> 상태: **방향 확정 (LEAN)** · 작성 2026-06-02 (팀 + codex 4회 검토) · 코딩용 상세 스펙은 [`graduation_center_spec_en.md`](./graduation_center_spec_en.md)
+> 상태: **방향 확정 (LEAN)** · 작성 2026-06-02 (팀 + codex 4회 검토) · 코딩용 상세 스펙은 [`legacy/graduation_center_spec_en.md`](./legacy/graduation_center_spec_en.md)
 
 ---
 

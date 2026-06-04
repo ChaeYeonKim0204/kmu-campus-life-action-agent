@@ -1,6 +1,6 @@
 # unused/ — 졸업센터 데모와 무관한 보관 코드 (삭제 아님)
 
-> 2026-06-04 정리(계획: `docs/cleanup_unused_plan.md`, codex 2라운드 검증 후 실행).
+> 2026-06-04 정리(계획: `docs/plans/cleanup_unused_plan.md`, codex 2라운드 검증 후 실행).
 > **루트 = 졸업센터(메인 축) 관련만, 여기는 그 외 전부.**
 > git mv로 이동해 이력 보존 — 복구는 `git mv unused/<것> <원위치>` 후 app.py 임포트 복원.
 

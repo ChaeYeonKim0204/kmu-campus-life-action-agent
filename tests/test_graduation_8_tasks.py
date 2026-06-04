@@ -1,6 +1,6 @@
 """Phase 5 P5 — 졸업센터 8 task 풀 회귀 (실제 OpenAI 호출).
 
-agent_product_planning.md §15.3 (8 task 명세) + §15.4 (5섹션 통일, P2) +
+legacy/agent_product_planning.md §15.3 (8 task 명세) + §15.4 (5섹션 통일, P2) +
 §7.3·§15.2 (sanitization, P3) 통합 contract 검증.
 
 기본 skip (live_llm 마크). 풀 회귀:

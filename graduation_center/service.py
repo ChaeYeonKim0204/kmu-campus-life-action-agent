@@ -437,7 +437,7 @@ def _task_specific_rules(task: str) -> list[str]:
     return rules.get(task, ["확인 가능한 근거와 확인 필요 항목을 분리해 답하세요."])
 
 
-# --- P2 — docs/agent_product_planning.md §15.4 5섹션 통일 ---
+# --- P2 — docs/legacy/agent_product_planning.md §15.4 5섹션 통일 ---
 
 TASK_TITLES: dict[str, str] = {
     "audit": "졸업 진단",
@@ -464,7 +464,7 @@ ANALYSIS_LABELS = {"가능 여부", "충족 항목", "제도 기준", "행정 �
 
 
 def _build_answer(task: str, payload: dict, sources: list[dict]) -> str:
-    """docs/agent_product_planning.md §15.4 — 5섹션 통일.
+    """docs/legacy/agent_product_planning.md §15.4 — 5섹션 통일.
 
     모든 task: [자동 분석 결과] / [부족·불확실 항목] / [학과·교무팀에 확인할 질문]
     / [다음 학기 수강계획] (또는 [다음 행동]) / [최종 확인] / [근거].
@@ -550,7 +550,7 @@ def _input_safety_flags(transcript: dict, extra: dict[str, Any]) -> list[str]:
     return flags
 
 
-# P3 — agent_product_planning.md §7.3·§15.2 + README §15.3 민감정보 마스킹.
+# P3 — legacy/agent_product_planning.md §7.3·§15.2 + README §15.3 민감정보 마스킹.
 # raw regex string은 dict로 명시 (markdown table 이스케이프 문제 회피).
 # grade_nearby는 '성적/학점/grade/score' 근접 키워드 기반 — letter 단독 매칭 회피 (false positive).
 SENSITIVE_PATTERNS: tuple[tuple[str, str, str, int], ...] = (

@@ -20,7 +20,7 @@ def _worse(a: str, b: str) -> str:
 
 def compute_risk(
     audit: AuditResult, context: StudentContext, roadmap_feasible: bool | None = None,
-    overflow: OverflowScenario | None = None,
+    overflow: OverflowScenario | None = None, overflow_verified: bool | None = None,
 ) -> RiskAssessment:
     reasons: list[RiskReason] = []
     grade = "A"
@@ -104,9 +104,15 @@ def compute_risk(
     if roadmap_feasible is False:
         grade = _worse(grade, "C")
         # 초과학기 시나리오(overflow)가 있으면 '계획 없음' 대신 그것을 가리킨다 —
-        # C등급에서도 '계획 없음' 문구와 초과학기 카드가 병치되는 모순 방지(시뮬레이션 검증)
-        detail = (f"잔여 학기 내 전체 배치 불가 — 초과학기 약 {overflow.extra_semesters}학기 예상"
-                  if overflow is not None else "잔여 학기 내 실현 가능한 계획 없음")
+        # '계획 없음' 문구와 초과학기 카드가 병치되는 모순 방지. 잔여+1 재배치 검증이
+        # 실패한 경우(개설학기 deadlock 등)는 추산임을 명시해 카드의 caveat와 정합(라운드6).
+        if overflow is not None and overflow_verified is False:
+            detail = (f"잔여 학기 내 전체 배치 불가 — 초과학기 약 {overflow.extra_semesters}학기 추산"
+                      "(개설학기 제약으로 경로 미확정 — 학과 확인 권장)")
+        elif overflow is not None:
+            detail = f"잔여 학기 내 전체 배치 불가 — 초과학기 약 {overflow.extra_semesters}학기 예상"
+        else:
+            detail = "잔여 학기 내 실현 가능한 계획 없음"
         reasons.append(RiskReason(factor="로드맵", detail=detail, severity=15))
     elif roadmap_feasible is True and grade == "D" and context.gpa_min_met != "no" \
             and gap <= capacity + 0.01:
@@ -115,7 +121,7 @@ def compute_risk(
         grade = "C"
         reasons.append(RiskReason(factor="로드맵", detail="실현 가능한 학기별 계획 존재 — 등급 완화(C)", severity=0))
     if grade == "D" and context.gpa_min_met != "no" and overflow is not None \
-            and overflow.extra_semesters <= 1:
+            and overflow.extra_semesters <= 1 and overflow_verified is True:
         # blocked라도 초과학기 1학기로 닫히는 구체적 졸업 경로(overflow 시나리오)가 있으면
         # 'D 졸업불가 가능성' 배지와 '초과학기 1학기 → 졸업' 카드의 무화해 병치 모순 — C로 완화.
         # 위 blocked 분기의 '실현 가능한 계획 없음' reason은 완화 문구와 모순 병치되므로

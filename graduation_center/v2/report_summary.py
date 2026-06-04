@@ -28,7 +28,7 @@ from graduation_center.v2.whatif import (
 )
 
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data/graduation/v2/summary_cache.json"
-SUMMARY_SCHEMA_VERSION = 3        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
+SUMMARY_SCHEMA_VERSION = 4        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
 MAX_CANDIDATES = 5                # LLM 제안 상한(Thought의 폭)
 MAX_SIMULATIONS = 4               # pre 통과 후보 시뮬레이션 상한(비용 가드)
 MAX_ACCEPTED = 3                  # 최종 채택 상한
@@ -61,8 +61,12 @@ def _build_facts(audit, risk, plan, ctx: StudentContext) -> list[dict]:
     add("미이수 필수: " + (", ".join(audit.missing_required_names) if audit.missing_required_names else "없음"))
     add(f"리스크 {risk.grade}({risk.label}) · 점수 {risk.score}")
     o = plan.overflow
-    add(f"로드맵 {plan.status} · 배치 {len(plan.terms)}학기 · feasible {plan.feasible}"
-        + (f" · 초과 {o.extra_semesters}학기(예상 {o.projected_graduation_term or '미상'})" if o else ""))
+    # 사용자 언어로 — blocked/feasible 같은 내부 용어가 총평 문장에 그대로 새던 문제(사용자 피드백)
+    if plan.feasible:
+        rm = f"로드맵: 잔여 학기 안에 배치 가능({len(plan.terms)}개 학기 계획)"
+    else:
+        rm = f"로드맵: 현 조건으로는 잔여 학기 안에 전부 배치 불가({len(plan.terms)}개 학기만 부분 배치)"
+    add(rm + (f" · 초과 {o.extra_semesters}학기 필요(예상 졸업 {o.projected_graduation_term or '미상'})" if o else ""))
     for cc in audit.convergence_checks:
         add(f"{cc['name']}({cc['track']}): {cc['earned']:g}/{cc['required']:g}"
             f"(부족 {cc['gap']:g}) · 겹침 {cc['overlap_credits']:g} 중 중복인정 "
@@ -249,7 +253,9 @@ sim_cap/accept_cap=상한 초과로 미채택일 뿐 효과 없음이 아님 —
 - 모든 문장의 fact_ids에 근거 id(F*/S*)를 달아라. 위 텍스트에 없는 숫자·과목명·등급을 만들지 마라.
 - 졸업 가능/불가를 새로 판정하지 마라 — 리스크 등급·feasible은 facts 그대로 인용만.
 - 채택 시나리오가 없으면: "검토 결과 현 계획 유지가 최적"을 headline으로, recommendation은 '유지 권장'.
-- headline은 이 학생의 핵심 갈림길 한 문장(예: "다전공 유지 시 +1학기 vs 포기 시 적시 졸업 — 이게 핵심 선택")."""
+- headline은 이 학생의 핵심 갈림길 한 문장(예: "다전공 유지 시 +1학기 vs 포기 시 적시 졸업 — 이게 핵심 선택").
+- **학생에게 말하듯 쉬운 한국어로** — blocked·feasible 같은 시스템 용어 금지, F1/S1 같은 근거 id를
+  본문에 쓰지 마라(근거는 fact_ids 필드로만 — 화면이 배지로 따로 단다)."""
 
 
 # 한글 인접("A등급"·"D입니다")도 잡는 등급 패턴 — 영문 단어 내부(AI·CLASS)는 제외(codex R1)
@@ -282,6 +288,9 @@ def _text_violations(text: str, allowed_nums: set, allowed_grades: str) -> str |
     # 단정만 거부 — '졸업 가능 시점/시기/여부/성' 같은 fact 기반 표현은 허용(적대 R2 M1 과폐기 방지)
     if re.search(r"졸업\s*(불가|가능)(?!\s*(시점|시기|여부|성))", text):
         return "판정 단정"
+    # 내부 용어·fact id 본문 노출 차단 — 사용자가 못 알아듣는 문장 방지(2026-06-05 사용자 피드백)
+    if re.search(r"(?<![A-Za-z])[FS]\d(?![0-9.])", text) or re.search(r"\b(blocked|feasible)\b", text, re.IGNORECASE):
+        return "내부 용어 노출"
     return None
 
 

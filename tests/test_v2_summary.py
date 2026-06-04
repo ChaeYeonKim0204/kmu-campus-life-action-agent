@@ -153,7 +153,7 @@ def test_facts_canonical_and_cache_key_deterministic():
 def test_cache_hit_zero_llm_calls():
     payload = _payload(CTX)
     sel = _sel_raw((_delta(seasonal_semester_allowed=True), "load_adjust", "계절로 부담 분산"))
-    fake = SeqFake([sel, _sum_raw([("리스크는 F4 기준으로 유지", ["F4"])])])
+    fake = SeqFake([sel, _sum_raw([("리스크 등급은 그대로 유지됩니다", ["F4"])])])
     r1 = pipeline.run_audit(payload, client=fake, run_summary=True)
     assert r1.agent_summary is not None
     n_first = fake.calls
@@ -174,7 +174,7 @@ def test_filter_rejects_recorded_not_erased():
         (_delta(), "graduate_faster", "빈 delta"),                                  # no_op
         (_delta(drop_convergence=["dsci"]), "conv_tradeoff", "융합 포기"),          # pre_mismatch(융합 미선언)
     )
-    fake = SeqFake([sel, _sum_raw([("계절학기 시나리오는 S1 참조", ["S1"])])])
+    fake = SeqFake([sel, _sum_raw([("계절학기를 허용하면 수강 부담이 줄어듭니다", ["S1"])])])
     resp = pipeline.run_audit(payload, client=fake, run_summary=True)
     s = resp.agent_summary
     assert s is not None
@@ -194,7 +194,7 @@ def test_already_met_student_gets_normal_keep_summary():
     ctx = dict(CTX, remaining_semesters=2)
     payload = _payload(ctx, target_credits=200)          # 카탈로그 전공을 최대로 채운 학생
     sel = _sel_raw((_delta(remaining_semesters_change=1), "timeline_extend", "한 학기 더"))
-    fake = SeqFake([sel, _sum_raw([("현 계획 유지가 최적 — F4 기준", ["F4"])],
+    fake = SeqFake([sel, _sum_raw([("현 계획 유지가 최적입니다", ["F4"])],
                                   headline="검토 결과 현 계획 유지가 최적", rec="유지 권장")])
     resp = pipeline.run_audit(payload, client=fake, run_summary=True)
     s = resp.agent_summary
@@ -216,7 +216,7 @@ def test_before_recomputed_not_base_object(monkeypatch):
                                   run_summary=run_summary)
 
     sel = _sel_raw((_delta(seasonal_semester_allowed=True), "load_adjust", "계절"))
-    fake = SeqFake([sel, _sum_raw([("S1 관찰값 기준", ["S1"])])])
+    fake = SeqFake([sel, _sum_raw([("검토한 시나리오 관찰값 기준입니다", ["S1"])])])
     summary, fallback, trace = report_summary.run_report_summary(
         payload, base.audit, base.risk, base.roadmap, base.context,
         run_audit_fn=counting_run_audit, client=fake)
@@ -238,7 +238,7 @@ def test_validator_drops_fabricated_number():
     payload = _payload(CTX)
     resp = _run_with_summary_lines(payload, [
         ("부족 학점은 9999학점입니다", ["F1"]),          # 위조 수치 → 폐기
-        ("리스크는 F4 기준 유지", ["F4"]),               # 통과
+        ("리스크 등급은 그대로 유지됩니다", ["F4"]),               # 통과
     ])
     s = resp.agent_summary
     assert s is not None and len(s.lines) == 1
@@ -260,7 +260,7 @@ def test_validator_drops_grade_contradiction():
     other = "A" if base.risk.grade != "A" else "D"
     resp = _run_with_summary_lines(payload, [
         (f"이 학생의 등급은 {other} 입니다", ["F1"]),    # F1(총학점)엔 등급 없음 → 모순 폐기
-        ("총 이수 현황은 F1 참조", ["F1"]),
+        ("이수 현황을 함께 검토했습니다", ["F1"]),
     ])
     s = resp.agent_summary
     assert s is not None and len(s.lines) == 1 and other not in s.lines[0].text
@@ -274,7 +274,7 @@ def test_validator_grade_korean_adjacency_and_headline():
            "recommendation": "유지 권장",
            "lines": [{"text": "리스크 D등급으로 위험", "fact_ids": ["F4"]},   # 한글 인접 등급 모순
                      {"text": "8학기 더 필요", "fact_ids": ["F1"]},           # 단위 동반 1자리 위조
-                     {"text": "총 부족 85학점 — F1 참조", "fact_ids": ["F1"]}]}
+                     {"text": "총 부족은 85학점입니다", "fact_ids": ["F1"]}]}
     s, issues = report_summary._validate_summary(raw, facts, [], "C")
     assert s is not None and len(s.lines) == 1 and "85" in s.lines[0].text
     assert s.headline == ""                                # headline 위반 → 비표시
@@ -288,7 +288,7 @@ def test_cap_rejections_recorded_with_honest_reasons():
     # 휴학 1~4학기: 전부 timeline_extend pre 통과 + 효과(졸업 지연) 기대 → 5번째는 sim_cap
     cands = [(_delta(calendar_delay_terms=k), "timeline_extend", f"휴학 {k}") for k in (1, 2, 3, 4)]
     cands.append((_delta(remaining_semesters_change=2), "timeline_extend", "잔여 +2"))
-    fake = SeqFake([_sel_raw(*cands), _sum_raw([("관찰값은 S1 참조", ["S1"])])])
+    fake = SeqFake([_sel_raw(*cands), _sum_raw([("검토한 시나리오에서 변화를 확인했습니다", ["S1"])])])
     resp = pipeline.run_audit(payload, client=fake, run_summary=True)
     s = resp.agent_summary
     assert s is not None

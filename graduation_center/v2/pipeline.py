@@ -1,7 +1,7 @@
 """v2 오케스트레이션 — verify / audit 두 단계 + JSON-first 응답 조립.
 
 run_verify: 엑셀(여러 학기) → 매칭 → 편집 가능한 검증 테이블 반환(HITL).
-run_audit : 사용자 확정 테이블 → 진단 → 로드맵(LLM+검증) → 리스크 → AuditPipelineResponse.
+run_audit : 사용자 확정 테이블 → 진단 → 로드맵(결정론 배치+검증) → 리스크 → AuditPipelineResponse.
 """
 from __future__ import annotations
 

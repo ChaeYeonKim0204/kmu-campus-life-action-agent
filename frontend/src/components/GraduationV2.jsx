@@ -354,7 +354,7 @@ export default function GraduationV2({ apiBase }) {
           <h1 style={{ margin: "4px 0 6px", fontSize: 23, fontWeight: 800, letterSpacing: "-.02em" }}>졸업사정 컨설팅</h1>
           <p style={{ margin: 0, fontSize: 13, opacity: .9, lineHeight: 1.5 }}>
             내 수강내역 × 내 요람으로 졸업 가능 여부를 진단하고 남은 학기 로드맵을 설계합니다.
-            결정론적 사실 위에서 LLM이 로드맵만 계획하고 검증기가 재확인합니다.
+            진단·로드맵은 결정론 노드가 계산·검증해 매번 같은 결과를 보장합니다.
           </p>
         </div>
       </div>

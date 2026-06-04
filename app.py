@@ -273,7 +273,7 @@ def graduation_v2_status() -> dict:
         "programs": progs,
         "departments": departments,
         "openai_api_key_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
-        "note": "엑셀 수강내역 업로드 기반. 결정론 진단/리스크는 키 없이도 동작, 로드맵만 LLM 사용.",
+        "note": "엑셀 수강내역 업로드 기반. 진단·로드맵·리스크는 결정론(키 불필요), LLM은 요람 Q&A 근거 답변에만 사용.",
     }
 
 
@@ -326,7 +326,7 @@ async def graduation_v2_verify(request: Request) -> dict:
 
 @app.post("/graduation/v2/audit")
 def graduation_v2_audit(payload: dict) -> dict:
-    """사용자 확정 테이블 → 진단 → 로드맵(LLM+검증) → 리스크 → 컨설팅 응답."""
+    """사용자 확정 테이블 → 진단 → 로드맵(결정론 배치+검증) → 리스크 → 컨설팅 응답."""
     ctx = payload.get("context")
     if not isinstance(ctx, dict) or "program_id" not in ctx:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다.")

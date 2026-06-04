@@ -232,6 +232,11 @@ export default function GraduationV2({ apiBase }) {
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
   const [showSources, setShowSources] = React.useState(false);
+  // 졸업 시나리오 상담(what-if) — audit 시점 payload를 동결해 사용(편집된 table과 분리, 검증 라운드2)
+  const [auditPayload, setAuditPayload] = React.useState(null);
+  const [whatif, setWhatif] = React.useState(null);
+  const [question, setQuestion] = React.useState("");
+  const [showAfterPlan, setShowAfterPlan] = React.useState(false);
 
   React.useEffect(() => {
     fetch(`${apiBase}/graduation/v2/status`).then((r) => r.json())
@@ -333,6 +338,8 @@ export default function GraduationV2({ apiBase }) {
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       const result = await r.json();
       setAudit(result);
+      setAuditPayload(payload);            // what-if 동결 payload — 이후 테이블 편집과 분리
+      setWhatif(null); setQuestion(""); setShowAfterPlan(false);
       // 워크플로우 전용 페이지(#workflow)가 읽도록 trace 저장
       try {
         localStorage.setItem("v2_workflow_trace",
@@ -340,6 +347,48 @@ export default function GraduationV2({ apiBase }) {
       } catch { /* storage 불가 무시 */ }
     } catch (e) { setError(String(e.message || e)); }
     setBusy("");
+  };
+
+  // ---------- 졸업 시나리오 상담 Agent (what-if) ----------
+  // 테이블이 audit 이후 편집되면 시뮬레이션 비활성(화면 보고서와 before 불일치 방지)
+  const tableDirty = auditPayload
+    ? JSON.stringify(table) !== JSON.stringify(auditPayload.verification_table) : false;
+  // 칩은 동결 payload의 context 기준(라이브 ctx 금지 — 칩 라벨·실제 요청 불일치 방지)
+  const whatifChips = () => {
+    const c = auditPayload?.context || {};
+    const chips = [];
+    if (c.current_term) chips.push("다음 학기 휴학하면?");
+    if ((c.convergence_program_ids || []).length) chips.push("다전공·부전공을 빼면?");
+    chips.push(c.seasonal_semester_allowed ? "계절학기를 못 듣게 되면?" : "계절학기를 들으면?");
+    chips.push("한 학기에 15학점씩만 들으면?");
+    return chips.slice(0, 3);
+  };
+  const runWhatIf = async (q) => {
+    const text = String(q ?? question).trim();
+    if (!text || !auditPayload || tableDirty) return;
+    setBusy("whatif"); setError(""); setShowAfterPlan(false);
+    try {
+      const r = await fetch(`${apiBase}/graduation/v2/whatif`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...auditPayload, question: text }) });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      const d = await r.json();
+      setWhatif(d); setQuestion(text);
+      // 그래프 합성 계약: whatif.node_trace만 — after.node_trace는 노드명이 audit과 겹쳐
+      // byNode 덮어쓰기(본 보고서 노드가 what-if 값으로 표시)를 유발하므로 절대 금지.
+      // 인라인 그래프와 #workflow 전용 페이지(localStorage) 양쪽에 동일 적용(검증 라운드3).
+      try {
+        localStorage.setItem("v2_workflow_trace",
+          JSON.stringify([...(verify?.node_trace || []), ...(audit?.node_trace || []),
+                          ...(d.node_trace || [])]));
+      } catch { /* storage 불가 무시 */ }
+    } catch (e) { setError(String(e.message || e)); }
+    setBusy("");
+  };
+  const termKo = (lab) => {
+    if (!lab) return "산출 불가";
+    const [y, s] = String(lab).split("-");
+    return s === "1" ? `${y}-1학기` : s === "2" ? `${y}-2학기` : s === "S" ? `${y} 하계` : s === "W" ? `${y} 동계` : lab;
   };
 
   const stepActive = (n) => (n === 1 ? !!files.length : n === 2 ? !!verify : !!audit);
@@ -770,6 +819,132 @@ export default function GraduationV2({ apiBase }) {
               </div>
             )}
 
+            {/* 졸업 시나리오 상담 Agent (what-if) — 자연어 → 매개변수 추출(LLM) → 결정론 재실행 */}
+            <div style={card}>
+              <div style={sectionTitle}>🔮 졸업 시나리오 상담 <span style={{ color: C.muted, fontWeight: 400, fontSize: 12 }}>
+                질문을 LLM이 시뮬레이션 조건으로 변환하고, 판정은 결정론 엔진이 다시 계산합니다</span></div>
+              {tableDirty && (
+                <div style={{ fontSize: 12, color: "#b45309", padding: "8px 10px", background: "#fff7ed",
+                  border: "1px solid #fed7aa", borderRadius: 8, marginBottom: 10 }}>
+                  ⚠️ 검증 테이블이 수정되었습니다 — 시뮬레이션에 반영하려면 졸업사정을 다시 실행하세요.
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input value={question} onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") runWhatIf(); }}
+                  placeholder='예: "다음 학기 휴학하면 졸업이 늦어지나요?"'
+                  disabled={tableDirty || busy === "whatif"} maxLength={200}
+                  style={{ flex: 1, padding: "9px 12px", border: `1px solid ${C.border}`, borderRadius: 9,
+                    fontSize: 13, outline: "none", background: tableDirty ? "#f6f8fb" : "#fff" }} />
+                <button onClick={() => runWhatIf()} disabled={tableDirty || busy === "whatif" || !question.trim()}
+                  style={{ padding: "9px 16px", borderRadius: 9, border: "none", fontWeight: 700, fontSize: 13,
+                    background: tableDirty || !question.trim() ? "#cbd5e1" : C.navy, color: "#fff",
+                    cursor: tableDirty || !question.trim() ? "default" : "pointer" }}>
+                  {busy === "whatif" ? "분석 중…" : "시뮬레이션"}
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                {whatifChips().map((c) => (
+                  <button key={c} onClick={() => { setQuestion(c); runWhatIf(c); }}
+                    disabled={tableDirty || busy === "whatif"}
+                    style={{ fontSize: 12, padding: "5px 11px", borderRadius: 14, cursor: "pointer",
+                      border: `1px solid ${C.border}`, background: "#fff", color: C.navy, fontWeight: 600 }}>{c}</button>
+                ))}
+              </div>
+              <p style={{ fontSize: 10.5, color: C.muted, margin: "2px 0 0" }}>
+                ※ 시뮬레이션은 서버 기본 겹침 배정 기준이며, 지원 범위: 휴학 · 잔여 학기 · 계절학기 · 학점 상한 · 다전공/부전공 변경
+              </p>
+
+              {whatif && whatif.status === "unsupported" && (
+                <div style={{ marginTop: 12, padding: "12px 14px", background: "#f6f8fb",
+                  border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 13, color: "#475569" }}>
+                  💬 {whatif.unsupported_reason}
+                </div>
+              )}
+              {whatif && whatif.status === "ok" && whatif.diff && (
+                <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+                  <div style={{ padding: "12px 16px", background: C.soft, fontSize: 13.5, fontWeight: 700, color: C.navy }}>
+                    {whatif.diff.headline}
+                  </div>
+                  <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "12px 16px" }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted }}>리스크 등급</div>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>
+                        <span style={{ color: GRADE_COLOR[whatif.diff.risk_before] }}>{whatif.diff.risk_before}</span>
+                        <span style={{ color: C.muted, fontWeight: 400 }}> → </span>
+                        <span style={{ color: GRADE_COLOR[whatif.diff.risk_after] }}>{whatif.diff.risk_after}</span>
+                        <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 500, marginLeft: 5 }}>{whatif.diff.risk_label_after}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted }}>예상 졸업</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>
+                        {whatif.diff.already_met_after && !whatif.diff.graduation_term_after
+                          ? "추가 수강 불요(충족 유지)"
+                          : <>{termKo(whatif.diff.graduation_term_before)} <span style={{ color: C.muted, fontWeight: 400 }}>→</span> {termKo(whatif.diff.graduation_term_after)}</>}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted }}>총 부족 학점</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>
+                        {whatif.diff.total_gap_before} <span style={{ color: C.muted, fontWeight: 400 }}>→</span> {whatif.diff.total_gap_after}
+                      </div>
+                    </div>
+                  </div>
+                  {(whatif.applied_changes?.length > 0 || whatif.diff.convergence_changes?.length > 0 || whatif.diff.changed_areas?.length > 0) && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 16px 10px" }}>
+                      {(whatif.applied_changes || []).map((c, i) => (
+                        <span key={"a" + i} style={{ fontSize: 11.5, background: "#eff6ff", color: "#1d4ed8",
+                          border: "1px solid #bfdbfe", borderRadius: 13, padding: "3px 9px" }}>{c}</span>
+                      ))}
+                      {(whatif.diff.convergence_changes || []).map((c, i) => (
+                        <span key={"c" + i} style={{ fontSize: 11.5, background: "#ede9fe", color: "#6d28d9",
+                          border: "1px solid #c4b5fd", borderRadius: 13, padding: "3px 9px" }}>{c}</span>
+                      ))}
+                      {(whatif.diff.changed_areas || []).map((a, i) => (
+                        <span key={"r" + i} style={{ fontSize: 11.5, background: "#fff7ed", color: "#b45309",
+                          border: "1px solid #fed7aa", borderRadius: 13, padding: "3px 9px" }}>{a} 변동</span>
+                      ))}
+                    </div>
+                  )}
+                  {whatif.next_actions?.length > 0 && (
+                    <div style={{ padding: "10px 16px", borderTop: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 5 }}>다음 행동</div>
+                      {whatif.next_actions.map((a, i) => (
+                        <div key={i} style={{ fontSize: 12.5, color: C.text, lineHeight: 1.6 }}>☑️ {a}</div>
+                      ))}
+                    </div>
+                  )}
+                  {whatif.assumptions?.length > 0 && (
+                    <p style={{ fontSize: 10.5, color: C.muted, margin: 0, padding: "6px 16px 10px" }}>가정: {whatif.assumptions.join(" / ")}</p>
+                  )}
+                  {whatif.after?.roadmap?.terms?.length > 0 && (
+                    <div style={{ padding: "0 16px 12px" }}>
+                      <button style={btnGhost} onClick={() => setShowAfterPlan((s) => !s)}>
+                        {showAfterPlan ? "변경 후 로드맵 접기 ▲" : "변경 후 로드맵 보기 ▼"}
+                      </button>
+                      {showAfterPlan && (
+                        <div style={{ marginTop: 8 }}>
+                          {whatif.applied_changes?.some((c) => c.includes("휴학")) && (
+                            <p style={{ fontSize: 11, color: C.muted, margin: "0 0 6px" }}>
+                              ※ 휴학 반영 — 휴학 중 학기는 건너뛰고 복학 학기부터 배치됩니다.
+                            </p>
+                          )}
+                          {whatif.after.roadmap.terms.map((t, i) => (
+                            <div key={i} style={{ display: "flex", gap: 10, fontSize: 12.5, marginBottom: 4 }}>
+                              <span style={{ minWidth: 78, fontWeight: 700, color: C.navy }}>{termKo(t.term)}</span>
+                              <span style={{ color: C.text }}>{t.courses.map((c) => `${c.name_ko}(${c.credits})`).join(", ")}
+                                <span style={{ color: C.muted }}> · {t.term_credits}학점</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* 워크플로우 그래프 — 보고서와 같은 화면에 인라인(노드 점등이 결과 옆에서 보임) */}
             <div style={card}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
@@ -779,7 +954,8 @@ export default function GraduationV2({ apiBase }) {
                 <button onClick={() => window.open(`${window.location.pathname}#workflow`, "_blank")}
                   style={{ ...btnGhost, whiteSpace: "nowrap" }}>크게 보기 ↗</button>
               </div>
-              <WorkflowGraph compact trace={[...(verify?.node_trace || []), ...(audit?.node_trace || [])]} />
+              {/* 계약: whatif.node_trace만 합성 — whatif.after.node_trace는 audit 노드명과 겹쳐 덮어쓰기 유발(금지) */}
+              <WorkflowGraph compact trace={[...(verify?.node_trace || []), ...(audit?.node_trace || []), ...(whatif?.node_trace || [])]} />
             </div>
 
             {/* 근거 */}

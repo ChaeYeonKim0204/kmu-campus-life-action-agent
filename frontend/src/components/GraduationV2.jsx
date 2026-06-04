@@ -236,6 +236,7 @@ export default function GraduationV2({ apiBase }) {
   const [verify, setVerify] = React.useState(null);
   const [table, setTable] = React.useState([]);
   const [audit, setAudit] = React.useState(null);
+  const [summaryOpen, setSummaryOpen] = React.useState(false);  // 에이전트 총평 토글(기본 접힘)
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
   const [showSources, setShowSources] = React.useState(false);
@@ -691,6 +692,83 @@ export default function GraduationV2({ apiBase }) {
                 </div>
               </div>
             </div>
+
+            {/* 에이전트 총평 — LLM이 갈림길을 스스로 골라 결정론 시뮬레이션으로 검증(bounded ReAct).
+                기본 접힘(headline+권고 칩) — 해설·상담과의 텍스트 3중 과다 방지(계획 §4) */}
+            {(audit.agent_summary || audit.summary_fallback) && (
+              <div style={card}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: 14.5, color: C.navy }}>🤖 에이전트 총평</strong>
+                  <span style={{ fontSize: 11, color: C.muted }}>
+                    LLM이 갈림길 시나리오를 선정 → 결정론 엔진이 재계산 → 검증된 값으로만 조언</span>
+                  {audit.agent_summary && (
+                    <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, borderRadius: 14,
+                      padding: "3px 11px", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}>
+                      {audit.agent_summary.recommendation}</span>
+                  )}
+                </div>
+                {audit.summary_fallback && (
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 8 }}>
+                    {audit.summary_fallback}</div>
+                )}
+                {audit.agent_summary && (
+                  <>
+                    {audit.agent_summary.headline && (
+                      <div style={{ fontSize: 14, fontWeight: 700, margin: "9px 0 2px" }}>
+                        {audit.agent_summary.headline}</div>
+                    )}
+                    <button onClick={() => setSummaryOpen((v) => !v)}
+                      style={{ fontSize: 12, border: "1px solid #e3e8ef", borderRadius: 7, background: "#fff",
+                        padding: "4px 10px", cursor: "pointer", fontWeight: 600, color: C.navy, marginTop: 7 }}>
+                      {summaryOpen ? "▲ 접기" : "▼ 시나리오 비교·검토 내역 보기"}</button>
+                    {summaryOpen && (
+                      <div style={{ marginTop: 10 }}>
+                        {audit.agent_summary.scenarios.length > 0 && (
+                          <table style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse", marginBottom: 10 }}>
+                            <thead><tr style={{ color: C.muted, textAlign: "left" }}>
+                              <th style={{ padding: "4px 6px" }}>시나리오</th><th>리스크</th><th>총 부족</th><th>예상 졸업</th></tr></thead>
+                            <tbody>
+                              {audit.agent_summary.scenarios.map((sc) => (
+                                <tr key={sc.id} style={{ borderTop: "1px solid #eef1f5" }}>
+                                  <td style={{ padding: "5px 6px", fontWeight: 600 }}>[{sc.id}] {sc.label}</td>
+                                  <td>{sc.risk_before}→{sc.risk_after}</td>
+                                  <td>{sc.total_gap_before}→{sc.total_gap_after}</td>
+                                  <td>{sc.graduation_term_before === sc.graduation_term_after
+                                    ? "동일" : `${sc.graduation_term_before || "미상"}→${sc.graduation_term_after || "미상"}`}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                        {audit.agent_summary.lines.map((ln, i) => (
+                          <div key={i} style={{ fontSize: 13, margin: "4px 0" }}>
+                            • {ln.text}{" "}
+                            {ln.fact_ids.map((f) => (
+                              <span key={f} style={{ fontSize: 10, background: "#f1f5f9", color: C.muted,
+                                borderRadius: 8, padding: "1px 6px", marginLeft: 3 }}>{f}</span>
+                            ))}
+                          </div>
+                        ))}
+                        {audit.agent_summary.candidates_review.some((r) => r.verdict === "rejected") && (
+                          <div style={{ marginTop: 9, padding: "8px 10px", background: "#f8fafc",
+                            borderRadius: 8, fontSize: 12, color: C.muted }}>
+                            <strong style={{ color: "#475569" }}>검토 후 제외</strong> — 에이전트가 제안했지만
+                            시뮬레이션·전제 검증에서 효과가 확인되지 않은 시나리오:
+                            {audit.agent_summary.candidates_review.filter((r) => r.verdict === "rejected").map((r, i) => (
+                              <div key={i} style={{ marginTop: 3 }}>
+                                · {r.label} <span style={{ color: "#94a3b8" }}>
+                                  ({r.rejected_by === "pre_mismatch" ? "전제 불일치"
+                                    : r.rejected_by === "post_no_change" ? "효과 없음"
+                                    : r.rejected_by === "no_op" ? "변경 없음" : "해석 불가"})</span></div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             {/* 졸업 최소 평점 주의 (충족이 아닐 때) */}
             {audit.context?.gpa_min_met !== "yes" && (

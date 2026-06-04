@@ -279,7 +279,8 @@ def graduation_v2_audit(payload: dict) -> dict:
     if not isinstance(ctx, dict) or "program_id" not in ctx:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다.")
     try:
-        return v2_pipeline.run_audit(payload).model_dump()
+        # run_summary=True는 이 라우트(+워밍업 opt-in)에서만 — 에이전트 총평 게이트(계획 §1)
+        return v2_pipeline.run_audit(payload, run_summary=True).model_dump()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:

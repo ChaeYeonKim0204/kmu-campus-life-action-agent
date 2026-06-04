@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> ✅ **재설계 완료 (2026-06-04, main).** 캠퍼스라이프 `/ask` 곁다리는 `unused/`로 보관됐고 **졸업센터(졸업사정 컨설팅) v2가 메인 축**이다. 에이전트 형태는 **결정론 워크플로우 + 제한적 LLM 2노드**(① 요람 RAG 해설=근거 생성, ② 상담 매개변수 추출기=자연어→도구 파라미터, Tool Calling)로 확정 — **멀티스텝 ReAct는 의도적으로 도입하지 않았다**(출력 일관성 루브릭 우선; 상담 Agent가 ReAct의 1-step bounded 특수형이고 멀티스텝은 확장 방향). 문서·발표에서 "agentic/ReAct"를 실제보다 크게 말하지 말 것 — 교수 페르소나 채점에서 최대 감점원이 "문서가 코드보다 크게 말하는 것"이었다. 현행 구조는 `docs/graduation_center_current_state.md`가 단일 진실.
+> ✅ **재설계 완료 (2026-06-04, main).** 캠퍼스라이프 `/ask` 곁다리는 `unused/`로 보관됐고 **졸업센터(졸업사정 컨설팅) v2가 메인 축**이다. 에이전트 형태는 **결정론 워크플로우 + 제한적 LLM 4노드**(① 요람 RAG 해설=근거 생성 ② 상담 매개변수 추출기=자연어→도구 파라미터 ③ 갈림길 선정 ④ 비교 총평 — ③·④가 **에이전트 총평**: LLM이 what-if 후보·delta 값을 스스로 골라 결정론 시뮬레이터로 검증하는 bounded ReAct **단일 턴** Thought→Action→Observation→Answer)로 확정 — **멀티스텝 ReAct 루프는 의도적으로 도입하지 않았다**(출력 일관성 루브릭 우선). 문서·발표에서 "agentic/ReAct"를 실제보다 크게 말하지 말 것 — 교수 페르소나 채점에서 최대 감점원이 "문서가 코드보다 크게 말하는 것"이었다. 현행 구조는 `docs/graduation_center_current_state.md`가 단일 진실.
 
 ## What this project is
 
@@ -92,7 +92,7 @@ There is no linter or formatter wired into the repo.
 
 ## ReAct 가드레일 (멀티스텝 확장 시 필수 — 현행은 1-step)
 
-**현행(2026-06-04):** 멀티스텝 ReAct는 미구현이 확정 결정이다. 상담 Agent(`whatif.py`)가 이 가드레일의 1-step 적용판 — LLM은 strict schema로 `delta`(도구 파라미터)만 내고, 조건 가드(IF/ELSE)·semantic guard가 검증하며, 실행은 결정론 `run_audit` 재실행이다. 발표 Q&A에서 "ReAct인가?"라고 물으면 "엄밀한 ReAct 루프는 아니고 1-step bounded Tool Calling — 멀티스텝은 일관성 트레이드오프 때문에 의도적으로 제한, 아래 가드레일로 확장 가능"이 정답. 멀티스텝 controller를 추가하게 되면 다음을 반드시 지킨다(codex 검토 반영):
+**현행(2026-06-04):** 멀티스텝 ReAct *루프*는 미구현이 확정 결정이나, **에이전트 총평(`report_summary.py`)이 단일 턴 ReAct 구현**이다 — Thought(LLM이 갈림길 후보 ≤5·delta 값 선택) → Action(결정론 `apply_delta→run_audit` 재실행 ≤4회) → Observation(diff·post 판정, 탈락도 사유와 함께 candidates_review로 화면 기록) → Answer(문장별 fact id 총평, validator·캐시). 상담 Agent(`whatif.py`)는 1-step Tool Calling. 발표 Q&A 정답: "보고서 총평 구간에 한해 단일 턴 bounded ReAct — LLM은 '무엇을 알아볼지'만 고르고 값은 전부 결정론, 멀티스텝 루프는 일관성 트레이드오프로 의도적 제한." 멀티스텝 controller를 추가하게 되면 다음을 반드시 지킨다(codex 검토 반영):
 
 - **LLM은 `next_tool`만 고른다** — 답변·보고서 본문을 LLM이 생성하지 않는다. 최종 보고서는 결정론적 builder가 조립한다.
 - **tool allowlist** — 호출 가능한 도구를 명시적으로 제한. 임의 코드/네트워크 금지.

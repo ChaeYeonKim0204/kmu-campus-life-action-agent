@@ -44,7 +44,11 @@ def run_verify(files: list[tuple[bytes, str]], context: dict) -> dict:
     }
 
 
-def run_audit(payload: dict, client=None, *, skip_explain: bool = False) -> AuditPipelineResponse:
+def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
+              run_summary: bool = False) -> AuditPipelineResponse:
+    """run_summary: 에이전트 총평(능동 시나리오 탐색) — **독립 게이트, 기본 끔**.
+    허용 경로는 /graduation/v2/audit 라우트와 워밍업 스크립트 opt-in뿐(계획 §1) —
+    테스트·what-if 상담·총평 내부 시뮬레이션은 기본 False라 LLM 미진입(재귀도 구조적 차단)."""
     ctx = StudentContext.model_validate(payload["context"])
     table = [VerifiedCourse.model_validate(x) for x in payload.get("verification_table", [])]
     unresolved = [CourseMatch.model_validate(x) for x in payload.get("unresolved", [])]
@@ -123,12 +127,39 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False) -> Audi
                        + (" · 완화 발동" if any("등급 완화" in r.detail for r in risk.reasons) else "")),
         *explain_trace,
     ]
+    # 에이전트 총평(bounded ReAct 단일 턴) — lazy import + 함수 주입으로 순환 차단
+    # (pipeline→report_summary→whatif→pipeline). run_summary=False 경로는 로직 자체 미진입.
+    agent_summary, summary_fallback, summary_trace = None, None, []
+    if run_summary:
+        from graduation_center.v2.report_summary import run_report_summary
+        agent_summary, summary_fallback, summary_trace = run_report_summary(
+            payload, audit, risk, plan, ctx, run_audit_fn=run_audit, client=client)
+        trace += summary_trace
     md = _markdown(ctx, profile, audit, risk, plan, marks, explanations=explanations)
+    if agent_summary:                                # markdown은 총평 경로에서만 append(적대 L1)
+        md += "\n\n" + _summary_markdown(agent_summary)
     return AuditPipelineResponse(
         context=ctx, verified_transcript=verified, audit=audit, risk=risk,
         roadmap=plan, explanations=explanations, explain_fallback=explain_fallback,
+        agent_summary=agent_summary, summary_fallback=summary_fallback,
         sources=sources, node_trace=trace, report_markdown=md,
     )
+
+
+def _summary_markdown(s) -> str:
+    L = ["## 에이전트 총평 (갈림길 시뮬레이션 기반)", f"**{s.headline}**" if s.headline else ""]
+    for sc in s.scenarios:
+        gt = (f" · 예상 졸업 {sc.graduation_term_before or '미상'}→{sc.graduation_term_after or '미상'}"
+              if sc.graduation_term_before != sc.graduation_term_after else "")
+        L.append(f"- [{sc.id}] {sc.label}: 리스크 {sc.risk_before}→{sc.risk_after}"
+                 f" · 부족 {sc.total_gap_before:.0f}→{sc.total_gap_after:.0f}{gt}")
+    for ln in s.lines:
+        L.append(f"- {ln.text} " + "".join(f"[{i}]" for i in ln.fact_ids))
+    rejected = [r for r in s.candidates_review if r.verdict == "rejected"]
+    if rejected:
+        L.append("- 검토 후 제외: " + "; ".join(f"{r.label}({r.rejected_by})" for r in rejected))
+    L.append(f"- **권고: {s.recommendation}**")
+    return "\n".join(x for x in L if x)
 
 
 def _build_sources(profile, ctx, audit) -> tuple[list[Source], dict]:

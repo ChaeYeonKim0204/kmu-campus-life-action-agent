@@ -45,7 +45,12 @@ def _isolate_explain(request, tmp_path, monkeypatch):
     아니면 클라이언트를 차단하고(명시 주입 fake client는 그대로 동작), 캐시는 tmp로 돌린다.
     """
     from graduation_center.v2 import explain as _ex
+    from graduation_center.v2 import report_summary as _rs
     monkeypatch.setattr(_ex, "CACHE_PATH", tmp_path / "explain_cache.json")
+    # 에이전트 총평도 동일 격리 — run_summary 게이트(기본 False)가 1차 방어지만,
+    # 게이트를 명시적으로 켜는 테스트도 라이브 LLM·데모 캐시에 닿지 않게(적대 H1).
+    monkeypatch.setattr(_rs, "CACHE_PATH", tmp_path / "summary_cache.json")
     if "live_llm" not in request.keywords:
         monkeypatch.setattr(_ex, "_get_client", lambda: None)
+        monkeypatch.setattr(_rs, "_get_client", lambda: None)
     yield

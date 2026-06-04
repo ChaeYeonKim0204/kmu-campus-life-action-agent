@@ -56,8 +56,9 @@ def _candidates(ctx: StudentContext) -> tuple[list[str], list[str]]:
     return sorted(add_ids), sorted(ctx.convergence_program_ids)
 
 
-def _schema(add_ids: list[str], drop_ids: list[str]) -> dict:
-    """strict 출력 schema — 전 필드 required, Optional=nullable union, 빈 enum 절대 금지.
+def whatif_delta_schema(add_ids: list[str], drop_ids: list[str]) -> dict:
+    """WhatIfDelta의 strict JSON schema — 상담(_schema)과 에이전트 총평(report_summary)이 공유.
+    전 필드 required, Optional=nullable union, 빈 enum 절대 금지 —
     후보 0개인 array는 enum 없이 maxItems:0으로 닫는다(검증 라운드2·3)."""
     conv_item = {
         "type": "object", "additionalProperties": False,
@@ -76,7 +77,7 @@ def _schema(add_ids: list[str], drop_ids: list[str]) -> dict:
                              else {"type": "string"})}
     if not drop_ids:
         drop_schema["maxItems"] = 0
-    delta = {
+    return {
         "type": "object", "additionalProperties": False,
         "properties": {
             "calendar_delay_terms": {"type": ["integer", "null"]},
@@ -91,6 +92,11 @@ def _schema(add_ids: list[str], drop_ids: list[str]) -> dict:
                      "seasonal_semester_allowed", "max_credits_per_term",
                      "prev_term_gpa_ge_375", "add_convergence", "drop_convergence"],
     }
+
+
+def _schema(add_ids: list[str], drop_ids: list[str]) -> dict:
+    """상담 추출기 전체 응답 schema — delta 부분은 whatif_delta_schema 공유."""
+    delta = whatif_delta_schema(add_ids, drop_ids)
     return {
         "type": "object", "additionalProperties": False,
         "properties": {

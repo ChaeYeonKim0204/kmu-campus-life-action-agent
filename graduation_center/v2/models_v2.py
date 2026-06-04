@@ -261,6 +261,49 @@ class NodeTraceEvent(BaseModel):
     branch_taken: str | None = None      # 실행된 분기(예: 통과 / repair 1회 / blocked / 갭없음)
 
 
+# ---------- 에이전트 총평 (능동 시나리오 탐색 — bounded ReAct 단일 턴) ----------
+# LLM은 "무엇을 알아볼지"(후보 delta·reason)와 총평 서사만 — 값·판정은 전부 결정론.
+# 탈락 후보도 사유와 함께 보존(candidates_review) — "필터가 답을 정했다" 인상 차단(교수 R3).
+class ScenarioReview(BaseModel):
+    label: str                                       # 사람용 요약("계절학기 6학점 허용")
+    reason_code: str
+    rationale: str = ""                              # LLM의 선정 이유(왜 이 갈림길·이 값인가)
+    verdict: Literal["accepted", "rejected"]
+    rejected_by: Literal["pre_mismatch", "invalid_delta", "no_op", "post_no_change"] | None = None
+
+
+class ScenarioOutcome(BaseModel):
+    """채택 시나리오의 결정론 관찰값 — build_diff 구조화 필드만(headline 텍스트 재사용 금지)."""
+    id: str                                          # S1..
+    label: str
+    reason_code: str
+    rationale: str = ""
+    applied_changes: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    risk_before: str = ""
+    risk_after: str = ""
+    total_gap_before: float = 0.0
+    total_gap_after: float = 0.0
+    graduation_term_before: str | None = None
+    graduation_term_after: str | None = None
+    feasible_after: bool | None = None
+    overflow_after: bool = False
+
+
+class SummaryLine(BaseModel):
+    text: str
+    fact_ids: list[str] = Field(default_factory=list)   # F*/S* — validator가 해소·수치 대조
+
+
+class AgentSummary(BaseModel):
+    headline: str = ""
+    lines: list[SummaryLine] = Field(default_factory=list)
+    recommendation: str = ""                         # 유지 권장 / 변경 검토 / 학과 상담 권장
+    scenarios: list[ScenarioOutcome] = Field(default_factory=list)
+    candidates_review: list[ScenarioReview] = Field(default_factory=list)
+    facts: list[dict] = Field(default_factory=list)  # F* 근거(화면 fact 배지 토글용)
+
+
 class AuditPipelineResponse(BaseModel):
     context: StudentContext
     verified_transcript: VerifiedTranscript
@@ -269,6 +312,8 @@ class AuditPipelineResponse(BaseModel):
     roadmap: RoadmapPlan
     explanations: list[ExplainSection] = Field(default_factory=list)  # 규정 근거 해설(보고서 내장)
     explain_fallback: str | None = None              # 해설 생성 불가 사유(결정론 본체는 무영향)
+    agent_summary: AgentSummary | None = None        # 에이전트 총평 — run_summary=True 경로에서만
+    summary_fallback: str | None = None              # 총평 생성 불가 사유(그래프-카드 모순 방지)
     sources: list[Source] = Field(default_factory=list)
     node_trace: list[NodeTraceEvent] = Field(default_factory=list)
     report_markdown: str = ""

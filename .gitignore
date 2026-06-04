@@ -37,3 +37,4 @@ private/
 data/graduation/v2/explain_cache.json
 data/graduation/v2/whatif_cache.json
 data/graduation/v2/*.tmp
+data/graduation/v2/summary_cache.json

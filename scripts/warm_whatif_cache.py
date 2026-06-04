@@ -25,11 +25,12 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv  # noqa: E402
 load_dotenv(dotenv_path=ROOT / ".env", override=False)   # OPENAI_API_KEY — 서버와 동일 로드(실가동 발견)
 
-from graduation_center.v2 import pipeline, whatif  # noqa: E402
+from graduation_center.v2 import pipeline, report_summary, whatif  # noqa: E402
 
 MANIFEST = ROOT / "data/graduation/v2/demo_students/manifest.json"
 # cwd 무관 동작 — whatif.CACHE_PATH는 상대 경로 관례라 root 밖 실행 시 엉뚱한 위치에 생성됨(코드R3)
 whatif.CACHE_PATH = ROOT / "data/graduation/v2/whatif_cache.json"
+report_summary.CACHE_PATH = ROOT / "data/graduation/v2/summary_cache.json"
 
 # 프론트 whatifChips()와 동일 로직 — 칩 라벨이 바뀌면 여기도 함께 갱신
 def chips(ctx: dict) -> list[str]:
@@ -86,6 +87,44 @@ def main() -> int:
                     __import__("os").getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini"), q, sctx, aid))
                 print("    ⚠️ 칩 질문이 unsupported — 추출 실패 의심, 캐시 키 삭제(재실행 요망)")
     print(f"\n{'⚠️ 환각 의심 ' + str(bad) + '건 — whatif_cache.json 검수 후 해당 키 삭제 요망' if bad else '✅ 환각 의심 없음 — 캐시 적재 완료'}")
+
+    # ---- 에이전트 총평(능동 시나리오 탐색) 워밍업 + 다양성 검수 (계획 §5) ----
+    # run_summary=True opt-in — 허용 경로는 /audit 라우트와 이 스크립트뿐(계획 §1).
+    print("\n==== 에이전트 총평 워밍업 ====")
+    rows, recs = [], set()
+    for sid, spec in manifest.items():
+        sdir = MANIFEST.parent / sid
+        files = [((sdir / f).read_bytes(), f) for f in spec["files"]]
+        v = pipeline.run_verify(files, dict(spec["context"]))
+        payload = {"context": v["context"], "verification_table": v["verification_table"],
+                   "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
+        r1 = pipeline.run_audit(payload, run_summary=True)        # 적재(미스 시 LLM 2콜)
+        s = r1.agent_summary
+        if s is None:
+            bad += 1
+            print(f"  ⚠️ {sid}: 총평 생성 실패 — {r1.summary_fallback}")
+            continue
+        r2 = pipeline.run_audit(payload, run_summary=True)        # 캐시 히트 확인(적대 H4)
+        hit = (r2.agent_summary is not None
+               and r2.agent_summary.model_dump() == s.model_dump())
+        acc = sorted({sc.reason_code for sc in s.scenarios})
+        rej = [f"{r.label[:18]}({r.rejected_by})" for r in s.candidates_review
+               if r.verdict == "rejected"]
+        recs.add((tuple(acc), s.recommendation))
+        rows.append(sid)
+        print(f"  {sid}: 후보 {len(s.candidates_review)} → 채택 {len(s.scenarios)} {acc}"
+              f" · 권고 [{s.recommendation}] · 캐시 {'✅' if hit else '❌ 미스!'}")
+        print(f"    headline: {s.headline[:80]}")
+        if rej:
+            print(f"    제외: {'; '.join(rej)[:100]}")
+        if not hit:
+            bad += 1
+    # 다양성 지표(교수 처방③) — 전 학생이 같은 채택 조합+권고면 '라우터' 경고
+    if len(rows) >= 3 and len(recs) == 1:
+        bad += 1
+        print("  ⚠️ 다양성 경고: 전 학생의 채택 reason_code 조합·권고가 동일 — "
+              "에이전트가 아니라 라우터처럼 보임. selector 프롬프트 보강 후 캐시 삭제·재워밍업 요망.")
+    print("✅ 총평 워밍업 완료" if not bad else f"⚠️ 총 {bad}건 검수 필요")
     return 1 if bad else 0
 
 

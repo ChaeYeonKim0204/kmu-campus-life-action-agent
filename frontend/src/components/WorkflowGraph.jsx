@@ -23,6 +23,12 @@ const BASE_NODES = [
   { key: "리스크 산정", kind: "tool" },
   { key: "요람 RAG 해설", kind: "llm" },
   { key: "해설 검증", kind: "validator", shape: "diamond" },
+  // 에이전트 총평(bounded ReAct 단일 턴) — LLM이 갈림길 후보·delta 값을 고르고(Thought),
+  // 결정론 시뮬레이터가 재실행(Action)·diff 관찰(Observation) 후 비교 총평(Answer).
+  { key: "갈림길 선정", kind: "llm" },
+  { key: "갈림길 시뮬레이션", kind: "tool" },
+  { key: "총평 생성", kind: "llm" },
+  { key: "총평 검증", kind: "validator", shape: "diamond" },
   { key: "리포트", kind: "tool", terminal: true },
 ];
 // 졸업 시나리오 상담 Agent(what-if) 클러스터 — trace에 상담 이벤트가 있을 때만 그린다.

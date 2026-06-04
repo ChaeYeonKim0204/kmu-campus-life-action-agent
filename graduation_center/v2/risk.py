@@ -75,6 +75,23 @@ def compute_risk(
         reasons.append(RiskReason(factor="잔여학기",
                       detail=f"부족 {gap:.0f}학점 > 잔여 {context.remaining_semesters}학기 수용량(~{capacity:.0f})", severity=20))
 
+    if audit.gyo_over_cap > 0:
+        # 교양 50 상한(제7조⑧) 초과분은 total_gap에 이미 반영 — 사유만 명시(등급은 갭 트리거가 처리)
+        reasons.append(RiskReason(factor="교양 상한",
+                       detail=f"교양(기초+핵심+자유) 50학점 초과 {audit.gyo_over_cap:.0f}학점은 "
+                              f"졸업학점 불인정(학사규정 제7조⑧)", severity=8))
+
+    # 졸업인증제(제96조의2·졸업요건 제4조의2): 심화전공(전공최저 +18 초과, 제74조⑤ 2025 개정)
+    # 또는 다·부전공 중 1 필수. 면제 전형·공학인증·교직 대체가 있어 hard-block 대신 경고.
+    major = next((g for g in audit.area_gaps if g.area == "전공"), None)
+    if not audit.convergence_checks and major is not None \
+            and major.earned < major.required + 18:
+        grade = _worse(grade, "B")
+        reasons.append(RiskReason(factor="졸업인증제",
+                       detail=f"심화전공(전공 {major.required:.0f}+18학점 초과) 또는 다·부전공 중 "
+                              f"1개 필요 — 현재 어느 쪽도 미충족으로 보임(공학인증·교직·면제전형 해당 시 무관, 학과 확인 권장)",
+                       severity=10))
+
     core_total_gap = next((g.gap for g in audit.area_gaps if g.area == "핵심교양"), 0.0)
     if core_missing and core_total_gap > 0:
         grade = _worse(grade, "B")

@@ -170,6 +170,8 @@ def _markdown(ctx, profile, audit, risk, plan, marks: dict | None = None,
         if g.area == "전공" and g.gap <= 0 and audit.missing_required_names:
             mark = f"⚠️ 학점 충족 · 필수지정 {len(audit.missing_required_names)}과목 미이수"
         L.append(f"- {g.area}: {g.earned:.0f}/{g.required:.0f} {mark}")
+    if audit.gyo_over_cap > 0:
+        L.append(f"- ⚠️ 교양(기초+핵심+자유) 50학점 초과 {audit.gyo_over_cap:.0f}학점은 졸업학점 불인정(학사규정 제7조⑧){mk('cap')}")
     if audit.convergence_checks:
         L += ["", f"## 연계·융합전공 (학점 중복인정 반영){mk('dup')}"]
         for cc in audit.convergence_checks:
@@ -226,4 +228,6 @@ def _markdown(ctx, profile, audit, risk, plan, marks: dict | None = None,
             for ln in sec.lines:
                 cite = "".join(f"[{s}]" for s in ln.source_ids)
                 L.append(f"- {ln.text} {cite}".rstrip())
+    L += ["", "※ 본 진단 범위 외(해당 시 학과·교무팀 확인): 졸업논문·종합시험, 등록학기(8학기) 요건, "
+              "외국인 한국어능력 인증(TOPIK), 편입·학석사연계 등 특수전형 학점인정."]
     return "\n".join(L)

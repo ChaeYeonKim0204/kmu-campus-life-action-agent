@@ -175,8 +175,15 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
         track = tracks.get(pid, "다전공")
         if track not in ("다전공", "부전공"):
             raise ValueError(f"'{name}' 트랙은 '다전공' 또는 '부전공'이어야 합니다 (입력: '{track}').")
-        req = 36.0 if track == "다전공" else 18.0
-        cap = 12.0 if track == "다전공" else (0.0 if is_yeonge else 6.0)
+        # 다전공 요구학점은 대상 전공의 별표5/교육과정 값(카탈로그) 우선 — 36 고정 가정 탈피(제77조①)
+        req = float(cat.get("convergence_required") or 36.0) if track == "다전공" else 18.0
+        # 중복인정 한도(제77조): ④ 다전공 — 대상 전공최저 40학점 이상→15, 미만→12.
+        # ⑤ 부전공 — 중복 불가, 단 '융합전공'을 부전공으로 이수 시만 6(연계전공 부전공은 0 —
+        # 사용자 확인 2026-06: 연계 0 기준은 부전공 이수 시. 다전공 트랙이면 연계도 ④ 적용).
+        if track == "다전공":
+            cap = 15.0 if req >= 40 else 12.0
+        else:
+            cap = 0.0 if is_yeonge else 6.0
         prefix_to_group = {c.course_id[:5]: c.group for c in cat["courses"] if c.course_id}
         conv_prefixes = set(prefix_to_group)
         # 연계융합 designated 과목(교양 제외) — 코드 앞5자리 기준. 들은 건 전부 융합전공에 인정.
@@ -388,12 +395,19 @@ def compute_audit(
 
     total_req = float(profile.total_credits_min or 0)
     total_earned = float(verified.total_earned)
+    # 교양(기초+핵심+자유) 이수 인정 50학점 상한(학사규정 제7조⑧) — 초과분은 졸업학점 불인정.
+    # 미적용 시 교양 다이수 학생이 거짓 '졸업 가능'으로 오판(규정 감사 라운드).
+    gyo_earned = round(sum(verified.earned_by_area.get(a, 0.0)
+                           for a in ("기초교양", "핵심교양", "자유교양")), 1)
+    gyo_over_cap = max(0.0, round(gyo_earned - 50.0, 1))
+    total_earned_countable = round(total_earned - gyo_over_cap, 1)
     unresolved_credits = round(sum(m.raw.credits for m in verified.unresolved), 1)
 
     return AuditResult(
         total_required=total_req,
-        total_earned=total_earned,
-        total_gap=max(0.0, round(total_req - total_earned, 1)),
+        total_earned=total_earned_countable,
+        gyo_over_cap=gyo_over_cap,
+        total_gap=max(0.0, round(total_req - total_earned_countable, 1)),
         area_gaps=area_gaps,
         core_area_gaps=core_gaps,
         missing_required_course_ids=missing_ids,

@@ -145,7 +145,8 @@ class AreaGap(BaseModel):
 
 class AuditResult(BaseModel):
     total_required: float
-    total_earned: float
+    total_earned: float                              # 졸업학점 '인정' 학점(교양 50 상한 반영)
+    gyo_over_cap: float = 0.0                        # 교양(기초+핵심+자유) 50학점 초과 불인정분(제7조⑧)
     total_gap: float
     area_gaps: list[AreaGap] = Field(default_factory=list)
     core_area_gaps: list[AreaGap] = Field(default_factory=list)   # 핵심교양 영역별

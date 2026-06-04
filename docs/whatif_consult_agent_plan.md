@@ -141,6 +141,15 @@ rev.2의 9종 + R2 추가:
 
 **라운드3 (서브 HIGH 0 + codex MUST 2 + 서브 MED 1):** add_convergence 빈 후보 = ConvChange shape·enum 없음·maxItems:0(§2) / trace kind에 branch 금지 + 프론트 KIND 폴백(§3.6) / localStorage 합성 양쪽 갱신(§5.1) — 전건 반영, 직접 코드 대조로 검증 완료.
 
+**코드 검증 라운드1 (적대 3 + codex · 발견 23 · 수정 17 · 거짓양성 2 기각):** 커밋 bffb211 — 휴학+blocked headline / 캐시 포이즈닝(검증 전 저장) / 한도 메시지 / localStorage stale closure(useEffect 일원화) / remaining 클램프 / seasonal after 기준 / 다음행동 상호배타 / 상한 0.5·:g 표기 / 휴학+3.75 가정 명시 / extra=forbid / 캐시 키 과민 / 칩 4개 / 예상졸업 숨김 / whatif 인라인 에러 / 버튼 전역 잠금. 기각: storage 이벤트(cross-tab엔 발화 — 사양 확인), 졸업학기 계절 라벨(수여 시점 기준 현행 정확 — 코드 주석화).
+
+**코드 검증 라운드2 (적대 3 + codex · HIGH 3 전건 수정):**
+- 캐시 evict+재해석 폴백(ValidationError 시 영구 고착 차단) + 캐시 키 schema 버전(v=2) + 오염 로컬 캐시 삭제.
+- 휴학 headline 비대칭(gt_b만 존재) 분기 — "산출되지 않았습니다" 명시.
+- **데모 통합(§신규)**: demo_script에 S4 상담 비트(0:45)·아키텍처 멘트 "LLM 파란 노드 둘(RAG 해설=근거 생성 / 추출기=Tool Calling)"·fallback 행·Q&A 2-1(왜 LLM 덜 썼나+HyDE 회피)·기여 매핑 추가. `scripts/warm_whatif_cache.py`(환각 검수 포함) 신설 — §3.7 워밍업 약속 이행.
+- MEDIUM: LLM 환각 drop(e2e 실증) → 프롬프트 negative 규칙 + 워밍업 검수 / verify-only 리포트 거짓 점등 게이트 / category 결정론 재도출(분기 pill 정직성) / track 변경 메시지 분리.
+- 수용한 한계(프로토타입): add 후보의 학과별 자격 필터 없음(요람 데이터 필요 — 다음행동 캐비엣으로 안내), 등록금·리스크 게이트는 라운드1 결정 유지, /health llm.enabled는 티어1 레거시(범위 밖).
+
 ## 8. 검증 프로토콜
 
 - 계획: codex + 서브에이전트 교차, critical 0까지 (라운드1~3 완료, 수렴).

@@ -381,6 +381,63 @@ def test_run_audit_failure_degrades_to_unsupported(monkeypatch):
     assert "시뮬레이션할 수 없습니다" in resp.unsupported_reason
 
 
+# ---------- ⑨ 코드 검증 라운드2 회귀 ----------
+def test_poisoned_cache_is_evicted_and_reinterpreted():
+    # 코드R2 HIGH: 오염 캐시 영구 고착 금지 — evict 후 LLM 재해석 1회
+    payload = {**_payload(CTX), "question": "다음 학기 휴학하면?"}
+    ctx = StudentContext.model_validate(payload["context"])
+    add_ids, _ = whatif._candidates(ctx)
+    key = whatif._cache_key("gpt-5-mini", "다음 학기 휴학하면?", ctx, add_ids)
+    whatif._cache_put(key, _raw("휴학", "오염", calendar_delay_terms=99))   # 오염 주입
+    client = _fake_client(_raw("휴학", "휴학 1학기", calendar_delay_terms=1))  # 재해석은 정상값
+    resp = whatif.run_whatif(payload, client=client)
+    assert resp.status == "ok"                                  # 고착 아님 — 재해석 성공
+    fresh = whatif._cache_get(key)
+    assert fresh["delta"]["calendar_delay_terms"] == 1          # 캐시가 정상값으로 교체됨
+
+
+def test_leave_headline_asymmetric_before_only():
+    # 코드R2 MUST: gt_b만 산출되는 비대칭 — '늦어집니다' 단정 대신 산출 불가 명시
+    term = lambda lab: SimpleNamespace(term=lab)
+    before = SimpleNamespace(
+        risk=RiskAssessment(grade="B", label="양호"),
+        audit=AuditResult(total_required=130, total_earned=110, total_gap=20,
+                          area_gaps=[], convergence_checks=[], to_fusion_total=0.0,
+                          missing_required_course_ids=[]),
+        roadmap=RoadmapPlan(status="generated", feasible=True,
+                            terms=[RoadmapTerm(term="2026-2", courses=[], term_credits=0)]))
+    after = SimpleNamespace(
+        risk=RiskAssessment(grade="B", label="양호"),
+        audit=before.audit,
+        roadmap=RoadmapPlan(status="blocked", feasible=False, terms=[], overflow=None))
+    diff = whatif.build_diff(before, after, WhatIfDelta(calendar_delay_terms=1))
+    assert "산출되지 않았습니다" in diff.headline
+    assert "변화가 없습니다" not in diff.headline
+
+
+def test_category_rederived_from_delta_not_llm_label():
+    # 코드R2(e2e LOW): LLM 라벨 오기('다전공변경')가 그래프 분기 pill에 점등되는 것 방지
+    payload = {**_payload(CTX), "question": "다음 학기 휴학하면?"}
+    raw = _raw("다전공변경", "휴학 1학기", calendar_delay_terms=1)   # 라벨은 틀리고 delta는 맞음
+    resp = whatif.run_whatif(payload, client=_fake_client(raw))
+    assert resp.status == "ok"
+    assert resp.category == "휴학"                                # delta 기반 재도출
+    cls = next(e for e in resp.node_trace if e.node == "질문 분류")
+    assert cls.branch_taken == "휴학"
+
+
+def test_track_change_attempt_message():
+    # 코드R2 LOW: 같은 전공 재추가(track 변경 시도) — 오도 메시지 금지
+    ctx = {**CTX, "convergence_program_ids": ["dsci_convergence"],
+           "convergence_tracks": {"dsci_convergence": "다전공"}}
+    payload = {**_payload(ctx), "question": "부전공으로 바꾸면?"}
+    raw = _raw("다전공변경", "트랙 변경",
+               add_convergence=[{"program_id": "dsci_convergence", "track": "부전공"}])
+    resp = whatif.run_whatif(payload, client=_fake_client(raw))
+    assert resp.status == "unsupported"
+    assert "트랙 변경" in resp.unsupported_reason
+
+
 # ---------- ⑦ API 레벨 ----------
 def test_api_validation_and_degrade(monkeypatch):
     from fastapi.testclient import TestClient

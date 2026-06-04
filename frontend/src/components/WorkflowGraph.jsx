@@ -59,12 +59,14 @@ export default function WorkflowGraph({ trace, compact = false }) {
     return m;
   }, [trace, known]);
   const execKeys = React.useMemo(() => {
-    // '리포트'는 audit trace 직후에 삽입 — 상담 노드가 리포트보다 먼저 점등되는 순서 왜곡 방지
+    // '리포트'는 audit trace 직후에 삽입 — 상담 노드가 리포트보다 먼저 점등되는 순서 왜곡 방지.
+    // 단 audit 완료 신호('리스크 산정')가 있을 때만 — verify-only 단계에서 리포트가
+    // 실행된 것처럼 거짓 점등되는 문제 방지(검증 코드R2).
     const all = (trace || []).map((e) => e.node);
     const audit = all.filter((k) => BASE_KNOWN.has(k));
     const consult = all.filter((k) => CONSULT_KNOWN.has(k));
     const ks = [...audit];
-    if (ks.length) ks.push("리포트");
+    if (audit.includes("리스크 산정")) ks.push("리포트");
     ks.push(...consult);
     return ks;
   }, [trace]);

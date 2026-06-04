@@ -123,6 +123,8 @@ def _prompt(question: str, ctx: StudentContext, conv_names: list[str]) -> str:
 - 위 필드로 표현 불가한 질문(조기졸업 요건, 전과, 성적포기, 특정 과목, "이번 학기 안에"류 절대 시점)은 interpretable=false.
 - 허용 범위 밖 요청(예: 10년 휴학)도 interpretable=false.
 - 변경이 없는 필드는 null(또는 빈 배열). 질문에 없는 변경을 만들지 마라.
+- 특히 add/drop_convergence는 질문이 전공·다전공·부전공의 추가/포기를 명시할 때만 채운다.
+  계절학기·휴학·학점 질문에 융합전공 변경을 임의로 동반하지 마라(검증 e2e에서 실제 환각 사례 발견).
 - question_summary는 해석을 80자 내로 요약(한국어).
 
 질문: {question}"""
@@ -223,8 +225,11 @@ def apply_delta(ctx: StudentContext, delta: WhatIfDelta, profile,
     conv_changes: list[str] = []
     for ch in delta.add_convergence:
         p = progs.get(ch.program_id)
-        if p is None or p.get("track_type", "primary") == "primary" \
-                or ch.program_id == ctx.program_id or ch.program_id in conv_ids:
+        if ch.program_id in conv_ids:
+            # track 변경 시도(같은 id 재추가)와 일반 오류를 구분 — 오도 메시지 방지(코드R2)
+            return None, [], [], (f"'{p.get('name_ko', ch.program_id) if p else ch.program_id}'은(는) 이미 신청된 전공입니다 "
+                                  "— 다전공↔부전공 트랙 변경 시뮬레이션은 지원하지 않습니다.")
+        if p is None or p.get("track_type", "primary") == "primary" or ch.program_id == ctx.program_id:
             return None, [], [], f"'{ch.program_id}'는 추가할 수 없는 융합·연계전공입니다."
         try:
             load_catalog(ch.program_id)
@@ -298,8 +303,13 @@ def build_diff(before: AuditPipelineResponse, after: AuditPipelineResponse,
     risk_changed = before.risk.grade != after.risk.grade
     if d > 0 and met_a:
         headline = f"졸업요건은 충족 상태가 유지되지만, 휴학 {d}학기만큼 졸업 시점이 늦어집니다."
-    elif d > 0 and not (gt_b and gt_a):
-        # blocked·overflow 없음 등으로 졸업학기 산출 불가 — '변화 없음'으로 떨어지면
+    elif d > 0 and gt_b and not gt_a:
+        # 비대칭(코드R2 MUST): before는 산출됐는데 after는 산출 불가(예: 3.75 보너스 리셋으로
+        # blocked) — "늦어집니다" 단정은 카드의 "X → 산출 불가" 표기와 충돌. 산출 불가를 명시.
+        headline = (f"휴학 {d}학기만큼 수강 시작이 늦어지며, 변경 후 예상 졸업 학기는 "
+                    f"산출되지 않았습니다 — 아래 '변경 후 로드맵'에서 배치 결과를 확인하세요.")
+    elif d > 0 and not gt_b and not gt_a:
+        # 양쪽 다 산출 불가(blocked·overflow 없음) — '변화 없음'으로 떨어지면
         # applied_changes("복학 후 X부터")와 정면 모순(검증 코드R1 HIGH). 지연을 항상 명시.
         headline = (f"휴학 {d}학기만큼 수강 시작과 졸업 시점이 늦어집니다 "
                     f"(부족 요건·리스크는 휴학으로 달라지지 않습니다).")
@@ -367,10 +377,14 @@ def suggest_next_actions(diff: WhatIfDiff, delta: WhatIfDelta,
 
 
 # ---------- 캐시 (LLM 해석 결과만 — ②~⑤는 매번 결정론 재계산) ----------
+CACHE_SCHEMA_VERSION = 2          # WhatIfDelta 형식 변경 시 +1 — 구형식 엔트리 자동 미스
+
+
 def _cache_key(model: str, question: str, ctx: StudentContext, add_ids: list[str]) -> str:
     # 융합 선언·enum 모집단·프롬프트에 실제 들어가는 컨텍스트만 포함 — 학생 간 delta 오반환·
     # schema 드리프트 차단(라운드2). max_credits는 프롬프트 미반영이라 키에서 제외(과민 키 방지, 코드R1).
-    payload = {"m": model, "q": " ".join(question.split()), "p": ctx.program_id,
+    payload = {"v": CACHE_SCHEMA_VERSION,
+               "m": model, "q": " ".join(question.split()), "p": ctx.program_id,
                "y": ctx.admission_year, "c": sorted(ctx.convergence_program_ids),
                "t": sorted(ctx.convergence_tracks.items()), "a": add_ids,
                "s": ctx.seasonal_semester_allowed, "r": ctx.remaining_semesters,
@@ -384,6 +398,21 @@ def _cache_get(key: str):
         return json.loads(CACHE_PATH.read_text(encoding="utf-8")).get(key)
     except Exception:
         return None
+
+
+def _cache_evict(key: str) -> None:
+    """오염·구형식 엔트리 제거 — 안 하면 ValidationError가 같은 키에서 영구 반복(검증 코드R2)."""
+    try:
+        if not CACHE_PATH.exists():
+            return
+        data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        if key in data:
+            data.pop(key)
+            tmp = CACHE_PATH.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, CACHE_PATH)
+    except Exception:
+        pass
 
 
 def _cache_put(key: str, value: dict) -> None:
@@ -414,6 +443,23 @@ def _get_client():
 
 
 # ---------- 오케스트레이션 ----------
+def _derive_category(delta: WhatIfDelta, raw_category) -> str:
+    """채워진 delta 필드 → category 결정론 재도출(그래프 분기 라벨의 정직성 보장)."""
+    if delta.calendar_delay_terms:
+        return "휴학"
+    if delta.remaining_semesters_change:
+        return "수강학기변경"
+    if delta.seasonal_semester_allowed is not None:
+        return "계절학기"
+    if delta.max_credits_per_term is not None:
+        return "학점상한"
+    if delta.add_convergence or delta.drop_convergence:
+        return "다전공변경"
+    if delta.prev_term_gpa_ge_375 is not None:
+        return "성적우수"
+    return raw_category if raw_category in CATEGORIES else "기타"
+
+
 def _unsupported(question_summary: str, category, reason: str,
                  trace: list[NodeTraceEvent]) -> WhatIfResponse:
     trace = trace + [
@@ -437,40 +483,49 @@ def run_whatif(payload: dict, client=None) -> WhatIfResponse:
     add_ids, drop_ids = _candidates(ctx)
 
     # ① 매개변수 추출기 (LLM 1회, 캐시 우선 — 데모 일관성·오프라인 폴백)
+    # interpretable=false도 캐시한다(의도): 같은 질문 = 같은 안내가 데모 일관성에 유리.
+    # 검증 실패 raw는 미저장 + 기존 캐시면 evict 후 LLM 재해석 1회(영구 고착 방지 — 코드R2).
     key = _cache_key(model, question, ctx, add_ids)
-    raw = _cache_get(key)
-    cached = raw is not None
-    if raw is None:
-        client = client or _get_client()
-        if client is None:
-            return _unsupported(question[:40], None,
-                                "LLM 미설정 — 예시 질문 버튼을 이용해 주세요.", [
-                NodeTraceEvent(node="질문 분류", kind="llm", status="skip",
-                               summary="LLM 미설정", branch_taken="해석 불가")])
+    raw, delta, cached = None, None, False
+    for attempt in (1, 2):
+        raw = _cache_get(key) if attempt == 1 else None
+        cached = raw is not None
+        if raw is None:
+            client = client or _get_client()
+            if client is None:
+                return _unsupported(question[:40], None,
+                                    "LLM 미설정 — 예시 질문 버튼을 이용해 주세요.", [
+                    NodeTraceEvent(node="질문 분류", kind="llm", status="skip",
+                                   summary="LLM 미설정", branch_taken="해석 불가")])
+            try:
+                raw = interpret_question(question, ctx, client, model, add_ids, drop_ids)
+            except Exception as exc:
+                return _unsupported(question[:40], None,
+                                    f"질문 해석 실패({type(exc).__name__}) — 잠시 후 다시 시도해 주세요.", [
+                    NodeTraceEvent(node="질문 분류", kind="llm", status="fail",
+                                   summary=f"LLM 호출 실패({type(exc).__name__})",
+                                   branch_taken="해석 실패")])
         try:
-            raw = interpret_question(question, ctx, client, model, add_ids, drop_ids)
-        except Exception as exc:
+            delta = WhatIfDelta.model_validate(raw.get("delta") or {})
+            break
+        except Exception:
+            _cache_evict(key)        # 오염·구형식(extra 필드) 엔트리 제거
+            if cached:
+                continue             # 캐시가 원인 → LLM 재해석 1회
+            # LLM이 직접 낸 값이 한도 밖 — '범위 밖 질문'으로 뭉개면 "휴학을 지원한다면서
+            # 왜 범위 밖이냐"는 오해 유발(코드R2). 한도를 구체 안내.
             return _unsupported(question[:40], None,
-                                f"질문 해석 실패({type(exc).__name__}) — 잠시 후 다시 시도해 주세요.", [
-                NodeTraceEvent(node="질문 분류", kind="llm", status="fail",
-                               summary=f"LLM 호출 실패({type(exc).__name__})",
-                               branch_taken="해석 실패")])
+                                "해석된 변경값이 지원 한도를 벗어났습니다(휴학 최대 4학기 · 잔여 학기 ±4 "
+                                "· 학점 상한 9~24) — 범위 안에서 다시 질문해 주세요.", [
+                NodeTraceEvent(node="질문 분류", kind="llm",
+                               summary=f"\"{question[:40]}\"", branch_taken="한도 초과"),
+                NodeTraceEvent(node="매개변수 추출", kind="llm", status="warn",
+                               summary="해석값이 지원 한도 초과", branch_taken="한도 초과")])
 
-    category = raw.get("category") if raw.get("category") in CATEGORIES else "기타"
+    # category는 실제 채워진 delta 필드에서 결정론 재도출 — LLM 라벨 오기(휴학 질문에
+    # '다전공변경' 등)가 그래프 분기 pill에 그대로 점등되는 것 방지(검증 e2e LOW)
+    category = _derive_category(delta, raw.get("category"))
     qsum = str(raw.get("question_summary", ""))[:80]
-    try:
-        delta = WhatIfDelta.model_validate(raw.get("delta") or {})
-    except Exception:
-        # 범위 밖 값(예: delay=99) — '범위 밖 질문' 메시지로 뭉개면 "휴학을 지원한다면서
-        # 휴학이 왜 범위 밖이냐"는 오해 유발 + 오염 raw가 캐시에 고착(검증 코드R2 HIGH).
-        # → 캐시 미저장 + 한도 안내. 다음 시도에서 LLM이 다시 해석할 기회를 보존.
-        return _unsupported(qsum or question[:40], category,
-                            "해석된 변경값이 지원 한도를 벗어났습니다(휴학 최대 4학기 · 잔여 학기 ±4 "
-                            "· 학점 상한 9~24) — 범위 안에서 다시 질문해 주세요.", [
-            NodeTraceEvent(node="질문 분류", kind="llm",
-                           summary=f"\"{question[:40]}\"", branch_taken=category),
-            NodeTraceEvent(node="매개변수 추출", kind="llm", status="warn",
-                           summary="해석값이 지원 한도 초과", branch_taken="한도 초과")])
     if not cached:
         _cache_put(key, raw)        # 검증 통과한 해석만 저장(캐시 포이즈닝 방지 — 코드R2)
     cache_note = " (캐시 — 동일 입력 동일 해석)" if cached else ""

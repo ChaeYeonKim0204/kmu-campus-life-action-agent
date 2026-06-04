@@ -11,6 +11,7 @@ from graduation_center.v2.catalog import (
     regular_term_cap,
 )
 from graduation_center.v2.excel_parser import parse_many
+from graduation_center.v2.explain import run_explain
 from graduation_center.v2.models_v2 import (
     AuditPipelineResponse, CourseMatch, NodeTraceEvent, Source, StudentContext,
     VerifiedCourse,
@@ -70,6 +71,10 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
     # 근거(G1..) — 결정론 구성: 적용 요람·학사규정 제32/77조·융합 요람·교양과정.
     # (과거 LLM 플래너의 pctx["sources"]는 빈 배열이라 citation contract가 죽어 있었음)
     sources, marks = _build_sources(profile, ctx, audit)
+    # 규정 근거 해설(보고서 내장 RAG) — LLM은 요람 chunk 해설만, 실패해도 본체 무영향
+    explanations, y_sources, explain_trace, explain_fallback = run_explain(
+        audit, profile, ctx, client=client)
+    sources += y_sources
 
     conv_n = len(audit.convergence_checks)
     n_terms = len(plan.terms)
@@ -103,11 +108,13 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
                        branch_taken=("통과" if vrep.ok else "미배치 → 초과학기")),
         NodeTraceEvent(node="리스크 산정", kind="tool",
                        summary=f"{risk.grade} {risk.label} ({risk.score})", branch_taken=f"{risk.grade} {risk.label}"),
+        *explain_trace,
     ]
-    md = _markdown(ctx, profile, audit, risk, plan, marks)
+    md = _markdown(ctx, profile, audit, risk, plan, marks, explanations=explanations)
     return AuditPipelineResponse(
         context=ctx, verified_transcript=verified, audit=audit, risk=risk,
-        roadmap=plan, sources=sources, node_trace=trace, report_markdown=md,
+        roadmap=plan, explanations=explanations, explain_fallback=explain_fallback,
+        sources=sources, node_trace=trace, report_markdown=md,
     )
 
 
@@ -139,7 +146,8 @@ def _build_sources(profile, ctx, audit) -> tuple[list[Source], dict]:
     return sources, marks
 
 
-def _markdown(ctx, profile, audit, risk, plan, marks: dict | None = None) -> str:
+def _markdown(ctx, profile, audit, risk, plan, marks: dict | None = None,
+              explanations: list | None = None) -> str:
     m = marks or {}
 
     def mk(key):  # 근거 마커 — 섹션 헤더 수준에만 최소 부착(텍스트 덤프化 방지)
@@ -203,4 +211,11 @@ def _markdown(ctx, profile, audit, risk, plan, marks: dict | None = None) -> str
               f"- {o.note}",
               f"- 졸업까지 최소 **{o.total_semesters_needed}학기**(초과학기 **{o.extra_semesters}학기**) 필요"
               + (f" · 예상 졸업: **{o.projected_graduation_term}**" if o.projected_graduation_term else "")]
+    if explanations:
+        L += ["", "## 규정 근거 해설 (요람 원문 기반)"]
+        for sec in explanations:
+            L.append(f"### {sec.title}")
+            for ln in sec.lines:
+                cite = "".join(f"[{s}]" for s in ln.source_ids)
+                L.append(f"- {ln.text} {cite}".rstrip())
     return "\n".join(L)

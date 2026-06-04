@@ -34,3 +34,4 @@ private/
 *.docx
 *성적증명서*.pdf
 *성적증명서*.pdf
+data/graduation/v2/explain_cache.json

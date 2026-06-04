@@ -740,6 +740,35 @@ export default function GraduationV2({ apiBase }) {
               )}
             </div>
 
+            {/* 규정 근거 해설 — 보고서 내장 RAG (요람 chunk 인용, LLM은 해설만·판정은 결정론) */}
+            {(audit.explanations?.length > 0 || audit.explain_fallback) && (
+              <div style={card}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.navy, marginBottom: 4 }}>
+                  📖 규정 근거 해설 <span style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>요람 원문 기반 · 판정은 결정론 엔진</span>
+                </div>
+                {audit.explain_fallback && (
+                  <div style={{ fontSize: 12, color: "#b45309", padding: "8px 10px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8 }}>
+                    해설 생성 불가({audit.explain_fallback}) — 결정론 진단과 G 근거는 유효합니다.
+                  </div>
+                )}
+                {(audit.explanations || []).map((sec) => (
+                  <div key={sec.key} style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{sec.title}</div>
+                    <ul style={{ margin: "5px 0 0", paddingLeft: 18 }}>
+                      {sec.lines.map((ln, i) => (
+                        <li key={i} style={{ fontSize: 12.5, color: ln.grounded ? C.text : "#b45309", lineHeight: 1.55, marginBottom: 3 }}>
+                          {ln.text}
+                          {ln.source_ids.map((s) => (
+                            <span key={s} style={{ fontSize: 10, color: "#2563EB", marginLeft: 4, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 4, padding: "0 4px" }}>{s}</span>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* 워크플로우 그래프 — 별도 페이지로 분리 */}
             <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>

@@ -230,11 +230,24 @@ class ValidationReport(BaseModel):
 
 # ---------- 근거 / 응답 ----------
 class Source(BaseModel):
-    id: str                                          # G1, G2, ...
+    id: str                                          # G1.. (결정론 근거) / Y1.. (요람 RAG chunk)
     doc: str = ""
     page: int | None = None
-    source_type: Literal["requirement_rule", "catalog_course", "gen_ed"] = "requirement_rule"
+    source_type: Literal["requirement_rule", "catalog_course", "gen_ed", "yoram_rag"] = "requirement_rule"
     ref: str | None = None                           # rule area or course_id
+
+
+# ---------- 규정 근거 해설 (보고서 내장 RAG — 챗 UI 없음) ----------
+class ExplainLine(BaseModel):
+    text: str
+    source_ids: list[str] = Field(default_factory=list)   # Y1.. (검증된 인용만)
+    grounded: bool = True                                  # False면 '공식 출처 미확인' 표시됨
+
+
+class ExplainSection(BaseModel):
+    key: str                                               # missing_required / conv:<pid> / area:<영역> / core_areas
+    title: str
+    lines: list[ExplainLine] = Field(default_factory=list)
 
 
 class NodeTraceEvent(BaseModel):
@@ -251,6 +264,8 @@ class AuditPipelineResponse(BaseModel):
     audit: AuditResult
     risk: RiskAssessment
     roadmap: RoadmapPlan
+    explanations: list[ExplainSection] = Field(default_factory=list)  # 규정 근거 해설(보고서 내장)
+    explain_fallback: str | None = None              # 해설 생성 불가 사유(결정론 본체는 무영향)
     sources: list[Source] = Field(default_factory=list)
     node_trace: list[NodeTraceEvent] = Field(default_factory=list)
     report_markdown: str = ""

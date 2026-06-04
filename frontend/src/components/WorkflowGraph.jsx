@@ -18,6 +18,8 @@ const NODES = [
   { key: "로드맵 배치", kind: "tool" },
   { key: "로드맵 검증", kind: "validator", shape: "diamond" },
   { key: "리스크 산정", kind: "tool" },
+  { key: "요람 RAG 해설", kind: "llm" },
+  { key: "해설 검증", kind: "validator", shape: "diamond" },
   { key: "리포트", kind: "tool", terminal: true },
 ];
 const KNOWN = new Set(NODES.map((n) => n.key));

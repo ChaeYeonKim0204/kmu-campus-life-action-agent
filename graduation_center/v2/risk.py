@@ -113,11 +113,15 @@ def compute_risk(
     if grade == "D" and context.gpa_min_met != "no" and overflow is not None \
             and overflow.extra_semesters <= 1:
         # blocked라도 초과학기 1학기로 닫히는 구체적 졸업 경로(overflow 시나리오)가 있으면
-        # 'D 졸업불가 가능성' 배지와 '초과학기 1학기 → 졸업' 카드의 무화해 병치 모순 — C로 완화
+        # 'D 졸업불가 가능성' 배지와 '초과학기 1학기 → 졸업' 카드의 무화해 병치 모순 — C로 완화.
+        # 위 blocked 분기의 '실현 가능한 계획 없음' reason은 완화 문구와 모순 병치되므로
+        # 한 문구로 치환(라운드5 검증 — severity 15는 blocked 패널티로 유지)
         grade = "C"
+        reasons[:] = [r for r in reasons if r.factor != "로드맵"]
         reasons.append(RiskReason(
             factor="로드맵",
-            detail=f"초과학기 {overflow.extra_semesters}학기로 졸업 경로 존재 — 등급 완화(C)", severity=0))
+            detail=f"잔여 학기 내 전체 배치 불가 — 초과학기 {overflow.extra_semesters}학기로 "
+                   f"졸업 경로 존재(등급 완화 C)", severity=15))
 
     if grade == "A" and not reasons:
         reasons.append(RiskReason(factor="종합", detail="확인된 부족·위험 항목 없음", severity=0))

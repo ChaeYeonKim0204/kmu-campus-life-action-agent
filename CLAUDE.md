@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> ⚠️ **재설계 진행 중 (branch `feat/agentic-redesign-kcy`).** 교수 피드백 반영으로 방향을 전환했다: 캠퍼스라이프 `/ask` 곁다리 기능을 걷어내고 **졸업센터(졸업사정 컨설팅)를 메인 축**으로, 더 **agentic(ReAct)** 하게 재구성한다. 아래 문서에서 "현재"는 코드에 실재하는 것, "목표/계획"은 이 브랜치에서 만들어 갈 것이다. `main` 브랜치는 옛 구조 그대로 보존돼 있으니 옛 동작을 보려면 `git switch main`. 자세한 제거 범위·근거는 `docs/second_topic_workflow_candidates.md` 및 codex 2차 검토(아래 *재설계 개요*)를 따른다.
+> ✅ **재설계 완료 (2026-06-04, main).** 캠퍼스라이프 `/ask` 곁다리는 `unused/`로 보관됐고 **졸업센터(졸업사정 컨설팅) v2가 메인 축**이다. 에이전트 형태는 **결정론 워크플로우 + 제한적 LLM 2노드**(① 요람 RAG 해설=근거 생성, ② 상담 매개변수 추출기=자연어→도구 파라미터, Tool Calling)로 확정 — **멀티스텝 ReAct는 의도적으로 도입하지 않았다**(출력 일관성 루브릭 우선; 상담 Agent가 ReAct의 1-step bounded 특수형이고 멀티스텝은 확장 방향). 문서·발표에서 "agentic/ReAct"를 실제보다 크게 말하지 말 것 — 교수 페르소나 채점에서 최대 감점원이 "문서가 코드보다 크게 말하는 것"이었다. 현행 구조는 `docs/graduation_center_current_state.md`가 단일 진실.
 
 ## What this project is
 
@@ -16,7 +16,7 @@ This is a course **team project**; the professor's grading rubric below is a bin
 
 ## 평가 기준 = 설계 제약 (build & self-evaluate against this)
 
-- **워크플로우 노드 분절 + 시각화** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. **재설계 방향:** 졸업센터를 `parse → structured_check → 요람 RAG → (ReAct controller) → report build → validate` 노드로 구성한다. ReAct를 도입하되 **LLM은 "다음에 어떤 도구를 쓸지"만 추론**(Thought→Action 선택)하고, 실행(Action)은 **결정론적 도구 노드**가 한다. LLM이 답변·보고서를 통째로 생성하는 방향은 루브릭에 역행한다. (→ *ReAct 가드레일* 절)
+- **워크플로우 노드 분절 + 시각화** — 업무를 discrete node로 나눠 워크플로우로 표현한다. 복잡한 로직을 하나의 LLM 노드에 몰아넣지 말 것. **구현 결과:** 졸업센터 v2 = `verify 3노드(요람 로딩→수집→매칭) → HITL 검증 → 갭 계산 → 로드맵 배치 → 검증(분기: 초과학기) → 리스크 → RAG 해설(LLM)→해설 검증 → 보고서` + 상담 7노드(`질문 분류·추출(LLM) → 조건 가드(분기: 안내 종료) → 재실행 → 비교 → 다음 행동`). LLM이 답변·보고서를 통째로 생성하는 방향은 루브릭에 역행한다 — 판정·로드맵·비교는 전부 결정론 노드.
   - **교수가 Dify처럼 노드가 분기된 workflow를 눈으로 보는 걸 선호한다 — 데모에서 노드 그래프를 시각화하는 것이 채점 포인트.** 따라서 노드를 코드로만 나누지 말고, **각 노드 실행을 구조화된 trace로 방출**한다: `{node, status, branch_taken, input_summary, output_summary, (ReAct step·tool명·observation 요약)}`. 프론트가 이 trace로 Dify식 그래프를 그리고 데모에서 노드가 순서대로 점등되게 한다(시각화는 프론트 파트지만 **trace 데이터는 모델/백엔드 책임**). ReAct 루프도 "도구 선택 → 해당 노드 점등 → observation → 다음 분기"가 그래프 위에 보이도록 trace를 설계할 것.
 - **데이터 관리** — 사용자 입력 양식을 구체적으로 정의하고(성적표 → `TranscriptSummary`, 과제별 입력 슬롯), 노드 간 데이터 흐름이 또렷할 것(앞 노드 출력이 뒤 노드에서 실제로 쓰이고 추적 가능). 개인 DB를 쓸수록 프라이버시 가드(아래)를 더 강하게.
 - **결과의 정형성·품질** — 출력이 즉시 업무에 쓸 수 있는 수준일 것: 텍스트 나열이 아니라 **섹션형 컨설팅 보고서**(현황진단 / 부족요건 / 대체경로 시나리오 / 학기별 액션플랜 / 근거) + citation. LLM 출력의 무작위성을 통제해(결정론적 조립·구조화 출력·낮은 temperature) 매번 일관된 결과를 낼 것 — 교수가 구두로 강조한 포인트.
@@ -64,9 +64,11 @@ There is no linter or formatter wired into the repo.
 
 ### Graduation center (졸업센터) — 메인 축
 
-`graduation_center/`는 자체 `/graduation/*` 엔드포인트를 가진 독립 서브시스템이다(`/graduation/status`, `/transcript/parse`, `/audit`, `/substitute-courses`, `/micro-degree`, `/post-graduation-checklist`, `/career-translator`, `/early-graduation`, `/customized-major`, `/credit-drop`).
+`graduation_center/`는 자체 `/graduation/*` 엔드포인트를 가진 독립 서브시스템이다.
 
-**현재 흐름:** 업로드한 성적증명서 PDF → `TranscriptSummary`(`graduation_center/parser.py`) → `compute_structured_check`(`data/graduation/graduation_requirements.json` 대조) → 요람 RAG(자체 Chroma `data/graduation/chroma`) → GPT 분석(`service._call_llm`) → **학번 뒷자리만 마스킹**한 뒤 반환. 출력 보고서는 `G1`/`G2` citation 체계를 쓴다(`service._build_answer`).
+**메인 = v2 (`graduation_center/v2/`, 엑셀 기반 — 데모·발표가 쓰는 경로):** `/graduation/v2/verify`(수강내역 .xls → HITL 검증 테이블) → `/graduation/v2/audit`(결정론 사정·로드맵·리스크 + RAG 해설) → `/graduation/v2/whatif`(졸업 시나리오 상담 Agent). 구조·데이터·검증 현황은 `docs/graduation_center_current_state.md` 참조.
+
+**v1 (PDF 성적증명서 기반 8개 분석 task — 유지되나 데모 비대상):** 업로드 PDF → `TranscriptSummary`(`parser.py`) → `compute_structured_check`(`graduation_requirements.json` 대조) → 요람 RAG(Chroma) → GPT 분석(`service._call_llm`) → **학번 뒷자리만 마스킹** 반환(`/graduation/audit`·`/substitute-courses`·`/micro-degree`·`/post-graduation-checklist`·`/career-translator`·`/early-graduation`·`/customized-major`·`/credit-drop`).
 
 **전제조건:** 졸업센터는 `/ask`와 달리 OpenAI + 인덱싱된 요람 Chroma를 **요구**한다. 없으면 keyword-only로 degrade하지 않고 `GraduationServiceUnavailable`을 던지며 `app.py`가 HTTP 503으로 매핑한다.
 
@@ -88,9 +90,9 @@ There is no linter or formatter wired into the repo.
 
 `app.py`의 `POST /ask`가 `guard.inspect_privacy → classifier.classify_issue → (llm_client.expand) → (live_refresh) → retriever.HybridRetriever.search → (llm_client.rerank) → guard.require_sources → planner.suggest_actions → answer_builder.build_final_answer(checklist/contact_router/deadline/citation) → (llm_client.polish) → answer_validator` 순으로 돌던 캠퍼스라이프 Q&A 파이프라인. `/actions/start`·`/actions/continue`는 `document_drafter`로 문서를 초안하던 별도 상태머신. 이들과 `agent/`, `tools/`, `llm_client.py`가 티어1 제거 대상이다.
 
-## ReAct 가드레일 (도입 시 필수)
+## ReAct 가드레일 (멀티스텝 확장 시 필수 — 현행은 1-step)
 
-ReAct를 잘못 잡으면 "노드 분절·결정론" 루브릭과 정면 충돌한다. controller를 추가할 때 다음을 반드시 지킨다(codex 검토 반영):
+**현행(2026-06-04):** 멀티스텝 ReAct는 미구현이 확정 결정이다. 상담 Agent(`whatif.py`)가 이 가드레일의 1-step 적용판 — LLM은 strict schema로 `delta`(도구 파라미터)만 내고, 조건 가드(IF/ELSE)·semantic guard가 검증하며, 실행은 결정론 `run_audit` 재실행이다. 발표 Q&A에서 "ReAct인가?"라고 물으면 "엄밀한 ReAct 루프는 아니고 1-step bounded Tool Calling — 멀티스텝은 일관성 트레이드오프 때문에 의도적으로 제한, 아래 가드레일로 확장 가능"이 정답. 멀티스텝 controller를 추가하게 되면 다음을 반드시 지킨다(codex 검토 반영):
 
 - **LLM은 `next_tool`만 고른다** — 답변·보고서 본문을 LLM이 생성하지 않는다. 최종 보고서는 결정론적 builder가 조립한다.
 - **tool allowlist** — 호출 가능한 도구를 명시적으로 제한. 임의 코드/네트워크 금지.
@@ -113,6 +115,6 @@ These are project requirements, not preferences — see `project_plan.md` §7:
 
 ## Citation contract
 
-졸업센터는 `G1`/`G2` 체계를 쓴다(`graduation_center/service.py:_build_answer`): 유니크 근거마다 `G1`, `G2`, … 라벨을 부여하고 보고서 본문의 사실 줄마다 해당 마커를 단다. 절차적·요건 주장에는 반드시 그것을 뒷받침하는 근거 마커를 붙이고, `[근거]` 블록에서 해소되게 한다 — validator와 테스트가 마커 해소를 검사한다. (옛 `/ask`는 `S1`/`S2` 체계를 썼고 `agent/citation.py`에 있었으나 티어1과 함께 제거된다.)
+**v2 (현행 — 정확한 계약):** 결정론 근거 `G1~G5`(적용 요람·제32/77조·교양과정·융합 요람)는 **섹션 헤더 수준**에 최소 부착(`pipeline.py:_markdown` — 텍스트 덤프化 방지를 위한 의도적 결정), 규정 근거 해설의 `Y` 인용은 **줄 단위**이며 validator가 인용 해소·새 수치·마스킹을 검사한다. "모든 사실 줄마다 마커"라고 말하지 말 것 — 실제와 다르다(교수 페르소나 채점 지적). v1(`service.py:_build_answer`)은 줄 단위 G 마커 + `[근거]` 블록 체계 유지.
 
 **표시 — 토글 (2026-06 결정):** 화면 기본 뷰에서는 `[G1]` 인라인 마커와 `[근거]` 블록을 **접어 숨기고**, "근거 보기" 토글로 펼친다 — 텍스트 덤프처럼 보이지 않는 컨설팅 보고서 룩을 위해(교수 피드백: "텍스트만 뿌리지 마라"). 단 **내부적으로는 마커를 계속 생성·검증**한다(grounding 무결성·validator·환각 차단). 즉 계약을 *없애는* 게 아니라 *표시만 접는* 것. (마커 숨김은 프론트 표시 레이어에서, 데이터·검증 레이어는 그대로.)

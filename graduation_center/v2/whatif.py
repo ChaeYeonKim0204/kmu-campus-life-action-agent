@@ -282,8 +282,8 @@ def build_diff(before: AuditPipelineResponse, after: AuditPipelineResponse,
     gt_b, met_b = _graduation_term(before)
     gt_a, met_a = _graduation_term(after)
     gaps_b = {g.area: g.gap for g in before.audit.area_gaps}
-    changed = [a for a, g in ((g.area, g.gap) for g in after.audit.area_gaps)
-               if abs(gaps_b.get(a, 0.0) - g) > 0.01]
+    changed = [a for a, gap in ((ag.area, ag.gap) for ag in after.audit.area_gaps)
+               if abs(gaps_b.get(a, 0.0) - gap) > 0.01]
     conv_b = {c["program_id"]: c for c in before.audit.convergence_checks}
     conv_a = {c["program_id"]: c for c in after.audit.convergence_checks}
     conv_changes: list[str] = []
@@ -308,6 +308,11 @@ def build_diff(before: AuditPipelineResponse, after: AuditPipelineResponse,
         # blocked) — "늦어집니다" 단정은 카드의 "X → 산출 불가" 표기와 충돌. 산출 불가를 명시.
         headline = (f"휴학 {d}학기만큼 수강 시작이 늦어지며, 변경 후 예상 졸업 학기는 "
                     f"산출되지 않았습니다 — 아래 '변경 후 로드맵'에서 배치 결과를 확인하세요.")
+    elif d > 0 and gt_a and not gt_b:
+        # 복합 delta(휴학+계절 등)로 '변경 전 산출 불가 → 변경 후 산출' 역방향(코드R3-①):
+        # 누락 시 '변화 없음'으로 떨어져 R1 모순 재발 — 4조합 전수 커버.
+        headline = (f"휴학 {d}학기 반영 — 예상 졸업이 {_term_ko(gt_a)}로 산출됩니다"
+                    f"(변경 전에는 배치 불가 상태였습니다).")
     elif d > 0 and not gt_b and not gt_a:
         # 양쪽 다 산출 불가(blocked·overflow 없음) — '변화 없음'으로 떨어지면
         # applied_changes("복학 후 X부터")와 정면 모순(검증 코드R1 HIGH). 지연을 항상 명시.
@@ -317,7 +322,8 @@ def build_diff(before: AuditPipelineResponse, after: AuditPipelineResponse,
         headline = f"예상 졸업이 {_term_ko(gt_b)} → {_term_ko(gt_a)}로 변동합니다" + \
                    (f" (리스크 {before.risk.grade}→{after.risk.grade})." if risk_changed else ".")
     elif met_a and not met_b:
-        headline = "변경 후에도 추가 수강 없이 졸업요건을 충족합니다."
+        # "에도"는 '변경 전에도 충족'으로 오독됨(이 분기는 정의상 전엔 미충족) — 코드R3-③
+        headline = "변경 후에는 추가 수강 없이 졸업요건을 충족합니다."
     elif risk_changed:
         headline = f"리스크 등급이 {before.risk.grade}({before.risk.label}) → {after.risk.grade}({after.risk.label})로 변동합니다."
     elif conv_changes:
@@ -377,7 +383,8 @@ def suggest_next_actions(diff: WhatIfDiff, delta: WhatIfDelta,
 
 
 # ---------- 캐시 (LLM 해석 결과만 — ②~⑤는 매번 결정론 재계산) ----------
-CACHE_SCHEMA_VERSION = 2          # WhatIfDelta 형식 변경 시 +1 — 구형식 엔트리 자동 미스
+CACHE_SCHEMA_VERSION = 3          # 형식 변경·프롬프트 가드 변경 시 +1 — 구 엔트리 자동 미스
+                                  # (v3: 환각 융합변경 semantic guard 도입 — 코드R3)
 
 
 def _cache_key(model: str, question: str, ctx: StudentContext, add_ids: list[str]) -> str:
@@ -443,6 +450,20 @@ def _get_client():
 
 
 # ---------- 오케스트레이션 ----------
+def _semantic_guard(question: str, delta: WhatIfDelta) -> tuple[WhatIfDelta, list[str]]:
+    """strict schema를 '형식상' 통과한 의미 오염을 결정론으로 차단(코드R3 MUST).
+
+    실측: 프롬프트 negative 규칙만으로는 LLM이 '휴학하면?' 질문에 drop_convergence를
+    환각으로 동반하는 사례가 재발(워밍업 검수 6건). 질문에 전공·융합·연계 언급이
+    없으면 융합 변경 필드를 결정론으로 제거 — 캐시에 남아도 매번 같은 가드를 타
+    결과가 결정론적으로 정화된다."""
+    if (delta.add_convergence or delta.drop_convergence) \
+            and not any(w in question for w in ("전공", "융합", "연계")):
+        return (delta.model_copy(update={"add_convergence": [], "drop_convergence": []}),
+                ["질문에 없는 융합·연계전공 변경 해석은 무시했습니다(환각 가드)"])
+    return delta, []
+
+
 def _derive_category(delta: WhatIfDelta, raw_category) -> str:
     """채워진 delta 필드 → category 결정론 재도출(그래프 분기 라벨의 정직성 보장)."""
     if delta.calendar_delay_terms:
@@ -522,6 +543,8 @@ def run_whatif(payload: dict, client=None) -> WhatIfResponse:
                 NodeTraceEvent(node="매개변수 추출", kind="llm", status="warn",
                                summary="해석값이 지원 한도 초과", branch_taken="한도 초과")])
 
+    # 의미 오염 가드(결정론) — 캐시 전·후 어느 경로든 동일 적용되어 결과 결정론 유지
+    delta, guard_notes = _semantic_guard(question, delta)
     # category는 실제 채워진 delta 필드에서 결정론 재도출 — LLM 라벨 오기(휴학 질문에
     # '다전공변경' 등)가 그래프 분기 pill에 그대로 점등되는 것 방지(검증 e2e LOW)
     category = _derive_category(delta, raw.get("category"))
@@ -543,6 +566,7 @@ def run_whatif(payload: dict, client=None) -> WhatIfResponse:
                             "이 질문은 시뮬레이션 범위 밖입니다 — 지원: 휴학, 잔여 학기 변경, "
                             "계절학기, 학기당 학점 상한, 다전공·부전공 추가/포기.", trace)
     new_ctx, changes, assumptions, err = apply_delta(ctx, delta, profile)
+    assumptions = guard_notes + assumptions      # 환각 가드 발동을 사용자에게 명시(침묵 금지)
     if err:
         return _unsupported(qsum, category, err, trace)
     trace.append(NodeTraceEvent(node="조건 가드", kind="validator",

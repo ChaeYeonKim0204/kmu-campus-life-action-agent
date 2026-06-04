@@ -14,12 +14,19 @@ import json
 import sys
 from pathlib import Path
 
+# repo 기본 python은 3.8 — `str | None` 어노테이션으로 import 즉사하므로 선제 안내(코드R3)
+if sys.version_info < (3, 10):
+    sys.exit("Python >=3.10 필요 — conda kmu-agent로 실행하세요: "
+             "/home/carol/exit/envs/kmu-agent/bin/python scripts/warm_whatif_cache.py")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from graduation_center.v2 import pipeline, whatif  # noqa: E402
 
 MANIFEST = ROOT / "data/graduation/v2/demo_students/manifest.json"
+# cwd 무관 동작 — whatif.CACHE_PATH는 상대 경로 관례라 root 밖 실행 시 엉뚱한 위치에 생성됨(코드R3)
+whatif.CACHE_PATH = ROOT / "data/graduation/v2/whatif_cache.json"
 
 # 프론트 whatifChips()와 동일 로직 — 칩 라벨이 바뀌면 여기도 함께 갱신
 def chips(ctx: dict) -> list[str]:
@@ -51,13 +58,19 @@ def main() -> int:
             print(f"    → {head[:90]}")
             if resp.applied_changes:
                 print(f"    적용: {'; '.join(resp.applied_changes)[:90]}")
-            # 환각 검수: 질문에 융합 언급이 없는데 융합 변경이 적용되면 경고
+            # 환각 검수: 질문에 융합 언급이 없는데 융합 변경이 적용되면 경고 + 자동 evict
+            # (런타임 _semantic_guard가 1차 차단하므로 여기 걸리면 가드 우회 신호 — 키 즉시 제거)
             conv_q = any(w in q for w in ("전공", "다전공", "부전공"))
             conv_applied = any(("추가" in c or "포기" in c) and "전공" in c
                                for c in resp.applied_changes)
             if conv_applied and not conv_q:
                 bad += 1
-                print("    ⚠️ 환각 의심: 질문에 없는 융합전공 변경 — 캐시 검수 필요!")
+                from graduation_center.v2.models_v2 import StudentContext
+                sctx = StudentContext.model_validate(payload["context"])
+                aid, _ = whatif._candidates(sctx)
+                whatif._cache_evict(whatif._cache_key(
+                    __import__("os").getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini"), q, sctx, aid))
+                print("    ⚠️ 환각 의심: 질문에 없는 융합전공 변경 — 해당 캐시 키 자동 삭제(재실행 요망)")
     print(f"\n{'⚠️ 환각 의심 ' + str(bad) + '건 — whatif_cache.json 검수 후 해당 키 삭제 요망' if bad else '✅ 환각 의심 없음 — 캐시 적재 완료'}")
     return 1 if bad else 0
 

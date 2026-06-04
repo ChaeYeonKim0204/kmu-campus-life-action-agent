@@ -150,6 +150,14 @@ rev.2의 9종 + R2 추가:
 - MEDIUM: LLM 환각 drop(e2e 실증) → 프롬프트 negative 규칙 + 워밍업 검수 / verify-only 리포트 거짓 점등 게이트 / category 결정론 재도출(분기 pill 정직성) / track 변경 메시지 분리.
 - 수용한 한계(프로토타입): add 후보의 학과별 자격 필터 없음(요람 데이터 필요 — 다음행동 캐비엣으로 안내), 등록금·리스크 게이트는 라운드1 결정 유지, /health llm.enabled는 티어1 레거시(범위 밖).
 
+**코드 검증 라운드3 (적대 3: 수정부작용·데모리허설e2e·fresh-eyes + codex):**
+- [MUST·리허설 HIGH-1 실증] **환각 semantic guard** — 프롬프트 규칙만으로 부족(워밍업 16건 중 6건 환각 재발 실측). `_semantic_guard`: 질문에 전공·융합·연계 미언급 시 add/drop_convergence 결정론 제거 + assumptions 명시 + `CACHE_SCHEMA_VERSION=3`(구 오염 캐시 전체 미스). 리허설 에이전트가 재기동+재워밍업으로 **환각 0건(exit 0) 라이브 검증**.
+- [MUST] 워밍업 스크립트 python 3.8 즉사 → 버전 가드 + kmu-agent 경로 명시(demo_script 동기화). [SHOULD] cwd 무관 CACHE_PATH 고정. 환각 의심 키 자동 evict.
+- [R3-① MED] headline (None→산출) 역방향 분기 보강 — 4조합 전수 커버. [R3-③ MED] "변경 후에도"→"에는" 문구, `g` 섀도잉 제거.
+- [리허설 HIGH-2] stale 서버(미재기동) 운영 함정 → demo_script fallback에 "수정 후 무조건 재기동" 행 추가. [MED-1] S1 멘트 수치 21/9 → 실측 27/15(융합 부족 9는 일치).
+- 기각(거짓양성): 재수강 팝업 과목명(테이블 행에 표시됨 — possible_retakes payload는 화면 비노출 경로).
+- 판정: 서브① "HIGH 없음·수렴", 서브③ "HIGH 없음", 리허설 HIGH 2건은 본 커밋(가드)+체크리스트로 해소 — **라운드4 확인 패스로 수렴 판정**.
+
 ## 8. 검증 프로토콜
 
 - 계획: codex + 서브에이전트 교차, critical 0까지 (라운드1~3 완료, 수렴).

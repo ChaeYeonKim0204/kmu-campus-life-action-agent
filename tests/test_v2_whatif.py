@@ -438,6 +438,51 @@ def test_track_change_attempt_message():
     assert "트랙 변경" in resp.unsupported_reason
 
 
+# ---------- ⑩ 코드 검증 라운드3 회귀 ----------
+def test_semantic_guard_strips_hallucinated_convergence():
+    # 코드R3 MUST: strict schema를 '형식상' 통과한 환각(질문에 없는 융합 포기) 결정론 차단
+    ctx = {**CTX, "convergence_program_ids": ["dsci_convergence"],
+           "convergence_tracks": {"dsci_convergence": "다전공"}}
+    payload = {**_payload(ctx), "question": "계절학기를 못 듣게 되면?"}   # 융합 언급 없음
+    raw = _raw("계절학기", "계절 불가", seasonal_semester_allowed=False,
+               drop_convergence=["dsci_convergence"])                    # LLM 환각 동반
+    resp = whatif.run_whatif(payload, client=_fake_client(raw))
+    assert resp.status == "ok"
+    assert resp.after.context.convergence_program_ids == ["dsci_convergence"]  # 포기 미적용
+    assert not any("포기" in c for c in resp.applied_changes)
+    assert any("환각 가드" in a for a in resp.assumptions)               # 침묵 무시 금지
+    assert resp.category == "계절학기"
+
+
+def test_semantic_guard_allows_explicit_convergence_question():
+    # 질문이 전공 변경을 명시하면 가드 미발동(과잉 차단 금지)
+    ctx = {**CTX, "convergence_program_ids": ["dsci_convergence"],
+           "convergence_tracks": {"dsci_convergence": "다전공"}}
+    payload = {**_payload(ctx), "question": "다전공 빼면?"}
+    raw = _raw("다전공변경", "융합 포기", drop_convergence=["dsci_convergence"])
+    resp = whatif.run_whatif(payload, client=_fake_client(raw))
+    assert resp.status == "ok"
+    assert resp.after.context.convergence_program_ids == []
+
+
+def test_leave_headline_covers_after_only_direction():
+    # 코드R3-①: (gt_b=None → gt_a=산출) 역방향도 '변화 없음' 금지
+    term = lambda lab: RoadmapTerm(term=lab, courses=[], term_credits=0)
+    before = SimpleNamespace(
+        risk=RiskAssessment(grade="C", label="주의"),
+        audit=AuditResult(total_required=130, total_earned=110, total_gap=20,
+                          area_gaps=[], convergence_checks=[], to_fusion_total=0.0,
+                          missing_required_course_ids=[]),
+        roadmap=RoadmapPlan(status="blocked", feasible=False, terms=[], overflow=None))
+    after = SimpleNamespace(
+        risk=RiskAssessment(grade="C", label="주의"),
+        audit=before.audit,
+        roadmap=RoadmapPlan(status="generated", feasible=True, terms=[term("2027-2")]))
+    diff = whatif.build_diff(before, after, WhatIfDelta(calendar_delay_terms=1))
+    assert "변화가 없습니다" not in diff.headline
+    assert "휴학" in diff.headline
+
+
 # ---------- ⑦ API 레벨 ----------
 def test_api_validation_and_degrade(monkeypatch):
     from fastapi.testclient import TestClient

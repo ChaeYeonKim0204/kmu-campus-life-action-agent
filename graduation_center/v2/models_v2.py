@@ -24,7 +24,7 @@ class StudentContext(BaseModel):
     current_term: str | None = None                  # "2026-1" 등; None이면 로드맵 시작점 미상
     remaining_semesters: int = Field(default=2, ge=0, le=12)
     seasonal_semester_allowed: bool = False
-    max_courses_per_term: int = Field(default=6, ge=1, le=12)
+    # 학기당 제약은 '학점 상한'만 사용(과목 수 상한은 설계 전환으로 폐기 — 2026-06 결정)
     max_credits_per_term: float | None = None        # 사용자 override; None이면 학사규정 제32조로 산출
     prev_term_gpa_ge_375: bool = False               # 직전학기 평점 3.75↑ → 첫 학기 +3학점(제32조)
     preferences: list[str] = Field(default_factory=list)
@@ -94,14 +94,21 @@ class VerifiedCourse(BaseModel):
     exclude_reason: str | None = None                # 폐강 / F / 재수강중복
     aggregate_only: bool = False                     # 카탈로그 밖(교양·타과) → 집계만
 
-    @field_validator("credits")
+    @field_validator("credits", mode="before")
     @classmethod
-    def _finite_credits(cls, v: float) -> float:
-        """오염 입력(inf/1e308/거대 음수)이 합산→inf→JSON null·플래너 폭주로 번지지 않게
-        입구에서 거부(0~30 유한값만) — 라우트가 ValueError→400으로 매핑."""
-        if not math.isfinite(v) or v < 0 or v > 30:
+    def _finite_credits(cls, v):
+        """오염 입력(inf/1e308/거대 음수/bool)이 합산→inf→JSON null·플래너 폭주로 번지지
+        않게 입구에서 거부(0~30 유한 숫자만) — 라우트가 ValueError→400으로 매핑.
+        mode=before: pydantic이 bool을 float로 coerce(True→1.0)하기 전에 차단."""
+        if isinstance(v, bool):
             raise ValueError(f"학점 값이 유효하지 않습니다: {v}")
-        return v
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"학점 값이 유효하지 않습니다: {v}") from None
+        if not math.isfinite(f) or f < 0 or f > 30:
+            raise ValueError(f"학점 값이 유효하지 않습니다: {v}")
+        return f
 
 
 class VerifiedTranscript(BaseModel):

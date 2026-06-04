@@ -85,7 +85,7 @@ def test_planner_fake_client_generates_valid_roadmap():
         confirmed.append(c)
     rows = [{"code": c["course_id"], "name": c["name_ko"], "credits": c["credits"]} for c in confirmed]
     v = pipeline.run_verify([(_xlsx(rows), "a.xlsx")], {"program_id": "ai_bigdata",
-                            "current_term": "2026-1", "remaining_semesters": 3, "max_courses_per_term": 5})
+                            "current_term": "2026-1", "remaining_semesters": 3})
     payload = {"context": v["context"], "verification_table": v["verification_table"],
                "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
 

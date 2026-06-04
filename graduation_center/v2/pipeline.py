@@ -52,7 +52,16 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
                           convergence_tracks=ctx.convergence_tracks)
     plan, vrep, pctx = run_planner(audit, profile, ctx, verified, client=client)
     feasible = plan.feasible if plan.status != "not_generated" else None
-    risk = compute_risk(audit, ctx, roadmap_feasible=feasible, overflow=plan.overflow)
+    # 초과학기 1학기 완화(risk D→C)는 '실제 경로 검증' 후에만 — overflow의 extra는 학점 환산
+    # 추정치라 개설학기·선수 제약으로 더 늘 수 있음(라운드5 codex). 잔여+1로 재배치가
+    # 실제 feasible일 때만 overflow를 risk에 전달해 완화를 허용한다(결정론 재실행 1회).
+    overflow_for_risk = plan.overflow
+    if plan.status == "blocked" and plan.overflow and plan.overflow.extra_semesters <= 1:
+        ctx_plus = ctx.model_copy(update={"remaining_semesters": ctx.remaining_semesters + 1})
+        plan_plus, _, _ = run_planner(audit, profile, ctx_plus, verified, client=client)
+        if plan_plus.feasible is not True:
+            overflow_for_risk = None                  # 경로 미검증 → 완화 금지(D 유지)
+    risk = compute_risk(audit, ctx, roadmap_feasible=feasible, overflow=overflow_for_risk)
     sources = [Source.model_validate(s) for s in pctx.get("sources", [])]
 
     conv_n = len(audit.convergence_checks)

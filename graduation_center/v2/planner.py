@@ -416,7 +416,7 @@ def _overflow_from_credits(unplaced_credits: float, context: StudentContext, pro
 def _slot_chunks(name: str, total: float, satisfies: str, size: float = 3.0) -> list[dict]:
     """교양 부족분을 학기당 배치 가능한 3학점 단위 슬롯으로 분할(단일 큰 슬롯 배치불가 방지)."""
     out, rem, i = [], round(float(total), 1), 0
-    while rem > 0.01:
+    while rem > 0.01 and i < 60:    # 슬롯 상한 — 비정상 거대 갭(오염 입력)의 무한루프/OOM 가드
         c = min(size, rem); i += 1
         out.append({"name_ko": (name if total <= size else f"{name} #{i}"), "credits": round(c, 1),
                     "satisfies": satisfies, "confidence": "generic_slot", "manual": True})

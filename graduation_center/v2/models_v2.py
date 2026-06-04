@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+import math
 import re
 
 from pydantic import BaseModel, Field, field_validator
@@ -92,6 +93,15 @@ class VerifiedCourse(BaseModel):
     included: bool = True
     exclude_reason: str | None = None                # 폐강 / F / 재수강중복
     aggregate_only: bool = False                     # 카탈로그 밖(교양·타과) → 집계만
+
+    @field_validator("credits")
+    @classmethod
+    def _finite_credits(cls, v: float) -> float:
+        """오염 입력(inf/1e308/거대 음수)이 합산→inf→JSON null·플래너 폭주로 번지지 않게
+        입구에서 거부(0~30 유한값만) — 라우트가 ValueError→400으로 매핑."""
+        if not math.isfinite(v) or v < 0 or v > 30:
+            raise ValueError(f"학점 값이 유효하지 않습니다: {v}")
+        return v
 
 
 class VerifiedTranscript(BaseModel):

@@ -196,8 +196,16 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
         rules = (cat.get("group_rules") or {}).get(track, {})
         per_group_min = float(rules.get("per_group_min", 12 if track == "다전공" else 6))
         all_groups = sorted({g for g in prefix_to_group.values() if g})
-        # 그중 제1전공/다른 다전공과 겹치는 과목 = 중복인정 가능 후보(최대 cap까지 양쪽 동시 인정)
-        overlap = sorted([c for c in designated if c.course_id[:5] in other_prefixes], key=lambda x: -x.credits)
+        # 그중 제1전공/다른 다전공과 겹치는 과목 = 중복인정 가능 후보(최대 cap까지 양쪽 동시 인정).
+        # requirement_area=='전공'도 겹침으로 취급(이수구분 신뢰 전환의 짝): 카탈로그 미수록이지만
+        # 성적표상 본전공인 과목이 융합 prefix와 겹치면, 카탈로그 prefix 검사만으로는 primary와
+        # fusion 양쪽에 무캡 이중 인정됨(검증 codex MUST — primary_base가 overlap만 차감하므로).
+        overlap = sorted([c for c in designated
+                          if c.course_id[:5] in other_prefixes or c.requirement_area == "전공"],
+                         key=lambda x: -x.credits)
+        # downstream(뷰 표시·fusion 비중복 합산)이 전부 같은 overlap 기준을 쓰도록 집합 고정(codex)
+        overlap_ids = {id(c) for c in overlap}
+        overlap_prefixes = {c.course_id[:5] for c in overlap}
         overlap_cr = round(sum(c.credits for c in overlap), 1)
         double_recognizable = round(min(overlap_cr, cap), 1)
         # 제1전공/다른 다전공의 '전공필수' 코드 앞5자리 — 중복인정 권장 우선순위
@@ -219,7 +227,7 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             pfx = cc.course_id[:5]
             courses_view.append({
                 "name_ko": cc.name_ko, "group": cc.group or "", "credits": cc.credits,
-                "taken": pfx in taken_prefixes, "overlap": pfx in other_prefixes,
+                "taken": pfx in taken_prefixes, "overlap": pfx in other_prefixes or pfx in overlap_prefixes,
                 "primary_required": pfx in required_prefixes,
                 "course_id": cc.course_id, "offered_terms": list(cc.offered_terms or []),
                 "prerequisites": list(cc.prerequisites or []),
@@ -272,8 +280,10 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
                 alloc[id(c)] = "fusion"
         to_primary = round(sum(c.credits for c in flex if alloc[id(c)] == "primary"), 1)
         to_fusion = round(sum(c.credits for c in flex if alloc[id(c)] == "fusion"), 1)
-        # 융합 '총량 인정' = 융합전용(non-overlap) + 중복인정(dup) + 융합배정 겹침 (제77조 한도 반영)
-        fusion_courses = [c for c in designated if c.course_id[:5] not in other_prefixes] \
+        # 융합 '총량 인정' = 융합전용(non-overlap) + 중복인정(dup) + 융합배정 겹침 (제77조 한도 반영).
+        # non-overlap 판정은 id 기준 — area-only overlap(신뢰된 카탈로그 밖 전공) 과목이
+        # 융합전용분과 배정분에 이중 합산되는 것 방지(codex MUST).
+        fusion_courses = [c for c in designated if id(c) not in overlap_ids] \
             + [c for c in overlap if alloc.get(id(c)) in ("dup", "fusion")]
         fusion_eff = round(sum(c.credits for c in fusion_courses), 1)
         primary_eff = round(primary_base + dup_cr + to_primary, 1)

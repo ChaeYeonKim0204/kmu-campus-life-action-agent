@@ -647,7 +647,13 @@ export default function GraduationV2({ apiBase }) {
             <div style={card}>
               <div style={sectionTitle}>📊 영역별 이수 현황</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
-                {audit.audit.area_gaps.map((g, i) => <Gauge key={i} label={g.area} earned={g.earned} required={g.required} gap={g.gap} />)}
+                {audit.audit.area_gaps.map((g, i) => (
+                  // 전공 '학점' 충족이어도 필수지정 미이수면 게이지에 병기 — markdown(⚠️ 학점충족·필수 미이수)과 표면 일치
+                  <Gauge key={i}
+                    label={g.area === "전공" && g.gap <= 0 && audit.audit.missing_required_names?.length
+                      ? `전공 (⚠️ 필수 ${audit.audit.missing_required_names.length}과목 미이수)` : g.area}
+                    earned={g.earned} required={g.required} gap={g.gap} />
+                ))}
               </div>
               {(() => {
                 const tf = audit.audit.to_fusion_total || 0;   // 백엔드 dedup값(다중 융합 합산 오류 방지)

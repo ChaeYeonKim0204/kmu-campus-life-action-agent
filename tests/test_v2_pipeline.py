@@ -226,6 +226,69 @@ def test_convergence_duplicate_credit_cap_and_exclusion():
     assert bu["designated_total"] == total_major    # 부전공도 designated 총합은 동일
 
 
+def test_isugubun_mapping_follows_code_table():
+    """이수구분 신뢰 전환(2026-06): 코드표 기준 매핑 + substring 섀도잉 회귀 방지."""
+    from graduation_center.v2.catalog import area_from_isugubun
+    cases = {
+        # 전공 계열 (C·D·M·X)
+        "전공필수": "전공", "전공선택": "전공", "학부기초": "전공", "전공기초교양": "전공",
+        # 비제1전공 계열 — '전공' substring 섀도잉으로 제1전공 오산입되던 잠복 결함
+        "다전공": "일반선택", "복수전공": "일반선택", "부전공": "일반선택", "타전공": "일반선택",
+        "제2전공_전공": "일반선택", "제3전공_전공기초교양": "일반선택", "연계융합전공_전공": "일반선택",
+        # 교양 계열 (A·B·K·V / Y / E·L·Z)
+        "교양필수": "기초교양", "기초공통": "기초교양", "교양기초": "기초교양",
+        "핵심교양": "핵심교양", "교양선택": "자유교양", "계열교양": "자유교양",
+        "일반선택": "일반선택", "교직": "일반선택",
+    }
+    for raw, want in cases.items():
+        assert area_from_isugubun(raw) == want, f"{raw} → {area_from_isugubun(raw)} (기대 {want})"
+
+
+def test_trusted_major_isugubun_not_demoted():
+    """이수구분 신뢰: 카탈로그 밖 '전공선택'은 일반선택 강등 없이 전공 집계(미래모빌리티 증상 회귀)."""
+    rows = [{"code": "9999999", "name": "구과정전공과목", "credits": 3, "area": "전공선택"},
+            {"code": "9999998", "name": "타과수강과목", "credits": 3, "area": "타전공"}]
+    v = pipeline.run_verify([(_xlsx(rows), "a.xlsx")], {"program_id": "ai_bigdata"})
+    by_name = {t["name_ko"]: t for t in v["verification_table"]}
+    t1 = by_name["구과정전공과목"]
+    assert t1["requirement_area"] == "전공" and t1["aggregate_only"] is True
+    assert by_name["타과수강과목"]["requirement_area"] == "일반선택"   # 비제1전공 계열은 불산입
+
+
+def test_trusted_major_with_conv_prefix_no_double_count():
+    """codex MUST 회귀: 신뢰된 카탈로그 밖 '전공' 과목이 융합 prefix와 겹치면
+    무캡 이중 인정 금지 — overlap으로 취급돼 primary_base에서 차감·캡 적용."""
+    import json as _json
+    from pathlib import Path as _Path
+    from graduation_center.v2.audit_v2 import compute_audit
+    from graduation_center.v2.catalog import assemble_requirement_profile
+    from graduation_center.v2.models_v2 import StudentContext, VerifiedCourse, VerifiedTranscript
+    conv = _json.loads(_Path("data/graduation/v2/catalog_dsci_convergence.json").read_text(encoding="utf-8"))["courses"]
+    # ai_bigdata 카탈로그에 없는 dsci 전용 과목을 '전공선택'(신뢰)으로 이수했다고 가정
+    ai = {c["course_id"][:5] for c in CATALOG["courses"] if c["course_id"]}
+    only_conv = next(c for c in conv if c["course_id"][:5] not in ai)
+    vc = VerifiedCourse(course_id=only_conv["course_id"], name_ko=only_conv["name_ko"],
+                        credits=only_conv["credits"], requirement_area="전공", aggregate_only=True)
+    vt = VerifiedTranscript(confirmed_courses=[vc],
+                            earned_by_area={"전공": only_conv["credits"]},
+                            total_earned=only_conv["credits"])
+    ctx = StudentContext(program_id="ai_bigdata", convergence_program_ids=["dsci_convergence"],
+                         convergence_tracks={"dsci_convergence": "다전공"})
+    prof = assemble_requirement_profile(ctx)
+    au = compute_audit(vt, prof, convergence_program_ids=["dsci_convergence"],
+                       convergence_tracks={"dsci_convergence": "다전공"})
+    cc = au.convergence_checks[0]
+    # 이중 인정 금지: primary 유효 + 융합 유효 합 ≤ 이수 + 중복인정(캡 내) — 겹침 1과목이므로
+    # 과목이 overlap 풀에 들어가 한쪽(또는 캡 내 중복)으로만 배정돼야 함
+    assert cc["overlap_credits"] == only_conv["credits"]          # 겹침으로 인식(카탈로그 밖이어도)
+    assert cc["double_recognizable"] <= cc["double_cap"]
+    # 융합 유효 합산에 같은 과목이 융합전용분+배정분으로 이중 합산 금지(codex MUST 회귀)
+    assert cc["earned"] <= only_conv["credits"] + 0.01
+    # 뷰 일관성: area-only overlap도 3-way 선택 가능(overlap 플래그)으로 표시
+    view = next(c for c in cc["courses"] if c["course_id"] == only_conv["course_id"])
+    assert view["overlap"] is True
+
+
 def test_gen_ed_gap_planned_as_slot():
     # 교양만 부족 → 결정론 통합 플래너가 '교양 슬롯'으로 학기에 배치(codex 설계)
     from graduation_center.v2.audit_v2 import AuditResult, AreaGap

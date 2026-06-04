@@ -120,6 +120,9 @@ def assemble_requirement_profile(context: StudentContext) -> RequirementProfile:
     학번(입학연도) 요람 별표5(requirements_by_year.json)가 있으면 영역 최저학점은 그것을 우선.
     """
     cat = load_catalog(context.program_id)
+    if not cat.get("requirements_key"):
+        # 연계·융합전공은 요건키가 없음 — 제1전공으로 지정 불가(KeyError: None 방지)
+        raise ValueError(f"'{context.program_id}'는 제1전공으로 선택할 수 없습니다(연계·융합전공은 다전공/부전공으로 추가).")
     req = json.loads(GRAD_REQ.read_text(encoding="utf-8"))["departments"][cat["requirements_key"]]
     gyo = req.get("교양", {})
     yr = _requirements_by_year(context.program_id, context.admission_year)

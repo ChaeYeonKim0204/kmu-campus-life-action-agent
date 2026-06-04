@@ -293,18 +293,26 @@ async def graduation_v2_verify(request: Request) -> dict:
         if not fn.lower().endswith((".xls", ".xlsx")):
             raise HTTPException(status_code=400, detail=f"엑셀(.xls/.xlsx)만 업로드할 수 있습니다: {fn}")
         content = await up.read()
-        missing = v2_fail_fast_columns(content, fn)
+        try:
+            missing = v2_fail_fast_columns(content, fn)
+        except Exception as exc:  # 손상/위장 엑셀(xlrd·openpyxl 파싱 실패) → 422
+            raise HTTPException(status_code=422, detail={"file": fn, "error": "엑셀 파일을 읽을 수 없습니다(손상 또는 지원하지 않는 형식)."}) from exc
         if missing:
             raise HTTPException(status_code=422, detail={"file": fn, "missing_columns": missing})
         files.append((content, fn))
     if not files:
         raise HTTPException(status_code=400, detail="files 필드에 수강내역 엑셀을 1개 이상 업로드해 주세요.")
     context_raw = form.get("context")
-    context = json.loads(context_raw) if context_raw else {}
+    try:
+        context = json.loads(context_raw) if context_raw else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="context 필드가 유효한 JSON이 아닙니다.") from exc
     if "program_id" not in context:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다 (예: ai_bigdata, mirae_mobility).")
     try:
         return v2_pipeline.run_verify(files, context)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=f"알 수 없는 program_id: {exc}") from exc
 
@@ -316,6 +324,8 @@ def graduation_v2_audit(payload: dict) -> dict:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다.")
     try:
         return v2_pipeline.run_audit(payload).model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=f"알 수 없는 program_id: {exc}") from exc
 

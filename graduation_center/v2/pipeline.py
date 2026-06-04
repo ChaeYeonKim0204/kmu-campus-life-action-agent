@@ -129,7 +129,15 @@ def _markdown(ctx, profile, audit, risk, plan) -> str:
     if plan.status == "not_generated":
         L.append("- (LLM 미설정 — 결정론 진단만 제공)")
     elif plan.status == "blocked":
-        L.append(f"- 실현 가능한 계획 없음: {plan.blocked_reason}  · {plan.relaxation_hint or ''}")
+        # 부분 배치가 있으면 숨기지 않고 보여준다(JSON 로드맵과 markdown 표면 일치).
+        for t in plan.terms:
+            courses = ", ".join(f"{c.name_ko}({c.credits:.0f})" for c in t.courses)
+            L.append(f"- {t.term}: {courses}")
+        L.append(("- ⚠️ 일부만 배치 가능: " if plan.terms else "- 실현 가능한 계획 없음: ")
+                 + (plan.blocked_reason or ""))
+        # overflow 섹션이 같은 사유를 다시 출력하므로 hint는 overflow 없을 때만(중복 방지)
+        if plan.relaxation_hint and not plan.overflow:
+            L.append(f"  - {plan.relaxation_hint}")
     elif not plan.terms:
         L.append(f"- {plan.why_this_plan}")
     else:

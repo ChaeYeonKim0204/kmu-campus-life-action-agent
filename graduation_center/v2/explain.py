@@ -260,7 +260,7 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
         trace = [
             NodeTraceEvent(node="요람 RAG 해설", kind="llm",
                            summary=f"{len(sections)}개 항목 해설 (캐시 — 동일 입력 동일 결과)",
-                           branch_taken=f"{len(items)}개 항목 해설(캐시)"),
+                           branch_taken=f"{len(sections)}개 항목 해설"),
             NodeTraceEvent(node="해설 검증", kind="validator",
                            summary="인용 해소·수치 정합·마스킹 통과(캐시)", branch_taken="통과"),
         ]

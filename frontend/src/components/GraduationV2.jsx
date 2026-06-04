@@ -1,4 +1,5 @@
 import React from "react";
+import WorkflowGraph from "./WorkflowGraph.jsx";
 
 // 졸업센터 v2 — 수강내역 엑셀 → 검증(HITL) → 졸업사정 컨설팅 대시보드
 const GRADE_COLOR = { A: "#10B981", B: "#F59E0B", C: "#EF4444", D: "#B91C1C" };
@@ -769,16 +770,16 @@ export default function GraduationV2({ apiBase }) {
               </div>
             )}
 
-            {/* 워크플로우 그래프 — 별도 페이지로 분리 */}
-            <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.navy }}>🔀 워크플로우 실행 그래프</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-                  업무 노드 분절·실행 순서·분기를 별도 화면에서 시각화합니다 (방금 실행 결과 반영).
+            {/* 워크플로우 그래프 — 보고서와 같은 화면에 인라인(노드 점등이 결과 옆에서 보임) */}
+            <div style={card}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  🔀 업무 노드 분절·실행 순서·분기 갈래 (방금 실행 결과 반영)
                 </div>
+                <button onClick={() => window.open(`${window.location.pathname}#workflow`, "_blank")}
+                  style={{ ...btnGhost, whiteSpace: "nowrap" }}>크게 보기 ↗</button>
               </div>
-              <button onClick={() => window.open(`${window.location.pathname}#workflow`, "_blank")}
-                style={{ ...btnGhost, whiteSpace: "nowrap" }}>워크플로우 그래프 열기 ↗</button>
+              <WorkflowGraph compact trace={[...(verify?.node_trace || []), ...(audit?.node_trace || [])]} />
             </div>
 
             {/* 근거 */}

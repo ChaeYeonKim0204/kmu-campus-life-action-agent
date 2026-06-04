@@ -106,8 +106,16 @@ def run_audit(payload: dict, client=None) -> AuditPipelineResponse:
                        status="ok" if vrep.ok else "fail",
                        summary=("통과(선수·개설학기·학점상한)" if vrep.ok else f"{len(vrep.errors)}건 미충족"),
                        branch_taken=("통과" if vrep.ok else "미배치 → 초과학기")),
+        # 분기 갈래(그래프 토폴로지): 미배치 시에만 실행되는 사이드 노드 — feasible이면 미점등
+        *([NodeTraceEvent(node="초과학기 시나리오", kind="tool",
+                          summary=plan.overflow.note,
+                          branch_taken=f"+{plan.overflow.extra_semesters}학기 → {plan.overflow.projected_graduation_term or '미상'}")]
+          if plan.overflow else []),
         NodeTraceEvent(node="리스크 산정", kind="tool",
-                       summary=f"{risk.grade} {risk.label} ({risk.score})", branch_taken=f"{risk.grade} {risk.label}"),
+                       summary=f"{risk.grade} {risk.label} ({risk.score})",
+                       # 완화(D→C 등) 발동 여부를 분기 라벨에 노출 — 학생별로 다른 경로가 보이게
+                       branch_taken=f"{risk.grade} {risk.label}"
+                       + (" · 완화 발동" if any("등급 완화" in r.detail for r in risk.reasons) else "")),
         *explain_trace,
     ]
     md = _markdown(ctx, profile, audit, risk, plan, marks, explanations=explanations)

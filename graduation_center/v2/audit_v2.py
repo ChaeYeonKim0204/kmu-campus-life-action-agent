@@ -256,6 +256,8 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
                             "group": prefix_to_group.get(c.course_id[:5]) or "",
                             "primary_required": c.course_id[:5] in required_prefixes}
                            for c in overlap]
+        # (assignment 기본값은 아래 alloc 확정 후 주입 — 프론트 defaultSel이 백엔드 기본배정을
+        #  복제하지 않고 그대로 쓰게 해 두 산식의 드리프트 차단(codex))
         # 기본 배정(결정론, 프론트 3-way 기본값과 동일): 과목 단위로 중복인정(한도까지·전공필수 우선)
         # → 한도초과 겹침은 제1전공 요건 먼저, 나머지 융합. 융합 산입 과목으로 group/총량을 일관 산출.
         ov_sorted = sorted(overlap, key=lambda c: (c.course_id[:5] not in required_prefixes, -c.credits))
@@ -280,6 +282,8 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
                 alloc[id(c)] = "fusion"
         to_primary = round(sum(c.credits for c in flex if alloc[id(c)] == "primary"), 1)
         to_fusion = round(sum(c.credits for c in flex if alloc[id(c)] == "fusion"), 1)
+        for oc, c in zip(overlap_courses, overlap):
+            oc["assignment"] = alloc.get(id(c), "fusion")   # 기본 배정(dup/primary/fusion) 노출
         # 융합 '총량 인정' = 융합전용(non-overlap) + 중복인정(dup) + 융합배정 겹침 (제77조 한도 반영).
         # non-overlap 판정은 id 기준 — area-only overlap(신뢰된 카탈로그 밖 전공) 과목이
         # 융합전용분과 배정분에 이중 합산되는 것 방지(codex MUST).

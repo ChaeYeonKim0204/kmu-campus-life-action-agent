@@ -79,11 +79,16 @@ const SEL3 = [["dup", "중복인정", "#1d4ed8", "#dbeafe", "#93c5fd"],
   ["primary", "제1전공", "#6d28d9", "#ede9fe", "#c4b5fd"],
   ["fusion", "융합전공", "#047857", "#ecfdf5", "#a7f3d0"]];
 
-function ConvergenceBlock({ cc, C, first }) {
+function ConvergenceBlock({ cc, C, first, onPrimaryChange }) {
   const ov = cc.overlap_courses || [];
   const cap = cc.double_cap || 0;
-  // 기본 선택: 전공필수 우선 중복인정(한도까지) → 제1전공 부족분 채움(제1전공) → 나머지 융합
+  // 기본 선택: 백엔드 기본 배정(overlap_courses[].assignment)을 그대로 사용 — 산식 복제 드리프트 방지.
+  // (구버전 응답 폴백: 전공필수 우선 중복인정 → 제1전공 부족분 → 나머지 융합)
   const defaultSel = React.useMemo(() => {
+    if (ov.length && ov.every((f) => f.assignment)) {
+      const s = {}; ov.forEach((f, i) => { s[i] = f.assignment; });
+      return s;
+    }
     const order = [...ov.keys()].sort((i, j) =>
       (ov[j].primary_required - ov[i].primary_required) || (ov[j].credits - ov[i].credits));
     const s = {}; let dup = 0;
@@ -105,6 +110,8 @@ function ConvergenceBlock({ cc, C, first }) {
   const dupCr = sum((x) => x === "dup");
   const primaryCr = (cc.primary_base || 0) + sum((x) => x === "dup" || x === "primary");
   const fusionCr = (cc.fusion_base || 0) + sum((x) => x === "dup" || x === "fusion");
+  // 3-way 배정 변경을 부모(영역별 이수 현황 전공 게이지)에 반영 — 게이지가 기본 배정에 고정되는 문제 해소
+  React.useEffect(() => { onPrimaryChange?.(cc.program_id, primaryCr); }, [cc.program_id, primaryCr, onPrimaryChange]);
   const overCap = dupCr > cap;
   // 그룹별 최저(다전공12/부전공6)도 충족해야 '둘 다 충족' (백엔드 배정 반영 group_checks 기준)
   const groupsOk = (cc.group_checks || []).every((g) => g.gap <= 0);
@@ -238,6 +245,22 @@ export default function GraduationV2({ apiBase }) {
   const [question, setQuestion] = React.useState("");
   const [showAfterPlan, setShowAfterPlan] = React.useState(false);
   const [whatifError, setWhatifError] = React.useState("");   // 상담 카드 인라인 표시(상단 error와 분리)
+  // 융합 3-way 배정 반영용 — {program_id: 배정 반영 제1전공 학점}. 전공 게이지가 따라 움직인다.
+  const [primaryAlloc, setPrimaryAlloc] = React.useState({});
+  const onPrimaryChange = React.useCallback((pid, cr) => {
+    setPrimaryAlloc((m) => (m[pid] === cr ? m : { ...m, [pid]: cr }));
+  }, []);
+  // 전공 게이지 보정치 = Σ(사용자 배정 제1전공 − 백엔드 기본 배정 제1전공). 기본 선택이면 0.
+  const majorAdjust = React.useMemo(() => {
+    const ccs = audit?.audit?.convergence_checks || [];
+    if (ccs.length > 1) return 0;   // 다중 융합은 동일 과목 이중 보정 위험 — 기본 배정 표시만(codex 방어)
+    let d = 0;
+    for (const cc of ccs) {
+      const sel = primaryAlloc[cc.program_id];
+      if (sel != null && cc.primary_effective != null) d += sel - cc.primary_effective;
+    }
+    return Math.round(d * 10) / 10;
+  }, [audit, primaryAlloc]);
 
   // #workflow 전용 페이지용 trace를 단일 effect로 동기화 — 이벤트 핸들러의 stale closure로
   // 옛 audit trace가 섞여 저장되는 경로 차단(검증 코드R3). 계약: whatif.node_trace만,
@@ -318,7 +341,7 @@ export default function GraduationV2({ apiBase }) {
   const runVerify = async () => {
     if (!files.length) { setError("수강내역 엑셀(.xls/.xlsx)을 업로드하세요."); return; }
     setBusy("verify"); setError(""); setAudit(null);
-    setAuditPayload(null); setWhatif(null); setQuestion(""); setWhatifError("");  // stale 상담 상태 정리
+    setAuditPayload(null); setWhatif(null); setQuestion(""); setWhatifError(""); setPrimaryAlloc({});  // stale 상태 정리
     try {
       const form = new FormData();
       files.forEach((f) => form.append("files", f));
@@ -354,6 +377,7 @@ export default function GraduationV2({ apiBase }) {
       setAudit(result);
       setAuditPayload(payload);            // what-if 동결 payload — 이후 테이블 편집과 분리
       setWhatif(null); setQuestion(""); setShowAfterPlan(false); setWhatifError("");
+      setPrimaryAlloc({});                 // 3-way 배정 보정 초기화(새 사정 = 기본 배정)
       // (#workflow trace 저장은 useEffect([verify, audit, whatif])가 단일 책임)
     } catch (e) { setError(String(e.message || e)); }
     setBusy("");
@@ -647,14 +671,25 @@ export default function GraduationV2({ apiBase }) {
             <div style={card}>
               <div style={sectionTitle}>📊 영역별 이수 현황</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
-                {audit.audit.area_gaps.map((g, i) => (
-                  // 전공 '학점' 충족이어도 필수지정 미이수면 게이지에 병기 — markdown(⚠️ 학점충족·필수 미이수)과 표면 일치
-                  <Gauge key={i}
-                    label={g.area === "전공" && g.gap <= 0 && audit.audit.missing_required_names?.length
-                      ? `전공 (⚠️ 필수 ${audit.audit.missing_required_names.length}과목 미이수)` : g.area}
-                    earned={g.earned} required={g.required} gap={g.gap} />
-                ))}
+                {audit.audit.area_gaps.map((g, i) => {
+                  // 전공 게이지는 융합 3-way 배정 변경을 따라 움직인다(majorAdjust) — 기본 배정이면 0
+                  const adj = g.area === "전공" ? majorAdjust : 0;
+                  const earned = Math.round((g.earned + adj) * 10) / 10;
+                  const gap = Math.max(0, Math.round((g.required - earned) * 10) / 10);
+                  // 전공 '학점' 충족이어도 필수지정 미이수면 게이지에 병기 — markdown과 표면 일치
+                  const label = g.area === "전공"
+                    ? `전공${adj !== 0 ? " (이수구분 배정 반영)" : ""}${gap <= 0 && audit.audit.missing_required_names?.length
+                        ? ` (⚠️ 필수 ${audit.audit.missing_required_names.length}과목 미이수)` : ""}`
+                    : g.area;
+                  return <Gauge key={i} label={label} earned={earned} required={g.required} gap={gap} />;
+                })}
               </div>
+              {majorAdjust !== 0 && (
+                <p style={{ fontSize: 11, color: "#b45309", margin: "4px 0 0" }}>
+                  ※ 융합 블록의 이수구분 변경이 전공 게이지에만 임시 반영되었습니다({majorAdjust > 0 ? "+" : ""}{majorAdjust}학점).
+                  종합 판정·로드맵·리포트는 기본 배정 기준입니다.
+                </p>
+              )}
               {(() => {
                 const tf = audit.audit.to_fusion_total || 0;   // 백엔드 dedup값(다중 융합 합산 오류 방지)
                 return tf > 0 ? (
@@ -710,7 +745,8 @@ export default function GraduationV2({ apiBase }) {
               <div style={card}>
                 <div style={sectionTitle}>🔗 연계·융합전공 <span style={{ color: C.muted, fontWeight: 400, fontSize: 12 }}>(학점 중복인정 반영)</span></div>
                 {audit.audit.convergence_checks.map((cc, i) => (
-                  <ConvergenceBlock key={i} cc={cc} C={C} first={i === 0} />
+                  // key=program_id — 새 사정 전환 시 낡은 sel로 한 프레임 계산되는 stale 방지(codex)
+                  <ConvergenceBlock key={cc.program_id} cc={cc} C={C} first={i === 0} onPrimaryChange={onPrimaryChange} />
                 ))}
               </div>
             )}

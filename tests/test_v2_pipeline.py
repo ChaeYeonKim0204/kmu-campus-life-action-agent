@@ -300,6 +300,12 @@ def test_trusted_major_with_conv_prefix_no_double_count():
     assert cc["double_recognizable"] <= cc["double_cap"]
     # 융합 유효 합산에 같은 과목이 융합전용분+배정분으로 이중 합산 금지(codex MUST 회귀)
     assert cc["earned"] <= only_conv["credits"] + 0.01
+    # 기본 배정 계약: overlap_courses[].assignment 합이 primary_effective와 일치
+    # (프론트 게이지 연동의 기준값 — 산식 복제 드리프트 방지)
+    p = cc["primary_base"] + sum(o["credits"] for o in cc["overlap_courses"]
+                                 if o["assignment"] in ("dup", "primary"))
+    assert abs(p - cc["primary_effective"]) < 0.01
+    assert all(o.get("assignment") in ("dup", "primary", "fusion") for o in cc["overlap_courses"])
     # 뷰 일관성: area-only overlap도 3-way 선택 가능(overlap 플래그)으로 표시
     view = next(c for c in cc["courses"] if c["course_id"] == only_conv["course_id"])
     assert view["overlap"] is True

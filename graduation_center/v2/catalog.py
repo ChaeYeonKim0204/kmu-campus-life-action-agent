@@ -181,9 +181,12 @@ def match_course(raw: RawLine, program_id: str) -> CourseMatch:
         cc = cat["by_code"][code]
         return CourseMatch(raw=raw, matched_course_id=code, match_by="code",
                            status="matched", requirement_area=cc.requirement_area)
-    # 2) 이름 정규화 매칭 (유니크할 때만)
+    # 2) 이름 정규화 매칭 (유니크할 때만). 단 **앞5자리 가드**: 코드가 있는데 매칭 후보와
+    #    앞5자리가 다르면 타과 개설 동명 과목(사제동행세미나·S-TEAM 등 학과별 코드)이므로 거부
+    #    → ③ aggregate 경로(이수구분 기반 + HITL 편집). 동일교과목 코드 개편은 앞5자리 유지
+    #    규칙이라 구과정 코드는 여기서 안 걸림. 코드 없는 행(요람 조인)은 기존대로 허용.
     hits = cat["by_norm"].get(normalize_name(raw.course_name), [])
-    if len(hits) == 1:
+    if len(hits) == 1 and (not code or code[:5] == hits[0][:5]):
         cc = cat["by_code"][hits[0]]
         return CourseMatch(raw=raw, matched_course_id=hits[0], match_by="name",
                            status="matched", requirement_area=cc.requirement_area)

@@ -29,7 +29,7 @@ def _required_year_data() -> dict:
     return json.loads(p.read_text(encoding="utf-8")).get("programs", {}) if p.exists() else {}
 
 
-def _required_names_for_year(program_id: str, year: int | None) -> list[str] | None:
+def _required_names_for_year(program_id: str, year: int | None) -> tuple[list[str] | None, int | None]:
     """해당 학번에 적용할 요람의 필수 과목명 + 실제 적용 연도. 없으면 (None, None)."""
     by_year = _required_year_data().get(program_id)
     if not by_year:
@@ -123,6 +123,31 @@ def _gen_basic_view(verified: VerifiedTranscript, program_id: str, year: int | N
     return out
 
 
+def _required_prefixes_for_year(program_id: str, year: int | None) -> set | None:
+    """학생 학번 요람의 필수과목명 → 그 프로그램 카탈로그 코드 앞5자리 집합.
+
+    융합 블록의 '전공필수' 배지·중복인정 우선·융합이동금지 가드가 학생 학번 기준이 되게
+    (기존엔 카탈로그 2025 단일본 is_required 고정 — 예: 유레카가 2022학번에게도 필수 표시).
+    명칭 드리프트는 _required_aliases 동치 그룹으로 흡수(mirae 2023 구명칭 — codex 지적).
+    연도 데이터·카탈로그가 없으면 None 반환 → 호출측이 is_required 폴백.
+    """
+    names, _pick = _required_names_for_year(program_id, year)
+    if not names:
+        return None
+    try:
+        cat = load_catalog(program_id)
+    except Exception:
+        return None
+    aliases = _required_aliases(program_id)
+    prefixes: set = set()
+    for nm in names:
+        nn = normalize_name(nm)
+        for key in [nn, *aliases.get(nn, [])]:
+            for cid in cat["by_norm"].get(key, []):
+                prefixes.add(cid[:5])
+    return prefixes
+
+
 def _admission_year(profile: RequirementProfile, verified: VerifiedTranscript) -> int | None:
     """입학연도 — context.admission_year 우선, 없으면 수강내역 최초 학기 연도에서 추정."""
     if profile.admission_year:
@@ -140,7 +165,8 @@ def _admission_year(profile: RequirementProfile, verified: VerifiedTranscript) -
 #       (필수는 해당 전공에 고정; 중복인정만 가능, 이동 불가).
 # 현재는 "각 요건 독립 판정 + 중복인정 한도 표시"까지만 구현.
 def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, primary_program_id,
-                        primary_major_required: float = 0.0, primary_major_earned: float = 0.0) -> list[dict]:
+                        primary_major_required: float = 0.0, primary_major_earned: float = 0.0,
+                        admission_year: int | None = None) -> list[dict]:
     """연계·융합전공 졸업요건 + 학점 중복인정(학사규정 제77조). **교과목코드 기반.**
 
     이수구분 텍스트가 부정확할 수 있어, 과목 분류를 교과목코드 앞5자리로 판정:
@@ -209,10 +235,16 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
         overlap_prefixes = {c.course_id[:5] for c in overlap}
         overlap_cr = round(sum(c.credits for c in overlap), 1)
         double_recognizable = round(min(overlap_cr, cap), 1)
-        # 제1전공/다른 다전공의 '전공필수' 코드 앞5자리 — 중복인정 권장 우선순위
+        # 제1전공/다른 다전공의 '전공필수' 코드 앞5자리 — 중복인정 권장·기본배정(ov_sorted)
+        # 우선순위·융합이동금지 가드·배지에 공통 사용. **학생 학번 요람 기준**(연도별 필수명 →
+        # 코드 해석), 연도 데이터 없는 프로그램만 카탈로그 is_required 폴백(2025 단일본 고정 방지).
         required_prefixes: set = set()
         for ppid in prog_prefixes:
             if ppid == pid:
+                continue
+            year_pfx = _required_prefixes_for_year(ppid, admission_year)
+            if year_pfx is not None:
+                required_prefixes |= year_pfx
                 continue
             try:
                 required_prefixes |= {c.course_id[:5] for c in load_catalog(ppid)["courses"]
@@ -339,7 +371,8 @@ def compute_audit(
     # 이중집계를 막고 전공/융합/risk를 한 배정으로 정합. (배정은 _convergence_checks가 결정론 산출)
     conv_checks = _convergence_checks(verified, convergence_program_ids, convergence_tracks,
                                       profile.program_id, float(profile.area_min.get("전공", 0)),
-                                      float(earned.get("전공", 0)))
+                                      float(earned.get("전공", 0)),
+                                      admission_year=_admission_year(profile, verified))
     # 다중 융합 선언 시 같은 물리 과목이 두 프로그램에서 to_fusion으로 잡혀 이중 차감되지 않게
     # 과목(앞5자리) 단위로 dedup해 전공 차감(라운드3·4 지적)
     to_fusion_by_course: dict = {}

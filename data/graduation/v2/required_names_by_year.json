@@ -534,7 +534,8 @@
         {
           "any_of": [
             "College EnglishⅠ",
-            "College EnglishⅡ"
+            "College EnglishⅡ",
+            "College English"
           ],
           "label": "College EnglishⅠ·Ⅱ 중 택1"
         }
@@ -544,7 +545,8 @@
         {
           "any_of": [
             "College EnglishⅠ",
-            "College EnglishⅡ"
+            "College EnglishⅡ",
+            "College English"
           ],
           "label": "College EnglishⅠ·Ⅱ 중 택1"
         }
@@ -554,7 +556,8 @@
         {
           "any_of": [
             "College EnglishⅠ",
-            "College EnglishⅡ"
+            "College EnglishⅡ",
+            "College English"
           ],
           "label": "College EnglishⅠ·Ⅱ 중 택1"
         }
@@ -564,7 +567,8 @@
         {
           "any_of": [
             "College EnglishⅠ",
-            "College EnglishⅡ"
+            "College EnglishⅡ",
+            "College English"
           ],
           "label": "College EnglishⅠ·Ⅱ 중 택1"
         }

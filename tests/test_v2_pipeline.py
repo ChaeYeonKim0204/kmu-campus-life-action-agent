@@ -335,6 +335,49 @@ def test_user_edited_major_with_conv_prefix_no_double_count():
     assert view["overlap"] is True
 
 
+def test_required_prefixes_follow_admission_year():
+    """융합 블록 '전공필수'가 학생 학번 요람 기준(2025 단일 카탈로그 is_required 고정 금지) —
+    유레카프로젝트는 2025학번만 필수."""
+    from graduation_center.v2.audit_v2 import _required_prefixes_for_year
+    from graduation_center.v2.catalog import load_catalog
+    eureka = next(c for c in load_catalog("ai_bigdata")["courses"] if "유레카" in c.name_ko)
+    p2022 = _required_prefixes_for_year("ai_bigdata", 2022)
+    p2025 = _required_prefixes_for_year("ai_bigdata", 2025)
+    assert eureka.course_id[:5] not in p2022       # 2022학번엔 필수 아님
+    assert eureka.course_id[:5] in p2025           # 2025학번엔 필수
+    assert "0910501"[:5] in p2022                  # 인공지능수학은 양쪽 필수
+
+
+def test_name_match_rejected_for_foreign_department_code():
+    """타과 동명 과목 가드: 사제동행세미나를 타과 코드로 이수 → 본전공 이름매칭 거부(aggregate).
+    코드 없는 행은 기존대로 이름매칭 허용."""
+    from graduation_center.v2.catalog import match_course, load_catalog
+    from graduation_center.v2.models_v2 import RawLine
+    own = next(c for c in load_catalog("ai_bigdata")["courses"] if "사제동행" in c.name_ko)
+    foreign = RawLine(course_code="1622401", course_name="사제동행세미나",
+                      area_raw="전공선택", credits=1, term_label="2023학년도 1학기")
+    m = match_course(foreign, "ai_bigdata")
+    assert m.status == "aggregate_only"            # 타과 코드 → 본전공 과목 아님
+    same = RawLine(course_code=own.course_id, course_name="사제동행세미나",
+                   area_raw="전공선택", credits=1, term_label="2023학년도 1학기")
+    assert match_course(same, "ai_bigdata").status == "matched"
+    nocode = RawLine(course_code="", course_name="사제동행세미나",
+                     area_raw="전공선택", credits=1, term_label="2023학년도 1학기")
+    assert match_course(nocode, "ai_bigdata").status == "matched"   # 코드 없으면 허용(요람 조인)
+
+
+def test_gen_basic_college_english_unnumbered_counts():
+    """CE 구명칭(무번호 'College English') 이수도 영어 택1 충족 — 실파일 표기 변형."""
+    from graduation_center.v2.audit_v2 import _gen_basic_view
+    from graduation_center.v2.models_v2 import VerifiedCourse, VerifiedTranscript
+    vt = VerifiedTranscript(confirmed_courses=[
+        VerifiedCourse(name_ko="College English", credits=2, requirement_area="기초교양"),
+        VerifiedCourse(name_ko="글쓰기", credits=2, requirement_area="기초교양")])
+    view = {v["name_ko"]: v["taken"] for v in _gen_basic_view(vt, "ai_bigdata", 2023)}
+    assert view["College EnglishⅠ·Ⅱ 중 택1"] is True
+    assert view["글쓰기"] is True
+
+
 def test_gen_ed_gap_planned_as_slot():
     # 교양만 부족 → 결정론 통합 플래너가 '교양 슬롯'으로 학기에 배치(codex 설계)
     from graduation_center.v2.audit_v2 import AuditResult, AreaGap

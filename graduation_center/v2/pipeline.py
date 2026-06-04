@@ -131,14 +131,18 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
     # (pipeline→report_summary→whatif→pipeline). run_summary=False 경로는 로직 자체 미진입.
     agent_summary, summary_fallback, summary_trace = None, None, []
     if run_summary:
-        from graduation_center.v2.report_summary import _skip_trace, run_report_summary
         try:
+            # import도 try 안 — 총평 모듈 import-time 오류까지 degrade(codex R2 CRITICAL)
+            from graduation_center.v2.report_summary import _skip_trace, run_report_summary
             agent_summary, summary_fallback, summary_trace = run_report_summary(
                 payload, audit, risk, plan, ctx, run_audit_fn=run_audit, client=client)
         except Exception as exc:                     # 총평 실패는 절대 /audit 500으로 안 샘(codex R1)
             agent_summary = None
             summary_fallback = f"총평 생성 오류({type(exc).__name__}) — 결정론 진단·로드맵은 유효"
-            summary_trace = _skip_trace("총평 내부 오류")
+            summary_trace = [NodeTraceEvent(node=n, kind=k, status="skip",
+                                            summary="총평 내부 오류", branch_taken="총평 생략")
+                             for n, k in (("갈림길 선정", "llm"), ("갈림길 시뮬레이션", "tool"),
+                                          ("총평 생성", "llm"), ("총평 검증", "validator"))]
         trace += summary_trace
     md = _markdown(ctx, profile, audit, risk, plan, marks, explanations=explanations)
     if agent_summary:                                # markdown은 총평 경로에서만 append(적대 L1)

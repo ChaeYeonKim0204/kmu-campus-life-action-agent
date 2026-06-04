@@ -28,7 +28,7 @@ from graduation_center.v2.whatif import (
 )
 
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data/graduation/v2/summary_cache.json"
-SUMMARY_SCHEMA_VERSION = 2        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
+SUMMARY_SCHEMA_VERSION = 3        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
 MAX_CANDIDATES = 5                # LLM 제안 상한(Thought의 폭)
 MAX_SIMULATIONS = 4               # pre 통과 후보 시뮬레이션 상한(비용 가드)
 MAX_ACCEPTED = 3                  # 최종 채택 상한
@@ -279,7 +279,8 @@ def _text_violations(text: str, allowed_nums: set, allowed_grades: str) -> str |
         return "근거 밖 수치"
     if any(g not in allowed_grades for g in _GRADE_RE.findall(text)):
         return "등급 모순"
-    if re.search(r"졸업\s*(불가|가능)", text):
+    # 단정만 거부 — '졸업 가능 시점/시기/여부/성' 같은 fact 기반 표현은 허용(적대 R2 M1 과폐기 방지)
+    if re.search(r"졸업\s*(불가|가능)(?!\s*(시점|시기|여부|성))", text):
         return "판정 단정"
     return None
 
@@ -491,10 +492,12 @@ def run_report_summary(payload: dict, audit, risk, plan, ctx: StudentContext,
         return (None, f"시뮬레이션 기준 계산 실패({type(exc).__name__}) — 총평 생략",
                 _skip_trace("before 재계산 실패"))
     outcomes: list[ScenarioOutcome] = []
-    # cap 밖 후보도 정직하게 기록 — 미시뮬은 '효과 없음'이 아니라 sim_cap(거짓 사유 금지, codex R1)
+    sim_capped: list[ScenarioReview] = []
+    # cap 밖 후보도 정직하게 기록 — 미시뮬은 '효과 없음'이 아니라 sim_cap(거짓 사유 금지, codex R1).
+    # 표시 순서는 LLM 제안 순서 보존을 위해 시뮬 결과 뒤에 합류(적대 R2 M2).
     for delta, reason, rationale, label in pre_ok[MAX_SIMULATIONS:]:
-        review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
-                                     verdict="rejected", rejected_by="sim_cap"))
+        sim_capped.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
+                                         verdict="rejected", rejected_by="sim_cap"))
     for delta, reason, rationale, label in pre_ok[:MAX_SIMULATIONS]:
         new_ctx, changes, assumptions, unsupported = apply_delta(ctx, delta, profile)
         if new_ctx is None:
@@ -526,6 +529,7 @@ def run_report_summary(payload: dict, audit, risk, plan, ctx: StudentContext,
             graduation_term_after=diff.graduation_term_after,
             feasible_after=diff.feasible_after, overflow_after=diff.overflow_after))
 
+    review += sim_capped
     n_cand, n_acc = len(review), len(outcomes)
     scen_facts = _scenario_facts(outcomes)
 

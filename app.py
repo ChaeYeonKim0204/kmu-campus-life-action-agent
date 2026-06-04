@@ -311,6 +311,11 @@ async def graduation_v2_verify(request: Request) -> dict:
         raise HTTPException(status_code=400, detail="context 필드는 JSON 객체여야 합니다.")
     if "program_id" not in context:
         raise HTTPException(status_code=400, detail="context.program_id 가 필요합니다 (예: ai_bigdata, mirae_mobility).")
+    # 연계·융합전공은 verify 단계부터 차단 — audit에서만 막으면 첫 단계가 성공해 흐름이 끊김
+    prog = load_programs().get(context["program_id"])
+    if prog is not None and prog.get("track_type") != "primary":
+        raise HTTPException(status_code=400,
+                            detail=f"'{context['program_id']}'는 제1전공으로 선택할 수 없습니다(연계·융합전공은 다전공/부전공으로 추가).")
     try:
         return v2_pipeline.run_verify(files, context)
     except ValueError as exc:

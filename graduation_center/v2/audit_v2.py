@@ -140,10 +140,13 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
         try:
             cat = load_catalog(pid)
         except KeyError:
-            continue
+            # 침묵 skip 금지 — 사용자가 요청한 다전공/부전공 사정이 조용히 빠지면 안 됨
+            raise ValueError(f"알 수 없는 연계·융합전공 id: '{pid}'") from None
         name = cat["department_name_ko"]
         is_yeonge = "연계전공" in name
         track = tracks.get(pid, "다전공")
+        if track not in ("다전공", "부전공"):
+            raise ValueError(f"'{name}' 트랙은 '다전공' 또는 '부전공'이어야 합니다 (입력: '{track}').")
         req = 36.0 if track == "다전공" else 18.0
         cap = 12.0 if track == "다전공" else (0.0 if is_yeonge else 6.0)
         prefix_to_group = {c.course_id[:5]: c.group for c in cat["courses"] if c.course_id}

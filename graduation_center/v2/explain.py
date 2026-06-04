@@ -194,9 +194,13 @@ def validate_explanations(raw: dict, items: list[dict], chunks_by_item: dict,
             if not text:
                 continue
             sids = [s for s in ln.get("source_ids", []) if s in allowed_by_item[key]]
-            cited = " ".join(chunk_text_by_id.get(s, "") for s in sids) + " " + ctx_by_key[key]
-            # 새 수치 생성 가드: 2자리 이상 숫자는 인용 chunk나 진단 결과에 있어야 함
-            grounded = bool(sids) and all(n in cited for n in re.findall(r"\d{2,}", text))
+            chunk_txt = " ".join(chunk_text_by_id.get(s, "") for s in sids)
+            # 새 수치 생성 가드: 숫자는 인용 chunk 원문에 있어야 함. 진단 결과의 숫자(취득
+            # 30학점 등)는 '진단을 가리키는 줄'에만 허용 — 안 그러면 취득학점을 최저요건으로
+            # 바꿔 말하는 규정 오염이 통과한다(신규코드 검증 라운드 codex).
+            diag_ref = any(w in text for w in ("진단", "현재", "보고서", "이수 현황", "부족", "귀하"))
+            allowed_nums = chunk_txt + (" " + ctx_by_key[key] if diag_ref else "")
+            grounded = bool(sids) and all(n in allowed_nums for n in re.findall(r"\d{2,}", text))
             if not grounded:
                 text += " ※ 공식 출처 미확인 — 학과사무실 확인 권장"
             lines.append(ExplainLine(text=text, source_ids=sids, grounded=grounded))
@@ -206,8 +210,10 @@ def validate_explanations(raw: dict, items: list[dict], chunks_by_item: dict,
 
 
 # ---------- 캐시 (동일 입력 = 동일 해설 · 데모 지연 0) ----------
-def _cache_key(model: str, items: list[dict]) -> str:
-    return hashlib.sha256(json.dumps({"m": model, "i": items}, ensure_ascii=False,
+def _cache_key(model: str, items: list[dict], ctx: StudentContext) -> str:
+    # 학과·입학연도 포함 — 같은 갭 구성의 다른 학생/연도가 같은 키로 충돌하지 않게
+    payload = {"m": model, "i": items, "p": ctx.program_id, "y": ctx.admission_year}
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False,
                                      sort_keys=True).encode()).hexdigest()[:24]
 
 
@@ -222,10 +228,15 @@ def _cache_put(key: str, value: dict) -> None:
     try:
         data = {}
         if CACHE_PATH.exists():
-            data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+            try:
+                data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                data = {}                              # 손상 파일 자가복구(새로 시작)
         data[key] = value
         CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CACHE_PATH.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        tmp = CACHE_PATH.with_suffix(".tmp")           # 원자적 쓰기 — torn write 방지
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, CACHE_PATH)
     except Exception:
         pass  # 캐시 실패는 침묵 — 해설 생성 자체를 막지 않음
 
@@ -246,13 +257,21 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
     """반환: (sections, Y-sources, trace 2노드, fallback_reason)."""
     items = select_explain_items(audit, profile, ctx)
     model = os.getenv("OPENAI_GRADUATION_MODEL", "gpt-5-mini")
-    if not items:
-        return [], [], [
-            NodeTraceEvent(node="요람 RAG 해설", kind="llm", status="skip",
-                           summary="부족 항목 없음 — 해설 생략", branch_taken="해설 불필요"),
-        ], None
 
-    ck = _cache_key(model, items)
+    def _skip_trace(summary: str, branch: str, status: str = "skip"):
+        # skip/fail에도 '해설 검증' placeholder를 방출 — 없으면 그래프에서 리포트 노드가
+        # lit 엣지 없이 고립됨(신규코드 검증 라운드: 키 없는 환경 재현)
+        return [
+            NodeTraceEvent(node="요람 RAG 해설", kind="llm", status=status,
+                           summary=summary, branch_taken=branch),
+            NodeTraceEvent(node="해설 검증", kind="validator", status="skip",
+                           summary="해설 없음 — 검증 생략", branch_taken="생략"),
+        ]
+
+    if not items:
+        return [], [], _skip_trace("부족 항목 없음 — 해설 생략", "해설 불필요"), None
+
+    ck = _cache_key(model, items, ctx)
     cached = _cache_get(ck)
     if cached:
         sections = [ExplainSection.model_validate(s) for s in cached["sections"]]
@@ -268,10 +287,8 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
 
     client = client or _get_client()
     if client is None:
-        return [], [], [
-            NodeTraceEvent(node="요람 RAG 해설", kind="llm", status="skip",
-                           summary="LLM 미설정 — 결정론 진단·G 근거는 유효", branch_taken="해설 생략(키 없음)"),
-        ], "LLM 미설정(OPENAI_API_KEY 없음)"
+        return [], [], _skip_trace("LLM 미설정 — 결정론 진단·G 근거는 유효",
+                                   "해설 생략(키 없음)"), "LLM 미설정(OPENAI_API_KEY 없음)"
 
     try:
         chunks_by_item: dict[str, list[dict]] = {}
@@ -310,8 +327,5 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
                         "sources": [s.model_dump() for s in sources]})
         return sections, sources, trace, None
     except Exception as exc:
-        return [], [], [
-            NodeTraceEvent(node="요람 RAG 해설", kind="llm", status="fail",
-                           summary=f"해설 생성 불가({type(exc).__name__}) — 결정론 진단·G 근거는 유효",
-                           branch_taken="해설 실패(degrade)"),
-        ], f"해설 생성 불가: {type(exc).__name__}"
+        return [], [], _skip_trace(f"해설 생성 불가({type(exc).__name__}) — 결정론 진단·G 근거는 유효",
+                                   "해설 실패(degrade)", status="fail"), f"해설 생성 불가: {type(exc).__name__}"

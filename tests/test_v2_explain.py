@@ -65,6 +65,21 @@ def test_validator_resolves_and_flags():
     assert "2023XXXX" in lines[3].text and "20231234" not in lines[3].text
 
 
+def test_validator_blocks_regulation_corruption():
+    """취득학점(진단 숫자)을 최저요건으로 바꿔 말하는 오염은 차단, 진단 참조 줄은 허용."""
+    items = [{"key": "k1", "title": "전공 부족", "query": "q", "context": "전공 30/48학점 (부족 18)"}]
+    chunks = [{"page": 693, "section": "졸업요건", "text": "전공 최저 48학점을 이수해야 한다."}]
+    by_item = {"k1": chunks}
+    id_by = {id(chunks[0]): "Y1"}
+    raw = {"explanations": [{"item_key": "k1", "lines": [
+        {"text": "전공은 최저 30학점만 이수하면 됩니다.", "source_ids": ["Y1"]},              # 오염
+        {"text": "전공 최저 48학점 이수가 요건입니다.", "source_ids": ["Y1"]},                # chunk 원문
+        {"text": "진단 결과 현재 30학점을 이수해 18학점이 부족합니다.", "source_ids": ["Y1"]},  # 진단 참조
+    ]}]}
+    lines = explain.validate_explanations(raw, items, by_item, id_by)[0].lines
+    assert [ln.grounded for ln in lines] == [False, True, True]
+
+
 def test_validator_drops_unknown_item_and_foreign_citation():
     items, by_item, id_by = _items_chunks()
     raw = {"explanations": [

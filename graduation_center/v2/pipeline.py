@@ -89,15 +89,21 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
         if audit.missing_required_names:
             from graduation_center.v2.models_v2 import ExplainLine, ExplainSection
             names = ", ".join(audit.missing_required_names)
+            # 둘째 줄은 배치 결과 조건부 — 미배치 필수가 있는데 "배치되어 있습니다" 단정은
+            # 미배치 칩과 정면 모순(적대 R1 HIGH — S3 실재 사례)
+            placed_names = {c.name_ko for t in plan.terms for c in t.courses}
+            unplaced_req = [n for n in audit.missing_required_names if n not in placed_names]
+            line2 = ("개설 학기를 반영해 아래 추천 로드맵에 배치되어 있습니다." if not unplaced_req
+                     else f"이 중 {', '.join(unplaced_req)}은(는) 잔여 학기에 배치되지 못했습니다 — "
+                          "아래 미배치·초과학기 시나리오를 확인하세요.")
             det = ExplainSection(
                 key="missing_required", deterministic=True,
                 title=f"미이수 필수지정 과목 ({len(audit.missing_required_names)}과목) — 결정론 판정",
                 lines=[
                     ExplainLine(text=f"{names} — 학과 교과과정표상 '필수' 지정 과목입니다"
-                                f"(적용 요람 {profile.applied_yoram} 졸업요건 기준).",
+                                f"({profile.applied_yoram} 졸업요건 기준).",
                                 source_ids=["G1"], grounded=True),
-                    ExplainLine(text="개설 학기를 반영해 아래 추천 로드맵에 배치되어 있습니다.",
-                                source_ids=["G1"], grounded=True),
+                    ExplainLine(text=line2, source_ids=["G1"], grounded=True),
                 ])
             explanations = [det] + explanations
     sources += y_sources

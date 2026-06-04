@@ -224,31 +224,32 @@ _GRADE_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3}
 
 
 def _effect(diff) -> tuple[str, str]:
-    """시나리오 효과 라벨·종류 — 결정론 합성(프론트 추측 금지, codex R1). build_diff 값만 사용."""
-    parts, kind = [], "neutral"
+    """시나리오 효과 라벨·종류 — 결정론 합성(프론트 추측 금지, codex R1). build_diff 값만 사용.
+
+    kind는 라벨 완성 후 단일 판정(적대 R1 — 누적식은 '졸업 지연'이 초록으로 뜨는 표면 모순):
+    악화 신호가 하나라도 있으면 worsen — 학생 의사결정은 다운사이드 우선이 정직."""
+    parts = []
     rb, ra = diff.risk_before, diff.risk_after
     if rb != ra and rb in _GRADE_ORDER and ra in _GRADE_ORDER:
-        better = _GRADE_ORDER[ra] < _GRADE_ORDER[rb]
-        parts.append(f"리스크 {rb}→{ra} {'개선' if better else '악화'}")
-        kind = "improve" if better else "worsen"
+        parts.append(f"리스크 {rb}→{ra} {'개선' if _GRADE_ORDER[ra] < _GRADE_ORDER[rb] else '악화'}")
     gb, ga = diff.graduation_term_before, diff.graduation_term_after
     if gb and ga and gb != ga:
-        sooner = ga < gb
-        parts.append(f"예상 졸업 {'단축' if sooner else '지연'}")
-        if kind == "neutral":
-            kind = "improve" if sooner else "worsen"
+        parts.append(f"예상 졸업 {'단축' if ga < gb else '지연'}")
+    elif gb and not ga:                              # 산출 가능→불가 — 악화(적대 R1 비대칭)
+        parts.append("예상 졸업 산출 불가 전환")
     if not diff.overflow_before and diff.overflow_after:
         parts.append("초과학기 발생")
-        kind = "worsen" if kind != "improve" else kind
     elif diff.overflow_before and not diff.overflow_after:
         parts.append("초과학기 해소")
-        if kind == "neutral":
-            kind = "improve"
     if diff.feasible_before is not True and diff.feasible_after is True:
         parts.append("배치 가능 전환")
-        if kind == "neutral":
-            kind = "improve"
-    return (" · ".join(parts) or "변화 없음", kind)
+    elif diff.feasible_before is True and diff.feasible_after is False:
+        parts.append("배치 불가 전환")
+    label = " · ".join(parts) or "변화 없음"
+    worsen = any(w in label for w in ("악화", "지연", "초과학기 발생", "불가 전환"))
+    improve = any(w in label for w in ("개선", "단축", "해소", "가능 전환"))
+    kind = "worsen" if worsen else "improve" if improve else "neutral"
+    return (label, kind)
 
 
 def _scenario_facts(outcomes: list[ScenarioOutcome]) -> list[dict]:

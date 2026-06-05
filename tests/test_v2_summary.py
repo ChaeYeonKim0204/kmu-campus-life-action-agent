@@ -373,3 +373,17 @@ def test_leave_plus_remaining_combo_rejected():
     assert combo.verdict == "rejected" and combo.rejected_by == "invalid_delta"
     solo = next(r for r in s.candidates_review if r.label == "휴학 1학기")
     assert solo.verdict == "accepted" or solo.rejected_by != "invalid_delta"
+
+
+def test_model_env_fallback_chain(monkeypatch):
+    """총평 모델 선택 우선순위: SUMMARY → OPENAI_GRADUATION(공통) → EXPLAIN → 기본값.
+    OPENAI_GRADUATION_MODEL 미반영으로 총평만 다른 모델로 돌던 비일관 회귀 방지(backend repo 역수입)."""
+    for k in ("GRADUATION_SUMMARY_MODEL", "OPENAI_GRADUATION_MODEL", "GRADUATION_EXPLAIN_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    assert report_summary._model() == "gpt-5-mini"
+    monkeypatch.setenv("GRADUATION_EXPLAIN_MODEL", "m-explain")
+    assert report_summary._model() == "m-explain"
+    monkeypatch.setenv("OPENAI_GRADUATION_MODEL", "m-common")
+    assert report_summary._model() == "m-common"     # 공통 키가 explain용보다 우선
+    monkeypatch.setenv("GRADUATION_SUMMARY_MODEL", "m-summary")
+    assert report_summary._model() == "m-summary"    # 총평 전용이 최우선

@@ -449,7 +449,10 @@ def _get_client():
 
 def _model() -> str:
     import os
-    return os.getenv("GRADUATION_SUMMARY_MODEL") or os.getenv("GRADUATION_EXPLAIN_MODEL") or "gpt-5-mini"
+    # 우선순위: 총평 전용 → 졸업센터 공통(다른 3개 LLM 노드와 동일 키) → 해설용 → 기본값.
+    # OPENAI_GRADUATION_MODEL 누락 시 총평만 다른 모델로 도는 비일관 수정(backend repo 발견 역수입).
+    return (os.getenv("GRADUATION_SUMMARY_MODEL") or os.getenv("OPENAI_GRADUATION_MODEL")
+            or os.getenv("GRADUATION_EXPLAIN_MODEL") or "gpt-5-mini")
 
 
 def _llm_json(client, model: str, prompt: str, schema: dict, name: str) -> dict:

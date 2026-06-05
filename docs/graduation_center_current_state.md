@@ -146,5 +146,5 @@ frontend/src/components/
 data/graduation/v2/  카탈로그·연도별 요건·demo_students/·explain_cache·whatif_cache
 scripts/make_demo_students.py  데모 학생 생성기
 scripts/warm_whatif_cache.py   상담 캐시 워밍업(환각 자동 검수·evict)
-tests/test_v2_*.py   126 테스트(117 passed — 상담 36·총평 14 포함)
+tests/test_v2_*.py   88 테스트 전부 passed(상담·총평·데모 학생 회귀 4 포함; 전체 스위트 138 collected·129 passed)
 ```

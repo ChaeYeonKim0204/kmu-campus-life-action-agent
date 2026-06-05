@@ -81,4 +81,4 @@
 | 졸업 시나리오 상담 Agent(what-if) | `whatif.py` (매개변수 추출기·조건 가드·diff·다음행동), `/graduation/v2/whatif` | `test_v2_whatif` (36종) | 🔮 상담 카드·그래프 상담 클러스터 |
 | 데모 학생 생성기 | `scripts/make_demo_students.py` | round-trip 검증 | 업로드 파일 4세트 |
 | 상담 캐시 워밍업 | `scripts/warm_whatif_cache.py` (환각 검수 포함) | — | (발표 전 1회 실행) |
-| 품질 캠페인 | `docs/reviews/review_round*.md` (적대 5R + 수렴 7R + 교수평가 6인) | 캠페인 당시 236 → 정리 후 현행 112(103 passed) | — |
+| 품질 캠페인 | `docs/reviews/review_round*.md` (적대 5R + 수렴 7R + 교수평가 6인 + 반증 리뷰) | 캠페인 당시 236 → 정리 후 현행 138(129 passed) | — |

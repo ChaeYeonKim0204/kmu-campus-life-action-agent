@@ -39,12 +39,19 @@ def test_s1_no_false_overflow():
     assert plan["status"] == "generated" and plan["feasible"] is True
     assert plan.get("overflow") is None
     assert risk["grade"] == "A+"
-    # oracle 핵심: 배치된 모든 catalog_verified 과목이 그 학기에 실제 개설되는가
+    # ground truth 핀: 2026-2 단일 학기에 2학기-개설 융합 3과목 — 과목명까지 고정하고
+    # 전부 catalog_verified·offered_terms 보유를 요구(codex 지적: offered_terms 빈 값
+    # name_only로 새면 아래 개설학기 oracle이 무력화되는 구멍 차단)
+    assert [t["term"] for t in plan["terms"]] == ["2026-2"]
+    placed = {c["name_ko"] for t in plan["terms"] for c in t["courses"]}
+    assert placed == {"다변량통계분석", "비즈니스통계응용", "인공지능"}
+    # oracle 핵심: 배치된 모든 과목이 그 학기에 실제 개설되는가
     for t in plan["terms"]:
         sem = t["term"].split("-")[1]
         for c in t["courses"]:
-            if c["offered_terms"]:
-                assert sem in c["offered_terms"], f"{c['name_ko']}를 {t['term']} 미개설인데 배치"
+            assert c["confidence"] == "catalog_verified" and c["offered_terms"], \
+                f"{c['name_ko']} 개설학기 미상으로 oracle 우회"
+            assert sem in c["offered_terms"], f"{c['name_ko']}를 {t['term']} 미개설인데 배치"
 
 
 def test_s2_overflow_is_arithmetic_floor():

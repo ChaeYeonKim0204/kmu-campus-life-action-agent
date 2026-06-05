@@ -218,11 +218,23 @@ export default function WorkflowGraph({ trace, compact = false }) {
                   fill={fill} stroke={stroke} strokeWidth={lit ? 2.5 : 1.5} filter={lit ? "url(#nshadow)" : undefined}
                   strokeDasharray={isSide && !lit ? "5 4" : undefined} />
               )}
-              {/* padding-left 22, 아이콘→텍스트 간격 16 유지; 제목+보조 2줄 블록을 노드 세로 중심에 정렬 */}
-              <circle cx={x + 22} cy={y + h / 2} r={6} fill={lit ? base : "#cbd5e1"} />
-              <text x={x + 22} y={y + h / 2 + 3.5} textAnchor="middle" fontSize="8" fill="#fff">{kindOf(n.kind).icon}</text>
-              <text x={x + 38} y={y + h / 2 - 3} fontSize={isSide ? 12 : 14} fontWeight="700" fill={lit ? "#0f172a" : "#94a3b8"}>{n.key}</text>
-              <text x={x + 38} y={y + h / 2 + 12} fontSize="10.5" fill="#94a3b8">{kindOf(n.kind).label}</text>
+              {/* 아이콘+제목+보조 콘텐츠 그룹을 노드 '중앙 기준'으로 배치 — 고정 padding이 아니라
+                  그룹 폭(아이콘 12 + 간격 10 + 텍스트 실측폭)을 재서 (노드폭-그룹폭)/2 로 좌표 계산.
+                  텍스트끼리는 좌측 정렬 유지(제목/보조 시작점 동일). 다이아몬드도 동일 적용.
+                  사이드 노드는 폭 168로 좁아 우상단 상태 글리프와 겹치므로 좌측 정렬(22) 유지 */}
+              {(() => {
+                const titleFS = isSide ? 12 : 14;
+                const contentW = 22 + Math.max((textW(n.key) * titleFS) / 11, (textW(kindOf(n.kind).label) * 10.5) / 11);
+                const gLeft = isSide ? x + 16 : x + Math.max(14, (w - contentW) / 2);
+                return (
+                  <g>
+                    <circle cx={gLeft + 6} cy={y + h / 2} r={6} fill={lit ? base : "#cbd5e1"} />
+                    <text x={gLeft + 6} y={y + h / 2 + 3.5} textAnchor="middle" fontSize="8" fill="#fff">{kindOf(n.kind).icon}</text>
+                    <text x={gLeft + 22} y={y + h / 2 - 3} fontSize={titleFS} fontWeight="700" fill={lit ? "#0f172a" : "#94a3b8"}>{n.key}</text>
+                    <text x={gLeft + 22} y={y + h / 2 + 12} fontSize="10.5" fill="#94a3b8">{kindOf(n.kind).label}</text>
+                  </g>
+                );
+              })()}
               {glyph && (
                 <g>
                   <circle cx={x + w - 16} cy={y + 15} r={8} fill={statusStroke(evt, base)} />

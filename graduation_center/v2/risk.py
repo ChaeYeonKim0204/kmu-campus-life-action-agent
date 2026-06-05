@@ -36,6 +36,8 @@ def already_met(audit: AuditResult, context: StudentContext) -> bool:
             and not audit.missing_required_names
             and all(cc.get("gap", 0) <= 0 and all(gc["gap"] <= 0 for gc in cc.get("group_checks", []))
                     for cc in audit.convergence_checks)
+            # 빈 배열은 all()==True라 S 오판 — gen_basic 데이터 미구축 학과는 S 금지(검증 R1)
+            and bool(audit.gen_basic_courses)
             and all(g.get("taken") for g in audit.gen_basic_courses)
             and audit.required_check_available
             and context.gpa_min_met == "yes")

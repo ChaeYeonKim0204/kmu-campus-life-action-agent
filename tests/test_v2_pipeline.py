@@ -417,6 +417,9 @@ def test_risk_grade_ladder():
     # 평점 unknown이면 S 금지(already_met False) → ladder로
     ctx_u = ctx.model_copy(update={"gpa_min_met": "unknown"})
     assert not already_met(audit(0), ctx_u)
+    # gen_basic 미구축(빈 배열) → S 금지(all([])==True 오판 차단 — 검증 R1)
+    a_empty = audit(0); a_empty.gen_basic_courses = []
+    assert not already_met(a_empty, ctx)
     # A+/A/B 사다리
     assert compute_risk(audit(20), ctx, ladder={**L, "feasible_15": True}).grade == "A+"
     assert compute_risk(audit(20), ctx, ladder={**L, "feasible_15": False, "feasible_legal": True}).grade == "A"

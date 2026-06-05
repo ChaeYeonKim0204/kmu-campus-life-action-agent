@@ -58,6 +58,9 @@ def _find_header(grid: list[list[str]]) -> int | None:
     for i, row in enumerate(grid):
         if any(c == "교과목코드" for c in row):
             return i
+        # 실파일 변형: '학생수강신청내역출력'은 코드 컬럼명이 '교과목'(교과목명과 병존) — alias
+        if "교과목" in row and "교과목명" in row:
+            return i
     return None
 
 
@@ -72,13 +75,21 @@ def _header_term(grid: list[list[str]]) -> str:
     return ""
 
 
+def _alias_header(header: list[str]) -> list[str]:
+    """실파일 헤더 변형 흡수 — ON국민 '학생수강신청내역출력'은 코드 컬럼명이 '교과목'
+    (2026-06-05 실파일 확인). '교과목명'이 따로 있을 때만 '교과목'을 교과목코드로 간주."""
+    if "교과목코드" not in header and "교과목" in header and "교과목명" in header:
+        return ["교과목코드" if c == "교과목" else c for c in header]
+    return header
+
+
 def fail_fast_columns(content: bytes, filename: str) -> list[str]:
     """필수 컬럼 존재만 체크. 없는 컬럼 목록 반환(있으면 422)."""
     grid = _grid(content, filename)
     h = _find_header(grid)
     if h is None:
         return REQUIRED_COLS[:]
-    header = grid[h]
+    header = _alias_header(grid[h])
     return [c for c in REQUIRED_COLS if c not in header]
 
 
@@ -87,7 +98,7 @@ def parse_file(content: bytes, filename: str) -> list[RawLine]:
     h = _find_header(grid)
     if h is None:
         return []
-    header = grid[h]
+    header = _alias_header(grid[h])
     colmap = {}
     for idx, label in enumerate(header):
         if label in _LABELS:

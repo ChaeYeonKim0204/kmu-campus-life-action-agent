@@ -467,3 +467,27 @@ def test_deep_major_recommendation_for_no_convergence(monkeypatch):
           "unresolved": v2["unresolved"], "possible_retakes": v2["possible_retakes"]}
     r2 = pipeline.run_audit(p2)
     assert not [c for tm in r2.roadmap.terms for c in tm.courses if "심화전공" in (c.satisfies or "")]
+
+
+def test_2019_yoram_and_header_alias():
+    """2019학번(빅데이터경영통계전공 — 학과명 다름) 지원 + 실파일 헤더 alias(2026-06-05).
+
+    공식 시트(2019_big_graduate.pdf): 기초14·핵심15·자유2·전공48·일선51·합130,
+    필수 10과목(당시 명칭)·S-TEAM/사제동행 택1·기초 6항목·심화전공 +21."""
+    from graduation_center.v2.audit_v2 import _required_names_for_year, _gen_basic_names
+    from graduation_center.v2.catalog import assemble_requirement_profile, deep_major_extra
+    from graduation_center.v2.models_v2 import StudentContext
+    prof = assemble_requirement_profile(StudentContext(program_id="ai_bigdata", admission_year=2019))
+    assert prof.area_min == {"전공": 48.0, "기초교양": 14.0, "핵심교양": 15.0,
+                             "자유교양": 2.0, "일반선택": 51.0}
+    names, pick = _required_names_for_year("ai_bigdata", 2019)
+    assert pick == 2019 and "데이터마이닝" in names and "경영수학" in names and len(names) == 10
+    assert len(_gen_basic_names("ai_bigdata", 2019)) == 6      # 컴퓨터프로그래밍 1·2 포함
+    assert deep_major_extra(2019) == 21.0 and deep_major_extra(2025) == 18.0  # 심화 연도 분기
+    # 2020·2021학번 → nearest-prior 2019
+    assert _required_names_for_year("ai_bigdata", 2021)[1] == 2019
+    # 실파일 헤더 alias: '교과목'+'교과목명' 병존 시 코드 컬럼으로 인식
+    from graduation_center.v2.excel_parser import _alias_header, _find_header
+    hdr = ["순번", "이수구분", "교과목", "교과목명", "분반", "학점"]
+    assert _find_header([hdr]) == 0
+    assert "교과목코드" in _alias_header(hdr)

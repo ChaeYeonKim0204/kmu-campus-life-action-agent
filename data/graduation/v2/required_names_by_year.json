@@ -476,6 +476,18 @@
             "2"
           ]
         }
+      ],
+      "2019": [
+        "현대경영과기업가정신",
+        "경제학개론",
+        "경영통계",
+        "회계학원론",
+        "경영수학",
+        "경영정보학원론",
+        "분석프로그래밍Ⅰ",
+        "데이터모델링과SQL",
+        "회귀분석",
+        "데이터마이닝"
       ]
     }
   },
@@ -563,6 +575,22 @@
           "label": "College EnglishⅠ·Ⅱ 중 택1"
         },
         "English Conversation"
+      ],
+      "2019": [
+        "글쓰기",
+        "English ReadingⅠ",
+        {
+          "any_of": [
+            "English ConversationⅠ",
+            "English ConversationⅡ",
+            "English Conversation(Advanced)",
+            "English Conversation"
+          ],
+          "label": "English ConversationⅠ·Ⅱ·Advanced 중 택1"
+        },
+        "글로벌영어",
+        "컴퓨터프로그래밍1",
+        "컴퓨터프로그래밍2"
       ]
     }
   },
@@ -632,6 +660,21 @@
                 "1",
                 "2"
               ]
+            }
+          ]
+        }
+      ],
+      "2019": [
+        {
+          "label": "S-TEAM Class·사제동행세미나 중 택1",
+          "items": [
+            {
+              "name": "S-TEAM Class",
+              "credits": 1
+            },
+            {
+              "name": "사제동행세미나",
+              "credits": 1
             }
           ]
         }

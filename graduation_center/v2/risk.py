@@ -113,11 +113,13 @@ def compute_risk(
     # 졸업인증제(제96조의2·졸업요건 제4조의2): 심화전공(전공최저 +18 초과, 제74조⑤ 2025 개정)
     # 또는 다·부전공 중 1 필수. 면제 전형·공학인증·교직 대체가 있어 hard-block 대신 경고.
     major = next((g for g in audit.area_gaps if g.area == "전공"), None)
+    from graduation_center.v2.catalog import deep_major_extra as _dme
+    _extra = _dme(getattr(context, "admission_year", None))
     if not audit.convergence_checks and major is not None \
-            and major.earned < major.required + 18:
+            and major.earned < major.required + _extra:
         grade = _worse(grade, "B")
         reasons.append(RiskReason(factor="졸업인증제",
-                       detail=f"심화전공(전공 {major.required:.0f}+18학점 초과) 또는 다·부전공 중 "
+                       detail=f"심화전공(전공 {major.required:.0f}+{_extra:.0f}학점 초과) 또는 다·부전공 중 "
                               f"1개 필요 — 현재 어느 쪽도 미충족으로 보임(공학인증·교직·면제전형 해당 시 무관, 학과 확인 권장)",
                        severity=10))
 

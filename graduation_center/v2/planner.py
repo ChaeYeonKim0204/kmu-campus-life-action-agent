@@ -605,12 +605,14 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
         if not audit.convergence_checks:
             g_major = next((g for g in audit.area_gaps if g.area == "전공"), None)
             planned_major = round(sum(it["credits"] for it in selected if it.get("area") == "전공"), 1)
-            deep_need = (round((g_major.required + 18.0) - g_major.earned - planned_major, 1)
+            from graduation_center.v2.catalog import deep_major_extra
+            extra = deep_major_extra(profile.admission_year)
+            deep_need = (round((g_major.required + extra) - g_major.earned - planned_major, 1)
                          if g_major is not None else 0.0)
             taken_keys = {(it.get("course_id") or it["name_ko"]) for it in selected}
             confirmed_full2 = {c.course_id for c in verified.confirmed_courses if c.course_id}
             deep_pool = [{"name_ko": c.name_ko, "course_id": c.course_id, "credits": c.credits,
-                          "satisfies": "심화전공 권장(+18)", "offered_terms": c.offered_terms,
+                          "satisfies": f"심화전공 권장(+{extra:g})", "offered_terms": c.offered_terms,
                           "prerequisites": c.prerequisites, "confidence": "catalog_verified"}
                          for c in cat["courses"]
                          if not getattr(c, "discontinued", False)
@@ -733,8 +735,8 @@ def plan_greedy(selected: list[dict], terms: list[list],
                                term_risk=("high" if used[lab] >= cap - 0.01
                                           else "medium" if used[lab] > cap - 3 else "low")))
     assumptions = []
-    if any(it.get("satisfies") == "심화전공 권장(+18)" for it in selected):
-        assumptions.append("다·부전공 미신청 → 졸업인증제 충족을 위해 심화전공(전공 최저+18학점) 기준으로 "
+    if any(str(it.get("satisfies", "")).startswith("심화전공 권장") for it in selected):
+        assumptions.append("다·부전공 미신청 → 졸업인증제 충족을 위해 심화전공(전공 최저+추가학점) 기준으로 "
                            "전공 과목을 추천했습니다 — 면제 전형·교직·공학인증 해당 시 학과 확인.")
     if any(it.get("manual") for it in selected):
         assumptions.append("이름기준·교양 슬롯 과목은 개설학기·학점을 수강신청 전 확인하세요.")

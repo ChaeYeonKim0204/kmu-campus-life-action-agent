@@ -170,7 +170,7 @@ class RiskReason(BaseModel):
 
 
 class RiskAssessment(BaseModel):
-    grade: Literal["A", "B", "C", "D"]
+    grade: Literal["S", "A+", "A", "B", "C", "D"]    # 졸업 여유도 사다리(2026-06-05)
     label: str
     score: int = 0
     reasons: list[RiskReason] = Field(default_factory=list)

@@ -10,18 +10,45 @@ from graduation_center.v2.models_v2 import (
 )
 from graduation_center.v2.catalog import PREV_GPA_BONUS, SEASONAL_TERM_CAP
 
-GRADE_RANK = {"A": 0, "B": 1, "C": 2, "D": 3}
-LABELS = {"A": "안전", "B": "주의", "C": "위험", "D": "졸업불가 가능성"}
+# 졸업 여유도 사다리(2026-06-05 사용자 설계): 등급 = "얼마나 편하게 졸업하나"의 단조 척도.
+# S=학점·요람 요건 충족 / A+=계절 없이 15학점 이하 / A=계절 없이 법정 상한 / B=계절 필요 /
+# C=초과 1학기(경로 검증) / D=초과 다수·미검증·불가. 판정은 전부 결정론 플래너 시나리오 런.
+GRADE_RANK = {"S": -2, "A+": -1, "A": 0, "B": 1, "C": 2, "D": 3}
+LABELS = {"S": "요건 충족", "A+": "여유", "A": "가능", "B": "계절 필요",
+          "C": "초과 1학기", "D": "초과 다수·불가"}
+
+
+def grade_rank(g: str) -> int:
+    """등급 순서 비교용 공용 헬퍼 — 'A+' 도입으로 문자 비교(risk_after > risk_before)는 깨짐."""
+    return GRADE_RANK.get(g, 3)
 
 
 def _worse(a: str, b: str) -> str:
     return a if GRADE_RANK[a] >= GRADE_RANK[b] else b
 
 
+def already_met(audit: AuditResult, context: StudentContext) -> bool:
+    """S 판정 — 학점·요람 요건 전부 충족(결정론 hard-verify 가능 범위만).
+    평점 unknown·필수 데이터 미구축은 S 금지(단정 금지 — R2)."""
+    return (audit.total_gap <= 0
+            and all(g.gap <= 0 for g in audit.area_gaps)
+            and all(g.gap <= 0 for g in audit.core_area_gaps)
+            and not audit.missing_required_names
+            and all(cc.get("gap", 0) <= 0 and all(gc["gap"] <= 0 for gc in cc.get("group_checks", []))
+                    for cc in audit.convergence_checks)
+            and all(g.get("taken") for g in audit.gen_basic_courses)
+            and audit.required_check_available
+            and context.gpa_min_met == "yes")
+
+
 def compute_risk(
     audit: AuditResult, context: StudentContext, roadmap_feasible: bool | None = None,
     overflow: OverflowScenario | None = None, overflow_verified: bool | None = None,
+    ladder: dict | None = None,
 ) -> RiskAssessment:
+    """ladder: 졸업 여유도 시나리오 런 결과(pipeline이 결정론 산출) —
+    {"feasible_15": bool|None, "feasible_legal": bool|None, "feasible_seasonal": bool|None}.
+    None(미산출 — current_term 미입력 등)이면 구 트리거 등급으로 폴백."""
     reasons: list[RiskReason] = []
     grade = "A"
     gap = audit.total_gap
@@ -131,16 +158,36 @@ def compute_risk(
         else:
             detail = "잔여 학기 내 실현 가능한 계획 없음"
         reasons.append(RiskReason(factor="로드맵", detail=detail, severity=15))
-    elif roadmap_feasible is True and grade in ("C", "D") and context.gpa_min_met != "no" \
-            and gap <= capacity + 0.01:
-        # 절대 갭(>15 등)이 C/D를 트리거했어도, 결정론 로드맵이 잔여 학기 안 전체 배치를
-        # 검증했고 수용량 내면 '위험'은 과장 — B(주의)로 클램프(2026-06-05 사용자 제안:
-        # 등급은 절대 부족량이 아니라 잔여 수용량 대비 진행 위험이어야 함. 2학년 갭 90 ≠ 위험).
-        # blocked(feasible=False)·수용량 초과·평점 미달은 이 게이트를 타지 않음(위 분기·조건).
-        # A는 트리거 0(이미 충족)일 때만 — '계획이 남은' 학생의 상한은 B가 정직.
-        grade = "B"
-        reasons.append(RiskReason(factor="로드맵",
-                       detail="실현 가능한 학기별 계획 존재(잔여 수용량 내) — 계획 이행 전제 B로 완화", severity=0))
+    # ── 졸업 여유도 사다리(최종 판정 — 위 트리거 등급을 대체, reasons는 전부 유지) ──
+    # 평점 미달(D)·current_term 미입력(ladder=None — 시나리오 런 불가)은 사다리 미적용 폴백.
+    if context.gpa_min_met != "no" and ladder is not None:
+        if already_met(audit, context):
+            grade = "S"
+            reasons.append(RiskReason(factor="여유도",
+                           detail="학점·요람 요건 전부 충족 — 조기졸업 요건(평점 등)은 규정 안내 참고·"
+                                  "논문/인증제 등은 범위 외(학과 확인)", severity=0))
+        elif ladder.get("feasible_15") is True:
+            grade = "A+"
+            reasons.append(RiskReason(factor="여유도",
+                           detail="계절학기 없이 학기당 15학점 이하로 졸업 가능(시나리오 검증)", severity=0))
+        elif ladder.get("feasible_legal") is True:
+            grade = "A"
+            reasons.append(RiskReason(factor="여유도",
+                           detail="계절학기 없이 법정 상한 내 졸업 가능(시나리오 검증)", severity=0))
+        elif ladder.get("feasible_seasonal") is True:
+            grade = "B"
+            reasons.append(RiskReason(factor="여유도",
+                           detail="계절학기 이수 시 초과학기 없이 졸업 가능(시나리오 검증)", severity=0))
+        elif overflow is not None and overflow.extra_semesters == 1 and overflow_verified is True:
+            grade = "C"
+            reasons.append(RiskReason(factor="여유도",
+                           detail="초과학기 1학기 필요(재배치 경로 검증됨)", severity=10))
+        else:
+            grade = "D"
+            reasons.append(RiskReason(factor="여유도",
+                           detail=("초과학기 다수 또는 경로 미확정 — 학과 상담 권장"
+                                   if overflow is not None else "잔여 학기 내 경로 불성립 — 학과 상담 권장"),
+                           severity=20))
     if grade == "D" and context.gpa_min_met != "no" and overflow is not None \
             and overflow.extra_semesters <= 1 and overflow_verified is True:
         # blocked라도 초과학기 1학기로 닫히는 구체적 졸업 경로(overflow 시나리오)가 있으면

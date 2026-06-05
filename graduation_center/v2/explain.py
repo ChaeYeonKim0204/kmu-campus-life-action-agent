@@ -43,6 +43,17 @@ def select_explain_items(audit: AuditResult, profile: RequirementProfile,
     items: list[dict] = []
     dept = profile.department_name_ko
 
+    # S(학점·요람 요건 충족) 학생: 부족 항목이 없어 items가 비므로 조기졸업 안내를 삽입
+    # (2026-06-05 사용자 지시 — 판정은 안 함·평점 데이터 없음, 규정 RAG 안내만)
+    from graduation_center.v2.risk import already_met
+    if already_met(audit, ctx):
+        items.append({
+            "key": "early_graduation",
+            "title": "조기졸업 요건 안내 (요건 충족 학생)",
+            "query": "조기졸업 신청 승인 요건 평점 등록학기 제95조",
+            "context": "학점·요람 요건 전부 충족 — 조기졸업 가능성 검토(평점·등록학기 등은 본인 확인)",
+        })
+
     for cc in audit.convergence_checks:
         short_groups = [gc for gc in cc.get("group_checks", []) if gc["gap"] > 0]
         if cc.get("gap", 0) > 0 or short_groups:

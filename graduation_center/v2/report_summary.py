@@ -220,7 +220,7 @@ def _summary_schema(fact_ids: list[str]) -> dict:
     }
 
 
-_GRADE_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3}
+_GRADE_ORDER = {"S": -2, "A+": -1, "A": 0, "B": 1, "C": 2, "D": 3}   # 여유도 사다리와 동기
 
 
 def _effect(diff) -> tuple[str, str]:
@@ -294,7 +294,8 @@ sim_cap/accept_cap=상한 초과로 미채택일 뿐 효과 없음이 아님 —
 
 
 # 한글 인접("A등급"·"D입니다")도 잡는 등급 패턴 — 영문 단어 내부(AI·CLASS)는 제외(codex R1)
-_GRADE_RE = re.compile(r"(?<![A-Za-z])([A-D])(?![A-Za-z])")
+# 'A+' 포함 — A 단독과 구분 위해 A\+ 우선 매칭, 한글 인접 규칙 유지
+_GRADE_RE = re.compile(r"(?<![A-Za-z])(A\+|[SABCD])(?![A-Za-z+])")
 
 
 _UNIT_NUM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?=학점|학기|과목|점)")  # 단위 동반 수치(1자리 포함)

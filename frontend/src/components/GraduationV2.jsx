@@ -2,7 +2,7 @@ import React from "react";
 import WorkflowGraph from "./WorkflowGraph.jsx";
 
 // 졸업센터 v2 — 수강내역 엑셀 → 검증(HITL) → 졸업사정 컨설팅 대시보드
-const GRADE_COLOR = { A: "#10B981", B: "#F59E0B", C: "#EF4444", D: "#B91C1C" };
+const GRADE_COLOR = { S: "#7C3AED", "A+": "#059669", A: "#10B981", B: "#F59E0B", C: "#EF4444", D: "#B91C1C" };  // 졸업 여유도 사다리
 const C = {
   navy: "#0F3D7A", accent: "#1d6fe0", bg: "#eef2f7", card: "#ffffff",
   border: "#e3e8ef", text: "#1f2937", muted: "#6b7280", soft: "#f7f9fc",

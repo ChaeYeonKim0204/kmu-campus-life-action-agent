@@ -398,24 +398,40 @@ def test_gen_ed_gap_planned_as_slot():
     assert all(c.manual_check for c in placed if c.confidence == "generic_slot")
 
 
-def test_risk_feasible_clamps_to_B():
-    """feasible+수용량 내면 절대 갭 트리거(C/D)를 B(주의)로 클램프 — 잔여 수용량 대비 위험
-    (2026-06-05 사용자 제안). blocked·수용량 초과·평점 미달은 미적용."""
-    from graduation_center.v2.risk import compute_risk
-    from graduation_center.v2.models_v2 import AreaGap, AuditResult, StudentContext
+def test_risk_grade_ladder():
+    """졸업 여유도 사다리(S/A+/A/B/C/D — 2026-06-05 사용자 설계): 시나리오 런 결과로 판정,
+    평점 미달 D·ladder 미산출(폴백)·미검증 초과 D 경계 포함."""
+    from graduation_center.v2.risk import compute_risk, already_met
+    from graduation_center.v2.models_v2 import AreaGap, AuditResult, OverflowScenario, StudentContext
 
-    def audit(gap):
+    def audit(gap=0, missing=None):
         return AuditResult(total_required=130, total_earned=130 - gap, total_gap=gap,
-                           area_gaps=[AreaGap(area="전공", required=48, earned=48 - min(gap, 20),
-                                              gap=min(gap, 20))])
+                           area_gaps=[AreaGap(area="전공", required=48, earned=48, gap=0)],
+                           missing_required_names=missing or [],
+                           gen_basic_courses=[{"name_ko": "글쓰기", "taken": True}])
 
     ctx = StudentContext(program_id="ai_bigdata", remaining_semesters=2, gpa_min_met="yes")
-    r = compute_risk(audit(22), ctx, roadmap_feasible=True)        # gap 22 <= 36
-    assert r.grade == "B" and any("계획 이행 전제" in x.detail for x in r.reasons)
-    r2 = compute_risk(audit(22), ctx, roadmap_feasible=False)      # blocked → 미적용
-    assert r2.grade != "B"
-    r3 = compute_risk(audit(80), ctx, roadmap_feasible=True)       # 수용량 초과 → D
-    assert r3.grade == "D"
-    ctx_bad = ctx.model_copy(update={"gpa_min_met": "no"})
-    r4 = compute_risk(audit(22), ctx_bad, roadmap_feasible=True)   # 평점 미달 → D
-    assert r4.grade == "D"
+    L = {"feasible_15": None, "feasible_legal": None, "feasible_seasonal": None}
+    # S: 갭 0 + 평점 yes
+    assert compute_risk(audit(0), ctx, ladder=L).grade == "S"
+    # 평점 unknown이면 S 금지(already_met False) → ladder로
+    ctx_u = ctx.model_copy(update={"gpa_min_met": "unknown"})
+    assert not already_met(audit(0), ctx_u)
+    # A+/A/B 사다리
+    assert compute_risk(audit(20), ctx, ladder={**L, "feasible_15": True}).grade == "A+"
+    assert compute_risk(audit(20), ctx, ladder={**L, "feasible_15": False, "feasible_legal": True}).grade == "A"
+    assert compute_risk(audit(20), ctx, ladder={**L, "feasible_15": False, "feasible_legal": False,
+                                                "feasible_seasonal": True}).grade == "B"
+    # C: 검증된 초과 1 / D: 미검증·다수
+    ov1 = OverflowScenario(shortfall_credits=3, per_term_credit_cap=18, remaining_semesters=2,
+                           total_semesters_needed=3, extra_semesters=1, note="x")
+    assert compute_risk(audit(40), ctx, roadmap_feasible=False, overflow=ov1,
+                        overflow_verified=True, ladder=L).grade == "C"
+    assert compute_risk(audit(40), ctx, roadmap_feasible=False, overflow=ov1,
+                        overflow_verified=False, ladder=L).grade == "D"
+    # 평점 미달은 무조건 D
+    ctx_no = ctx.model_copy(update={"gpa_min_met": "no"})
+    assert compute_risk(audit(0), ctx_no, ladder=L).grade == "D"
+    # ladder None(현재 학기 미입력) → 구 트리거 폴백(A~D 범위)
+    r = compute_risk(audit(20), ctx, ladder=None)
+    assert r.grade in ("A", "B", "C", "D")

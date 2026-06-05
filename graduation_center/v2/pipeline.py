@@ -54,6 +54,7 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
     unresolved = [CourseMatch.model_validate(x) for x in payload.get("unresolved", [])]
     retakes = payload.get("possible_retakes", [])
 
+    from graduation_center.v2.risk import already_met as _already_met
     verified = finalize_transcript(table, unresolved, retakes)
     profile = assemble_requirement_profile(ctx)
     audit = compute_audit(verified, profile, convergence_program_ids=ctx.convergence_program_ids,
@@ -70,8 +71,27 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
         ctx_plus = ctx.model_copy(update={"remaining_semesters": ctx.remaining_semesters + 1})
         plan_plus, _, _ = run_planner(audit, profile, ctx_plus, verified, client=client)
         overflow_verified = plan_plus.feasible is True
+    # 졸업 여유도 사다리 시나리오 런(결정론 — 사용자 ctx와 독립: 보너스·계절 고정).
+    # 가지치기: S(이미 충족)·15캡 성공 시 다음 런 생략. current_term 없으면 배치 불가 → None 폴백.
+    ladder = None
+    if ctx.current_term:
+        ladder = {"feasible_15": None, "feasible_legal": None, "feasible_seasonal": None}
+        if not _already_met(audit, ctx):
+            base = {"prev_term_gpa_ge_375": False, "seasonal_semester_allowed": False}
+            c15 = ctx.model_copy(update={**base, "max_credits_per_term": 15.0})
+            p15, _, _ = run_planner(audit, profile, c15, verified, client=None)
+            ladder["feasible_15"] = p15.feasible is True
+            if not ladder["feasible_15"]:
+                cl = ctx.model_copy(update={**base, "max_credits_per_term": None})
+                pl_, _, _ = run_planner(audit, profile, cl, verified, client=None)
+                ladder["feasible_legal"] = pl_.feasible is True
+                if not ladder["feasible_legal"]:
+                    cs = ctx.model_copy(update={**base, "max_credits_per_term": None,
+                                                "seasonal_semester_allowed": True})
+                    ps_, _, _ = run_planner(audit, profile, cs, verified, client=None)
+                    ladder["feasible_seasonal"] = ps_.feasible is True
     risk = compute_risk(audit, ctx, roadmap_feasible=feasible, overflow=plan.overflow,
-                        overflow_verified=overflow_verified)
+                        overflow_verified=overflow_verified, ladder=ladder)
     # 근거(G1..) — 결정론 구성: 적용 요람·학사규정 제32/77조·융합 요람·교양과정.
     # (과거 LLM 플래너의 pctx["sources"]는 빈 배열이라 citation contract가 죽어 있었음)
     sources, marks = _build_sources(profile, ctx, audit)
@@ -106,6 +126,30 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
                     ExplainLine(text=line2, source_ids=["G1"], grounded=True),
                 ])
             explanations = [det] + explanations
+        # S(요건 충족) 학생 + 조기졸업 RAG 섹션이 없을 때(LLM 무키·실패) — 공식 공지 curated
+        # 텍스트로 결정론 fallback(계획 R2 MUST: Chroma/키 실패에도 안내 보장)
+        if _already_met(audit, ctx) and not any(
+                getattr(x, "key", "") == "early_graduation" for x in explanations):
+            try:
+                import json as _json
+                pol = _json.loads((__import__("pathlib").Path(__file__).resolve().parents[2]
+                                   / "data/graduation/policies.json").read_text(encoding="utf-8"))
+                eg = (pol.get("early_graduation") or [{}])[0]
+                if eg.get("text"):
+                    from graduation_center.v2.models_v2 import ExplainLine, ExplainSection
+                    sid_eg = f"G{len(sources) + 1}"
+                    sources.append(Source(id=sid_eg, doc=f"조기졸업 승인 안내 — {eg.get('title', '공식 공지')}",
+                                          page=None, source_type="requirement_rule", ref="조기졸업"))
+                    first = eg["text"].split(". ")
+                    explanations.append(ExplainSection(
+                        key="early_graduation", deterministic=True,
+                        title="조기졸업 요건 안내 (요건 충족 — 공식 공지 기준)",
+                        lines=[ExplainLine(text=". ".join(first[:3]) + ".",
+                                           source_ids=[sid_eg], grounded=True),
+                               ExplainLine(text="평점·등록학기 등 본인 해당 여부는 ON국민 졸업정보에서 확인하세요.",
+                                           source_ids=[sid_eg], grounded=True)]))
+            except Exception:
+                pass                                  # 안내 fallback 실패는 본체 무영향
     sources += y_sources
 
     conv_n = len(audit.convergence_checks)

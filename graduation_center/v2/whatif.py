@@ -382,7 +382,8 @@ def suggest_next_actions(diff: WhatIfDiff, delta: WhatIfDelta,
         acts.append("초과 등록 학기의 등록금·국가장학 신청 요건을 확인하세요.")
     if delta.seasonal_semester_allowed is True:
         acts.append("계절학기 개설 과목은 학기마다 다릅니다 — 개설 공지를 확인하세요.")
-    if diff.risk_after > diff.risk_before and not overflow_resolved:   # A<B<C<D 문자 비교
+    from graduation_center.v2.risk import grade_rank
+    if grade_rank(diff.risk_after) > grade_rank(diff.risk_before) and not overflow_resolved:  # 'A+' 안전 비교
         acts.append("변경 전 계획이 더 안전합니다 — 변경이 꼭 필요하면 학과 상담을 권장합니다.")
     if diff.already_met_after and not acts:
         acts.append("졸업사정 결과가 충족으로 유지됩니다 — 졸업신청 일정만 확인하세요.")

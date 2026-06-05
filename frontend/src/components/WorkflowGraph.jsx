@@ -48,6 +48,17 @@ const CONSULT_KNOWN = new Set(CONSULT_NODES.map((n) => n.key));
 const STEP = 82, TOP = 20, NX = 178, NW = 230, NH = 54;
 const SX = NX + NW + 26, SW = 168, SH = 46;        // 사이드 레인(분기 갈래)
 const STATUS_GLYPH = { fail: "✕", warn: "!", skip: "·" };
+// SVG <text>는 width 자동 계산이 없어 글자폭을 추정 — 한글(전각) ≈ fontSize, 그 외 ≈ 절반.
+// 평균치(8.2) 방식은 한글 비중 높은 라벨이 pill 밖으로 삐져나갔다(정렬 수정 2026-06-05).
+const charW = (ch) => (ch.charCodeAt(0) > 0x2e7f ? 11 : 6.2);
+const textW = (s) => [...s].reduce((w, c) => w + charW(c), 0);
+const PILL_PAD_X = 10, PILL_PAD_Y = 4, PILL_MAX_TEXT = 140;   // padding 4px 10px, 레인 침범 방지 상한
+const pillDisp = (s) => {
+  if (textW(s) <= PILL_MAX_TEXT) return s;
+  let out = s;
+  while (out.length > 1 && textW(out) + 11 > PILL_MAX_TEXT) out = out.slice(0, -1);
+  return out.trimEnd() + "…";
+};
 
 export default function WorkflowGraph({ trace, compact = false }) {
   // 상담 이벤트가 있을 때만 상담 클러스터를 노출(레이아웃·높이·엣지 전부 동적 — 검증 라운드2 H3)
@@ -194,7 +205,8 @@ export default function WorkflowGraph({ trace, compact = false }) {
           const xc = x + w / 2;
           const fill = lit ? "#ffffff" : "#f6f8fb";
           const bt = evt?.branch_taken || "";
-          const disp = bt.length > 17 ? bt.slice(0, 16) + "…" : bt;
+          const disp = pillDisp(bt);
+          const pillW = textW(disp) + PILL_PAD_X * 2;   // fit-content: 텍스트 실측폭 + 좌우 padding
           const glyph = lit && evt && STATUS_GLYPH[evt.status];
           return (
             <g key={n.key} opacity={lit ? 1 : 0.62}>
@@ -206,23 +218,24 @@ export default function WorkflowGraph({ trace, compact = false }) {
                   fill={fill} stroke={stroke} strokeWidth={lit ? 2.5 : 1.5} filter={lit ? "url(#nshadow)" : undefined}
                   strokeDasharray={isSide && !lit ? "5 4" : undefined} />
               )}
-              <circle cx={x + 18} cy={y + h / 2} r={6} fill={lit ? base : "#cbd5e1"} />
-              <text x={x + 18} y={y + h / 2 + 3.5} textAnchor="middle" fontSize="8" fill="#fff">{kindOf(n.kind).icon}</text>
-              <text x={x + 34} y={y + h / 2 - 2} fontSize={isSide ? 12 : 14} fontWeight="700" fill={lit ? "#0f172a" : "#94a3b8"}>{n.key}</text>
-              <text x={x + 34} y={y + h / 2 + 13} fontSize="10.5" fill="#94a3b8">{kindOf(n.kind).label}</text>
+              {/* padding-left 22, 아이콘→텍스트 간격 16 유지; 제목+보조 2줄 블록을 노드 세로 중심에 정렬 */}
+              <circle cx={x + 22} cy={y + h / 2} r={6} fill={lit ? base : "#cbd5e1"} />
+              <text x={x + 22} y={y + h / 2 + 3.5} textAnchor="middle" fontSize="8" fill="#fff">{kindOf(n.kind).icon}</text>
+              <text x={x + 38} y={y + h / 2 - 3} fontSize={isSide ? 12 : 14} fontWeight="700" fill={lit ? "#0f172a" : "#94a3b8"}>{n.key}</text>
+              <text x={x + 38} y={y + h / 2 + 12} fontSize="10.5" fill="#94a3b8">{kindOf(n.kind).label}</text>
               {glyph && (
                 <g>
                   <circle cx={x + w - 16} cy={y + 15} r={8} fill={statusStroke(evt, base)} />
                   <text x={x + w - 16} y={y + 18.5} textAnchor="middle" fontSize="10" fontWeight="700" fill="#fff">{glyph}</text>
                 </g>
               )}
-              {/* 분기 pill — 좌측 레인(겹침 없음·17자) */}
+              {/* 분기 pill — 좌측 레인(겹침 없음). 글자폭 실측 + 좌우 padding, 텍스트는 pill 중앙 정렬 */}
               {lit && bt && !isSide && (
                 <g>
                   <title>{bt}</title>
-                  <rect x={NX - 16 - (disp.length * 8.2 + 14)} y={y + NH / 2 - 11} width={disp.length * 8.2 + 14} height={22} rx={11}
+                  <rect x={NX - 16 - pillW} y={y + NH / 2 - 11 - PILL_PAD_Y / 2} width={pillW} height={22 + PILL_PAD_Y} rx={11 + PILL_PAD_Y / 2}
                     fill={n.kind === "validator" ? "#f3effe" : n.kind === "llm" ? "#eff6ff" : "#eefcf3"} stroke={base} />
-                  <text x={NX - 9 - (disp.length * 8.2 + 14) + 7} y={y + NH / 2 + 4} fontSize="11" fill={base} fontWeight="600">{disp}</text>
+                  <text x={NX - 16 - pillW / 2} y={y + NH / 2 + 4} textAnchor="middle" fontSize="11" fill={base} fontWeight="600">{disp}</text>
                 </g>
               )}
               {lit && bt && isSide && <title>{bt}</title>}

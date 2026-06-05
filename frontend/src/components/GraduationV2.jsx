@@ -1213,6 +1213,12 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                       )}
                     </div>
                   )}
+                  {/* 충족으로 로드맵이 비는 경우 — 침묵 대신 사유를 한 줄로(빈 화면=버그 오인 방지, 2026-06-05) */}
+                  {whatif.after?.roadmap && !(whatif.after.roadmap.terms?.length > 0) && whatif.after.roadmap.why_this_plan && (
+                    <p style={{ fontSize: 11.5, color: C.muted, margin: 0, padding: "0 16px 12px" }}>
+                      🗺️ 변경 후 로드맵: {whatif.after.roadmap.why_this_plan}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

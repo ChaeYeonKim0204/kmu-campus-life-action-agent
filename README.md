@@ -131,14 +131,14 @@ cloudflared tunnel --url http://127.0.0.1:8001
 ### 테스트
 
 ```bash
-pytest                                  # 전체 (129 collected · 120 passed + live-LLM opt-in skip)
+pytest                                  # 전체 (139 collected · 130 passed + live-LLM opt-in skip)
 pytest tests/test_graduation_center.py  # 졸업센터 회귀
 pytest tests/test_v2_pipeline.py        # v2 파이프라인
 ```
 
 ### 데모 자산
 
-합성 학생 4명(`data/graduation/v2/demo_students/`) — 여유 통과(A+)·계절 필요(B)·초과 1학기(C)·최악(D) 시나리오를 커버한다. 재생성:
+합성 학생 4명(`data/graduation/v2/demo_students/`) — 여유 통과(A+ ×2)·초과 1학기(B, 산술 floor)·최악(D, 초과 +4·⑦′ 분기 시연) 시나리오를 커버한다. 재생성:
 
 ```bash
 PYTHONPATH=. python scripts/make_demo_students.py

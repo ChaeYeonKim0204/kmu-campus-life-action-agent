@@ -486,6 +486,10 @@ def test_2019_yoram_and_header_alias():
     assert deep_major_extra(2019) == 18.0 == deep_major_extra(2025)  # 2025 개정 — 전 학번 일괄 18
     # 2020·2021학번 → nearest-prior 2019
     assert _required_names_for_year("ai_bigdata", 2021)[1] == 2019
+    # 표시: 개정 과목은 "개정이름(구. 옛이름)" — 매칭·플래너는 원이름 유지(2026-06-05)
+    from graduation_center.v2.audit_v2 import display_required_name
+    assert display_required_name("ai_bigdata", "데이터마이닝") == "머신러닝(구. 데이터마이닝)"
+    assert display_required_name("ai_bigdata", "회귀분석") == "회귀분석"   # 미개정은 그대로
     # 실파일 헤더 alias: '교과목'+'교과목명' 병존 시 코드 컬럼으로 인식
     from graduation_center.v2.excel_parser import _alias_header, _find_header
     hdr = ["순번", "이수구분", "교과목", "교과목명", "분반", "학점"]

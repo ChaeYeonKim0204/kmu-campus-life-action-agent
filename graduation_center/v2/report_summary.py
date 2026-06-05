@@ -58,7 +58,8 @@ def _build_facts(audit, risk, plan, ctx: StudentContext) -> list[dict]:
     gaps = [f"{g.area} {g.earned:g}/{g.required:g}(부족 {g.gap:g})"
             for g in audit.area_gaps if g.gap > 0]
     add("영역 부족: " + (", ".join(gaps) if gaps else "없음"))
-    add("미이수 필수: " + (", ".join(audit.missing_required_names) if audit.missing_required_names else "없음"))
+    add("미이수 필수: " + (", ".join(audit.missing_required_display or audit.missing_required_names)
+                          if audit.missing_required_names else "없음"))
     # 점수(score)는 구 트리거 보조 지표 — 여유도 사다리와 따로 놀아 총평에서 제외(사용자 혼란)
     add(f"졸업 여유도 {risk.grade}({risk.label})")
     o = plan.overflow

@@ -918,7 +918,7 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                 </div>
               )}
               {audit.audit.missing_required_names.length > 0 && (
-                <p style={{ color: C.danger, fontSize: 13, margin: "8px 0 0" }}>미이수 필수지정: {audit.audit.missing_required_names.join(", ")}</p>
+                <p style={{ color: C.danger, fontSize: 13, margin: "8px 0 0" }}>미이수 필수지정: {(audit.audit.missing_required_display?.length ? audit.audit.missing_required_display : audit.audit.missing_required_names).join(", ")}</p>
               )}
               {audit.audit.required_check_available === false && (
                 <p style={{ fontSize: 11.5, color: C.muted, margin: "8px 0 0" }}>※ 이 학과는 요람 필수지정 과목 데이터가 아직 없어 필수과목 체크가 제외됐습니다(확인 필요).</p>

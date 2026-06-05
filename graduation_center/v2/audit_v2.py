@@ -148,6 +148,18 @@ def _required_prefixes_for_year(program_id: str, year: int | None) -> set | None
     return prefixes
 
 
+def _renamed_to(program_id: str) -> dict:
+    """과목명 개정 매핑(구→신) — 표시용 "개정이름(구. 옛이름)" 합성(2026-06-05 사용자 지시)."""
+    p = V2_DIR / "required_names_by_year.json"
+    return (json.loads(p.read_text(encoding="utf-8")).get("renamed_to", {}) if p.exists() else {}).get(program_id, {})
+
+
+def display_required_name(program_id: str, name: str) -> str:
+    """필수과목 표시명 — 개정됐으면 '개정이름(구. 옛이름)'. 매칭·플래너는 원이름을 계속 사용."""
+    new = _renamed_to(program_id).get(name)
+    return f"{new}(구. {name})" if new else name
+
+
 def _admission_year(profile: RequirementProfile, verified: VerifiedTranscript) -> int | None:
     """입학연도 — context.admission_year 우선, 없으면 수강내역 최초 학기 연도에서 추정."""
     if profile.admission_year:
@@ -461,6 +473,7 @@ def compute_audit(
         core_area_gaps=core_gaps,
         missing_required_course_ids=missing_ids,
         missing_required_names=missing_names,
+        missing_required_display=[display_required_name(profile.program_id, n) for n in missing_names],
         required_check_available=required_available,
         gen_basic_courses=_gen_basic_view(verified, profile.program_id, year),
         to_fusion_total=to_fusion_total,

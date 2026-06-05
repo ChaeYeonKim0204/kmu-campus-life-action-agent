@@ -108,7 +108,7 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
         # 정책 해설=RAG" 역할 분리(3파트 develop §A, 미확인 줄의 61%가 이 항목의 LLM 인용 누락이었음).
         if audit.missing_required_names:
             from graduation_center.v2.models_v2 import ExplainLine, ExplainSection
-            names = ", ".join(audit.missing_required_names)
+            names = ", ".join(audit.missing_required_display or audit.missing_required_names)
             # 둘째 줄은 배치 결과 조건부 — 미배치 필수가 있는데 "배치되어 있습니다" 단정은
             # 미배치 칩과 정면 모순(적대 R1 HIGH — S3 실재 사례)
             placed_names = {c.name_ko for t in plan.terms for c in t.courses}
@@ -324,7 +324,8 @@ def _markdown(ctx, profile, audit, risk, plan, marks: dict | None = None,
     if not profile.required_course_ids:
         L += ["", f"※ {profile.department_name_ko} 요람 필수지정 과목 데이터 미구축 — 필수과목 체크 제외(확인 필요)"]
     if audit.missing_required_names:
-        L += ["", f"## 미이수 필수지정{mk('yoram')}"] + [f"- {n}" for n in audit.missing_required_names]
+        L += ["", f"## 미이수 필수지정{mk('yoram')}"] + [
+            f"- {n}" for n in (audit.missing_required_display or audit.missing_required_names)]
     core_short = [g for g in audit.core_area_gaps if g.gap > 0]
     if core_short:
         L += ["", f"## 핵심교양 영역 부족{mk('gen')}"] + [f"- {g.area}: {g.earned:.0f}/{g.required:.0f}" for g in core_short]

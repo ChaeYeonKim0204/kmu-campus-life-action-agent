@@ -156,6 +156,7 @@ class AuditResult(BaseModel):
     core_area_gaps: list[AreaGap] = Field(default_factory=list)   # 핵심교양 영역별
     missing_required_course_ids: list[str] = Field(default_factory=list)
     missing_required_names: list[str] = Field(default_factory=list)
+    missing_required_display: list[str] = Field(default_factory=list)  # "개정이름(구. 옛이름)" — 표시 전용(매칭은 names)
     required_check_available: bool = True   # 요람 필수지정 데이터 구축 여부
     gen_basic_courses: list[dict] = Field(default_factory=list)   # 기초교양 필수 [{name_ko,taken}]
     to_fusion_total: float = 0.0                                  # 융합 배정으로 전공에서 차감된 학점(과목 dedup)

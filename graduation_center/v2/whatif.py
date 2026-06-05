@@ -330,7 +330,13 @@ def build_diff(before: AuditPipelineResponse, after: AuditPipelineResponse,
                    (f" (리스크 {before.risk.grade}→{after.risk.grade})." if risk_changed else ".")
     elif met_a and not met_b:
         # "에도"는 '변경 전에도 충족'으로 오독됨(이 분기는 정의상 전엔 미충족) — 코드R3-③
-        headline = "변경 후에는 추가 수강 없이 졸업요건을 충족합니다."
+        # 졸업인증제 경고가 after에 살아 있으면 '추가 수강 없이 충족' 단정 금지 — 다전공 제거
+        # 상담이 인증제(심화 +18)를 두고 '빼도 된다'로 읽히는 모순(검증 캠페인 codex④, 2026-06-05)
+        if any(getattr(r, "factor", "") == "졸업인증제" for r in (after.risk.reasons or [])):
+            headline = ("총학점·영역 요건은 충족하지만, 다·부전공이 없으면 졸업인증제에 따라 "
+                        "심화전공(전공최저+18학점) 충족이 추가로 필요합니다 — 아래 안내를 확인하세요.")
+        else:
+            headline = "변경 후에는 추가 수강 없이 졸업요건을 충족합니다."
     elif risk_changed:
         headline = f"리스크 등급이 {before.risk.grade}({before.risk.label}) → {after.risk.grade}({after.risk.label})로 변동합니다."
     elif conv_changes:
@@ -370,7 +376,9 @@ def suggest_next_actions(diff: WhatIfDiff, delta: WhatIfDelta,
     if overflow_resolved:
         acts.append("이 변경으로 초과학기가 해소됩니다 — 수강신청 시 개설학기를 꼭 확인하세요.")
     if delta.drop_convergence:
-        acts.append("융합·연계전공 포기 시 학위 표기가 달라집니다 — 포기 절차·시점을 학과사무실에 확인하세요.")
+        acts.append("융합·연계전공 포기 시 학위 표기가 달라지고, 다·부전공이 없으면 졸업인증제(제96조의2)에 "
+                    "따라 심화전공(전공최저+18학점) 충족이 필요합니다 — 포기 절차와 면제 전형 여부를 "
+                    "학과사무실에 확인하세요.")
     if delta.add_convergence:
         acts.append("다전공·부전공은 신청 기간과 승인 요건이 있습니다 — 모집 공지를 확인하세요.")
     if (delta.calendar_delay_terms or 0) > 0:

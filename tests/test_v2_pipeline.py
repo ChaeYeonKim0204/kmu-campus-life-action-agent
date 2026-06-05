@@ -404,16 +404,20 @@ def test_risk_grade_ladder():
     from graduation_center.v2.risk import compute_risk, already_met
     from graduation_center.v2.models_v2 import AreaGap, AuditResult, OverflowScenario, StudentContext
 
-    def audit(gap=0, missing=None):
+    def audit(gap=0, missing=None, major_earned=66.0):
+        # major_earned 기본 66 = 48+18(심화) — 다·부전공 없는 합성 audit이 졸업인증제(제96조의2)
+        # 때문에 S에서 막히지 않도록(2026-06-05 already_met cert 게이트 — codex④ 상담 모순 수정)
         return AuditResult(total_required=130, total_earned=130 - gap, total_gap=gap,
-                           area_gaps=[AreaGap(area="전공", required=48, earned=48, gap=0)],
+                           area_gaps=[AreaGap(area="전공", required=48, earned=major_earned, gap=0)],
                            missing_required_names=missing or [],
                            gen_basic_courses=[{"name_ko": "글쓰기", "taken": True}])
 
     ctx = StudentContext(program_id="ai_bigdata", remaining_semesters=2, gpa_min_met="yes")
     L = {"feasible_15": None, "feasible_legal": None, "feasible_seasonal": None}
-    # S: 갭 0 + 평점 yes
+    # S: 갭 0 + 평점 yes (+심화 충족 — 인증제)
     assert compute_risk(audit(0), ctx, ladder=L).grade == "S"
+    # 인증제 게이트: 다·부전공 없음 + 심화(48+18) 미충족 → S 금지 (B-경고와 동일 철학: 단정 금지)
+    assert not already_met(audit(0, major_earned=48), ctx)
     # 평점 unknown이면 S 금지(already_met False) → ladder로
     ctx_u = ctx.model_copy(update={"gpa_min_met": "unknown"})
     assert not already_met(audit(0), ctx_u)
@@ -482,7 +486,9 @@ def test_2019_yoram_and_header_alias():
                              "자유교양": 2.0, "일반선택": 51.0}
     names, pick = _required_names_for_year("ai_bigdata", 2019)
     assert pick == 2019 and "데이터마이닝" in names and "경영수학" in names and len(names) == 10
-    assert len(_gen_basic_names("ai_bigdata", 2019)) == 6      # 컴퓨터프로그래밍 1·2 포함
+    # 글로벌영어는 필수지정 해지(전 학번 일괄 — 2026-06-05 사용자 확정, 과목 자체는 존속) → 5항목
+    assert len(_gen_basic_names("ai_bigdata", 2019)) == 5      # 컴퓨터프로그래밍 1·2 포함
+    assert not any("글로벌영어" in str(n) for n in _gen_basic_names("ai_bigdata", 2019))
     assert deep_major_extra(2019) == 18.0 == deep_major_extra(2025)  # 2025 개정 — 전 학번 일괄 18
     # 2020·2021학번 → nearest-prior 2019
     assert _required_names_for_year("ai_bigdata", 2021)[1] == 2019

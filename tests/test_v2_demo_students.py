@@ -75,3 +75,28 @@ def test_s4_feasible_unchanged():
     r = _run("S4_4학년_최계절")
     assert r["roadmap"]["feasible"] is True
     assert r["risk"]["grade"] == "A+"
+
+
+def test_dual_convergence_dup_once_per_course():
+    """교과목별 중복인정 1회 제한(요람 전 학과 공통: "1회만 중복인정") — 다전공 2개 동시
+    선언 시 같은 과목이 양쪽에서 dup되는 3중 인정 금지(검증 캠페인 codex① 발견, 2026-06-05)."""
+    from graduation_center.v2.pipeline import run_audit, run_verify
+    man = json.loads((BASE / "manifest.json").read_text(encoding="utf-8"))
+    s = man["S1_졸업반_김융합"]
+    files = [((BASE / "S1_졸업반_김융합" / f).read_bytes(), f) for f in s["files"]]
+    ctx = dict(s["context"])
+    ctx["convergence_program_ids"] = ["dsci_convergence", "mobility_data_convergence"]
+    ctx["convergence_tracks"] = {"dsci_convergence": "다전공", "mobility_data_convergence": "다전공"}
+    v = run_verify(files, ctx)
+    r = run_audit({"context": v["context"], "verification_table": v["verification_table"],
+                   "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]},
+                  skip_explain=True, run_summary=False).model_dump()
+    dup_sets = []
+    for cc in r["audit"]["convergence_checks"]:
+        dups = {c["name_ko"] for c in cc["courses"] if c.get("taken") and c.get("assignment") == "중복인정"}
+        dup_cr = sum(c["credits"] for c in cc["courses"]
+                     if c.get("taken") and c.get("assignment") == "중복인정")
+        assert dup_cr <= cc["double_recognizable"] + 0.01   # 프로그램별 캡(제77조④) 준수
+        dup_sets.append(dups)
+    assert len(dup_sets) == 2
+    assert not (dup_sets[0] & dup_sets[1]), f"양쪽 동시 중복인정 위반: {dup_sets[0] & dup_sets[1]}"

@@ -426,16 +426,33 @@ def test_category_rederived_from_delta_not_llm_label():
     assert cls.branch_taken == "휴학"
 
 
-def test_track_change_attempt_message():
-    # 코드R2 LOW: 같은 전공 재추가(track 변경 시도) — 오도 메시지 금지
+def test_track_change_supported():
+    """트랙 변경 지원(2026-06-05 사용자 보고 — 이전엔 미지원이라 '부전공 전환'이 add enum에서
+    표현 불가 → LLM이 drop만 내놓아 '다전공 포기'로 둔갑하던 오안내 수정)."""
     ctx = {**CTX, "convergence_program_ids": ["dsci_convergence"],
            "convergence_tracks": {"dsci_convergence": "다전공"}}
     payload = {**_payload(ctx), "question": "부전공으로 바꾸면?"}
     raw = _raw("다전공변경", "트랙 변경",
                add_convergence=[{"program_id": "dsci_convergence", "track": "부전공"}])
     resp = whatif.run_whatif(payload, client=_fake_client(raw))
-    assert resp.status == "unsupported"
-    assert "트랙 변경" in resp.unsupported_reason
+    assert resp.status == "ok"
+    assert any("트랙 변경" in c and "부전공" in c for c in resp.applied_changes)
+    assert not any("포기" in c for c in resp.applied_changes)
+
+
+def test_track_change_drop_plus_add_same_id_is_not_drop():
+    # drop+add 동일 id = 트랙 변경 — '포기'로 시뮬레이션 금지
+    ctx = {**CTX, "convergence_program_ids": ["dsci_convergence"],
+           "convergence_tracks": {"dsci_convergence": "다전공"}}
+    payload = {**_payload(ctx), "question": "다전공을 부전공으로 변경하면?"}
+    raw = _raw("다전공변경", "트랙 변경", drop_convergence=["dsci_convergence"],
+               add_convergence=[{"program_id": "dsci_convergence", "track": "부전공"}])
+    resp = whatif.run_whatif(payload, client=_fake_client(raw))
+    assert resp.status == "ok"
+    assert any("트랙 변경" in c for c in resp.applied_changes)
+    assert not any("포기" in c for c in resp.applied_changes)
+    # after 컨텍스트에 전공이 '부전공'으로 남아야 함 — 인증제 경고도 없어야(다·부전공 보유)
+    assert resp.diff is not None
 
 
 # ---------- ⑩ 코드 검증 라운드3 회귀 ----------

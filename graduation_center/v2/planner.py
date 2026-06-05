@@ -655,6 +655,37 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
         reqs.append(gen_req)
         for it in gen_req["pool"]:
             selected.append({**it, "area": "일반선택", "priority": 5})
+
+    # 졸업인증제 권장(advisory) — 총학점 갭이 없어도 다·부전공 미신청 + 심화(최저+18) 미충족이면
+    # 잔여 심화분을 '권장 배치'로 추가(2026-06-05 사용자 지적: '다전공 빼면?' 상담 카드가
+    # "심화전공 +18 필요"라 말하면서 로드맵은 "추가 수강 불필요"로 비어 있는 모순).
+    # 인증제는 soft(면제 전형 존재) — advisory 항목은 blocked/feasible/초과학기 판정에서 제외되고
+    # (run_planner), 우선순위 최하(6)라 hard 요건의 배치 용량을 빼앗지 않는다.
+    if not audit.convergence_checks:
+        g_major = next((g for g in audit.area_gaps if g.area == "전공"), None)
+        from graduation_center.v2.catalog import deep_major_extra
+        extra = deep_major_extra(profile.admission_year)
+        planned_major = round(sum(it["credits"] for it in selected if it.get("area") == "전공"), 1)
+        deep_left = (round((g_major.required + extra) - g_major.earned - planned_major, 1)
+                     if g_major is not None else 0.0)
+        if deep_left > 0:
+            taken_keys = {(it.get("course_id") or it["name_ko"]) for it in selected}
+            confirmed_full3 = {c.course_id for c in verified.confirmed_courses if c.course_id}
+            adv_pool = [{"name_ko": c.name_ko, "course_id": c.course_id, "credits": c.credits,
+                         "satisfies": f"심화전공 권장(+{extra:g})", "offered_terms": c.offered_terms,
+                         "prerequisites": c.prerequisites, "confidence": "catalog_verified"}
+                        for c in cat["courses"]
+                        if not getattr(c, "discontinued", False)
+                        and c.course_id not in confirmed_full3
+                        and normalize_name(c.name_ko) not in confirmed_norm
+                        and (c.course_id or c.name_ko) not in taken_keys]
+            adv_pool.sort(key=lambda c: not _fits_remaining(c["offered_terms"]))  # 잔여 학기 개설 우선
+            acc_a = 0.0
+            for it in adv_pool:
+                if acc_a >= deep_left - 0.01:
+                    break
+                selected.append({**it, "area": "전공", "priority": 6, "advisory": True})
+                acc_a = round(acc_a + it["credits"], 1)
     return selected, reqs, unfillable
 
 
@@ -787,6 +818,10 @@ def run_planner(
                for r in reqs]
     ctx = {"sources": [], "requirements_summary": summary}
 
+    # 인증제 권장(advisory)은 판정 비관여 — hard 요건과 분리(2026-06-05, '다전공 빼면?' 로드맵 공백 수정)
+    advisory = [it for it in selected if it.get("advisory")]
+    hard_selected = [it for it in selected if not it.get("advisory")]
+
     if reqs and not selected:
         # 요건은 남았는데 채울 후보가 전혀 없음(풀 고갈) → 거짓 '충족' 금지
         labs = ", ".join(r["label"] for r in reqs)
@@ -797,8 +832,17 @@ def run_planner(
         return (RoadmapPlan(status="generated", feasible=True, terms=[],
                             why_this_plan="졸업요건을 모두 충족했습니다. 추가 수강 계획이 필요 없습니다."),
                 ValidationReport(ok=True), ctx)
+    if not hard_selected and not terms:
+        # 권장만 남았고 배치할 학기 정보 없음 — 졸업요건은 충족이므로 blocked 금지(판정 비관여)
+        adv_cr = round(sum(it["credits"] for it in advisory), 1)
+        return (RoadmapPlan(status="generated", feasible=True, terms=[],
+                            why_this_plan=f"졸업요건(학점)은 모두 충족했습니다. 졸업인증제(심화전공) 권장 "
+                                          f"{adv_cr:g}학점은 잔여 학기 정보가 없어 배치를 생략합니다.",
+                            assumptions=["다·부전공 미신청 시 졸업인증제(제96조의2)에 따라 심화전공(전공최저+18학점) "
+                                         "충족이 필요합니다 — 면제 전형·공학인증·교직 해당 시 무관(학과 확인)."]),
+                ValidationReport(ok=True), ctx)
 
-    sel_credits = round(sum(it["credits"] for it in selected), 1)
+    sel_credits = round(sum(it["credits"] for it in hard_selected), 1)
     if not terms:
         names = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in selected[:12])
         if context.current_term and context.remaining_semesters <= 0:
@@ -817,6 +861,15 @@ def run_planner(
     completed = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
     placed, assumptions, unplaced = plan_greedy(selected, terms, completed)
 
+    # advisory 미배치는 판정에서 제외(권장 사항) — assumption으로만 안내
+    unplaced_ids = {id(it) for it in unplaced}            # 커버리지 검증용(advisory 포함 원본)
+    adv_unplaced = [it for it in unplaced if it.get("advisory")]
+    unplaced = [it for it in unplaced if not it.get("advisory")]
+    if adv_unplaced:
+        assumptions.append("졸업인증제 권장(심화전공) 과목 일부는 잔여 학기에 배치하지 못했습니다 — "
+                           "권장 사항이라 졸업 판정에는 영향 없음: "
+                           + ", ".join(it["name_ko"] for it in adv_unplaced[:6]))
+
     # 결정론 검증: 학점상한 + 미배치(선수/개설/용량으로 못 넣음). 미배치 있으면 ok=False·blocked.
     errors = []
     for t in placed:
@@ -828,7 +881,6 @@ def run_planner(
     for uf in unfillable:
         errors.append(ValidationError(code="pool_exhausted", detail=f"{uf['label']} {uf['shortfall']:.0f}학점 후보 부족"))
     # 영역(이수구분) 커버리지 검증 — 배치된 후보가 전공 floor 갭을 실제로 닫는지(안전망)
-    unplaced_ids = {id(it) for it in unplaced}
     placed_by_area: dict = {}
     for it in selected:
         if id(it) in unplaced_ids:
@@ -845,6 +897,9 @@ def run_planner(
 
     parts = [s["label"] for s in summary]
     why = "남은 요건(" + ", ".join(parts) + ")을 잔여 학기에 개설학기·선수·학점상한을 지켜 배치했습니다." if parts else ""
+    if not parts and advisory:
+        why = ("졸업요건(학점)은 모두 충족했습니다 — 졸업인증제(심화전공: 전공최저+18학점) 충족을 위한 "
+               "권장 과목을 배치했습니다(면제 전형·공학인증·교직 해당 시 무관, 학과 확인).")
     if unplaced or unfillable or gap_errors:
         # blocked. 초과학기는 '용량/개설/선수로 잔여 학기에 못 넣은' unplaced 학점만 환산 —
         # unfillable(후보 고갈)은 학기를 늘려도 해결 불가이므로 별도 메시지(라운드4 검증).

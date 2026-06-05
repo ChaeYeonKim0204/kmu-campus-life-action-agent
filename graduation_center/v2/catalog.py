@@ -43,10 +43,10 @@ _ISU_TO_AREA: dict[str, Area] = {
 
 
 def deep_major_extra(admission_year) -> float:
-    """심화전공 추가 이수학점 — 졸업인증제. 2019학번 공식 시트는 '전공 최저 +21'(2019_big_
-    graduate.pdf p.2), 제74조⑤ 2025 개정은 +18 — 학번 고정 원칙으로 2025학번부터 18.
-    (2020~2024는 개정 전 21로 보수 적용 — 학과 확인 시 조정)"""
-    return 18.0 if (admission_year and int(admission_year) >= 2025) else 21.0
+    """심화전공 추가 이수학점 — 졸업인증제(제74조⑤). 2025년 개정으로 **모든 학번 일괄 +18**
+    (사용자 확인 2026-06-05 — 글로벌영어 해지와 같은 전체학년 일괄 적용. 2019 시트의 +21은
+    개정 전 기준이라 현행 미적용). 인자는 향후 재개정 대비 시그니처 유지."""
+    return 18.0
 
 
 def area_from_isugubun(isu: str | None) -> Area:

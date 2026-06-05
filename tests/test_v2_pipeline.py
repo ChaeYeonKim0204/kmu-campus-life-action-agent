@@ -483,7 +483,7 @@ def test_2019_yoram_and_header_alias():
     names, pick = _required_names_for_year("ai_bigdata", 2019)
     assert pick == 2019 and "데이터마이닝" in names and "경영수학" in names and len(names) == 10
     assert len(_gen_basic_names("ai_bigdata", 2019)) == 6      # 컴퓨터프로그래밍 1·2 포함
-    assert deep_major_extra(2019) == 21.0 and deep_major_extra(2025) == 18.0  # 심화 연도 분기
+    assert deep_major_extra(2019) == 18.0 == deep_major_extra(2025)  # 2025 개정 — 전 학번 일괄 18
     # 2020·2021학번 → nearest-prior 2019
     assert _required_names_for_year("ai_bigdata", 2021)[1] == 2019
     # 실파일 헤더 alias: '교과목'+'교과목명' 병존 시 코드 컬럼으로 인식

@@ -847,6 +847,16 @@ def run_planner(
             upa[it.get("area") or "기타"] = round(upa.get(it.get("area") or "기타", 0) + it["credits"], 1)
         for u in unfillable:
             upa[u.get("area") or "기타"] = round(upa.get(u.get("area") or "기타", 0) + u["shortfall"], 1)
+        # 계절 허용인데 카탈로그 과목이 미배치로 남은 경우 — 본 모델은 전공·지정 과목의
+        # 계절 개설을 보장하지 않아 정규 학기에만 배치(보수). 실제 계절 개설되면 초과 없이
+        # 가능할 수 있으므로 그 가능성을 정직하게 안내(2026-06-05 사용자 지적: '계절로 되는데 왜 초과?')
+        if context.seasonal_semester_allowed and any(
+                it.get("confidence") == "catalog_verified" for it in unplaced):
+            names_un = ", ".join(it["name_ko"] for it in unplaced
+                                 if it.get("confidence") == "catalog_verified")
+            assumptions.append(f"전공·지정 과목({names_un})은 계절학기 개설이 보장되지 않아 정규 학기에만 "
+                               "배치했습니다 — 해당 과목이 계절학기에 개설되면 초과학기 없이 졸업 가능할 수 "
+                               "있으니 개설 공지를 확인하세요.")
         plan = RoadmapPlan(status="blocked", feasible=False, terms=placed, why_this_plan=why,
                            assumptions=assumptions, overflow=ov, unplaced_by_area=upa,
                            blocked_reason=reason, relaxation_hint=hint)

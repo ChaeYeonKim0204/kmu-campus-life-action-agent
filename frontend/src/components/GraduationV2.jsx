@@ -1183,6 +1183,24 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                           )}
                           {/* 본 보고서와 동일한 타임라인 룩(공용 컴포넌트 — 사용자 제안) */}
                           <RoadmapTimeline terms={whatif.after.roadmap.terms} fmtTerm={termKo} />
+                          {/* 미배치 = 초과학기에 이수할 과목들 — '초과학기에 뭘 듣나' 답(사용자 지적) */}
+                          {Object.keys(whatif.after.roadmap.unplaced_by_area || {}).length > 0 && (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "8px 0 0" }}>
+                              <span style={{ fontSize: 11.5, color: "#b45309", fontWeight: 700 }}>⚠️ 미배치(초과학기 이수 대상):</span>
+                              {Object.entries(whatif.after.roadmap.unplaced_by_area).map(([area, cr]) => (
+                                <span key={area} style={{ fontSize: 11, background: "#fff5ed", color: "#b45309",
+                                  border: "1px solid #fed7aa", borderRadius: 12, padding: "2px 8px" }}>{area} {fmtNum(cr)}학점</span>
+                              ))}
+                            </div>
+                          )}
+                          {whatif.after.roadmap.blocked_reason && (
+                            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>
+                              {whatif.after.roadmap.blocked_reason}</div>
+                          )}
+                          {(whatif.after.roadmap.assumptions || []).filter((a) => a.includes("계절학기 개설")).map((a, i) => (
+                            <div key={i} style={{ fontSize: 11.5, color: "#92400e", background: "#fffbeb",
+                              border: "1px solid #fde68a", borderRadius: 8, padding: "7px 10px", marginTop: 6 }}>ℹ️ {a}</div>
+                          ))}
                         </div>
                       )}
                     </div>

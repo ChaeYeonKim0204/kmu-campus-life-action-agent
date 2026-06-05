@@ -28,7 +28,7 @@ from graduation_center.v2.whatif import (
 )
 
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data/graduation/v2/summary_cache.json"
-SUMMARY_SCHEMA_VERSION = 5        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
+SUMMARY_SCHEMA_VERSION = 6        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
 MAX_CANDIDATES = 5                # LLM 제안 상한(Thought의 폭)
 MAX_SIMULATIONS = 4               # pre 통과 후보 시뮬레이션 상한(비용 가드)
 MAX_ACCEPTED = 3                  # 최종 채택 상한
@@ -126,6 +126,8 @@ conv_tradeoff(다전공 유지·포기 갈림길) / load_adjust(수강 부담 �
   상한 12 vs 15)을 이 학생의 facts에 맞게 선택하고, rationale에 왜 그 값인지 한 줄로 써라.
 - 학생 상태와 무관한 시나리오(예: 초과학기가 없는데 overflow_relief, 융합 미선언인데 conv_tradeoff)는 내지 마라.
 - 서로 다른 갈림길을 다양하게 — 같은 delta의 사소한 변형 반복 금지.
+- **휴학(calendar_delay_terms)과 잔여 학기 증감(remaining_semesters_change)을 한 후보에 동시에
+  넣지 마라** — 휴학은 수강 학기 수를 바꾸지 않는다(시점만 지연). 둘은 별개 갈림길로 분리하라.
 - 변경 없는 필드는 null(또는 빈 배열)."""
 
 
@@ -522,6 +524,12 @@ def run_report_summary(payload: dict, audit, risk, plan, ctx: StudentContext,
         if delta.is_empty():
             review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
                                          verdict="rejected", rejected_by="no_op"))
+            continue
+        # 휴학+잔여학기 동시 변경 조합 차단(2026-06-05 사용자 지적: 라벨이 '휴학하면 잔여 +1'
+        # 인과처럼 읽힘 — 휴학은 수강 학기 수 불변, 별개 갈림길이어야 함). 프롬프트 1차 + 여기 2차.
+        if (delta.calendar_delay_terms or 0) > 0 and (delta.remaining_semesters_change or 0) != 0:
+            review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,
+                                         verdict="rejected", rejected_by="invalid_delta"))
             continue
         if not _pre_check(reason, delta, audit, plan, ctx):
             review.append(ScenarioReview(label=label, reason_code=reason, rationale=rationale,

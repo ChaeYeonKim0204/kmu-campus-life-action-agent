@@ -355,3 +355,21 @@ def test_unplaced_by_area_on_blocked():
     if resp.roadmap.status == "blocked":
         upa = resp.roadmap.unplaced_by_area
         assert upa and all(v > 0 for v in upa.values())
+
+
+def test_leave_plus_remaining_combo_rejected():
+    """휴학+잔여학기 동시 변경 조합은 결정론 reject — '휴학하면 잔여 +1' 인과 오독 차단
+    (2026-06-05 사용자 지적)."""
+    payload = _payload(CTX)
+    sel = _sel_raw(
+        (_delta(calendar_delay_terms=1, remaining_semesters_change=1), "timeline_extend", "휴학+연장 혼합"),
+        (_delta(calendar_delay_terms=1), "timeline_extend", "휴학만"),
+    )
+    fake = SeqFake([sel, _sum_raw([("검토한 시나리오 관찰값 기준입니다", ["S1"])])])
+    resp = pipeline.run_audit(payload, client=fake, run_summary=True)
+    s = resp.agent_summary
+    assert s is not None
+    combo = next(r for r in s.candidates_review if "휴학" in r.label and "잔여" in r.label)
+    assert combo.verdict == "rejected" and combo.rejected_by == "invalid_delta"
+    solo = next(r for r in s.candidates_review if r.label == "휴학 1학기")
+    assert solo.verdict == "accepted" or solo.rejected_by != "invalid_delta"

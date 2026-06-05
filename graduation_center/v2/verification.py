@@ -66,11 +66,15 @@ def build_verification_table(
         demoted = False
         if m.status == "aggregate_only" and area == "전공":
             area, demoted = "일반선택", True
-        included, reason = True, None
+        included, reason, grade_suspect = True, None, False
         code = ln.course_code
         # 폐강 자동 제외
         if "폐강" in (ln.note or "") or "폐강" in (ln.area_raw or ""):
             included, reason = False, "폐강"
+        # 비고에 F/NP류 표기가 있으면 침묵 산입 금지(합성 검증 γ HIGH) — 단 자동 제외는 안 함
+        # (비고 의미가 불확실 — 성적표가 아니므로). HITL 경고 표기로 사용자 판단 위임.
+        elif re.search(r"(?<![A-Za-z])(F|NP|W)(?![A-Za-z])|미취득|낙제", ln.note or ""):
+            grade_suspect = True
         elif code and code in retake_codes:
             # 최신 이수만 포함, 이전 이수는 제외(확인 필요)
             if _term_order(ln.term_label) == latest[code] and code not in used_latest:
@@ -87,6 +91,7 @@ def build_verification_table(
             term_label=ln.term_label,
             included=included,
             exclude_reason=reason,
+            grade_suspect=grade_suspect,
             aggregate_only=(m.status == "aggregate_only"),
             demoted_from_major=demoted,
         ))

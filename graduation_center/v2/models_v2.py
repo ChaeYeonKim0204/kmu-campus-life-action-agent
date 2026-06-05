@@ -93,6 +93,7 @@ class VerifiedCourse(BaseModel):
     included: bool = True
     exclude_reason: str | None = None                # 폐강 / F / NP / 재수강중복
     aggregate_only: bool = False                     # 카탈로그 밖(교양·타과) → 집계만
+    grade_suspect: bool = False                      # 비고에 F/NP/W류 표기 — 침묵 산입 방지 경고(자동 제외 아님)
     demoted_from_major: bool = False                 # 전공계 이수구분이었으나 카탈로그 미스로 일반선택 강등
                                                      # — HITL에서 사용자가 전공으로 복구 가능(표시·일괄용)
 

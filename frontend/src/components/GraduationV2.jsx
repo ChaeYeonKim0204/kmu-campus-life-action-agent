@@ -621,7 +621,13 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                         background: isRetake ? "#fffaf2" : undefined, borderLeft: isRetake ? "3px solid #f59e0b" : "3px solid transparent" }}>
                         <td style={{ textAlign: "center", padding: "5px 8px" }}><input type="checkbox" checked={row.included} onChange={() => toggleRow(i)} /></td>
                         <td style={{ padding: "5px 8px" }}>{row.name_ko}
-                          {!row.course_id && <span style={{ marginLeft: 5, fontSize: 10.5, color: C.muted, background: "#eef1f5", borderRadius: 4, padding: "1px 5px" }}>집계</span>}</td>
+                          {!row.course_id && <span style={{ marginLeft: 5, fontSize: 10.5, color: C.muted, background: "#eef1f5", borderRadius: 4, padding: "1px 5px" }}>집계</span>}
+                          {row.grade_suspect && row.included && (
+                            // 비고에 F/NP류 표기 — 침묵 산입 금지(합성 검증 γ). 자동 제외는 안 함(비고 의미 불확실) — 사용자 판단
+                            <span title="비고에 F/NP류 표기가 있습니다 — 성적 미취득 과목이면 체크를 해제하세요"
+                              style={{ marginLeft: 5, fontSize: 10.5, color: "#b45309", background: "#fff5ed",
+                                border: "1px solid #fed7aa", borderRadius: 4, padding: "1px 5px" }}>성적 확인 필요</span>
+                          )}</td>
                         <td style={{ padding: "5px 8px", color: C.muted }}>
                           {row.aggregate_only ? (
                             // 카탈로그 밖 행만 편집 가능 — 매칭 행은 요람 교과과정표 근거(전과·구과정 과목은 모두 여기로 옴)

@@ -125,6 +125,8 @@ def build_planning_context(
     for c in cat["courses"]:
         if c.course_id in confirmed_ids or normalize_name(c.name_ko) in unresolved_norms:
             continue
+        if getattr(c, "discontinued", False):          # 폐지 과목(2026 개정) — 추천 후보 제외
+            continue
         is_missing_required = c.course_id in audit.missing_required_course_ids
         if (want_major and c.requirement_area in MAJOR_AREAS) or is_missing_required:
             candidates.append({
@@ -497,7 +499,7 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
         need = max(cc.get("gap", 0.0), round(sum(group_gaps.values()), 1))
         if need <= 0:
             continue
-        pool_all = [c for c in cc.get("courses", []) if not c["taken"]]
+        pool_all = [c for c in cc.get("courses", []) if not c["taken"] and not c.get("discontinued")]
         untaken, used_ids = [], set()
         for g, ggap in sorted(group_gaps.items()):
             acc_g = 0.0
@@ -532,7 +534,8 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                 for c in cat["courses"]
                 # 7자리 전체 또는 이름으로 이수 제외(5자리 절단 충돌 — 예: 0365007/0365008 — 방지)
                 if not ((c.course_id and c.course_id in confirmed_full) or normalize_name(c.name_ko) in confirmed_norm
-                        or normalize_name(c.name_ko) in group_member_norms)]
+                        or normalize_name(c.name_ko) in group_member_norms
+                        or getattr(c, "discontinued", False))]
         reqs.append({"label": "전공 부족", "area": "전공", "priority": 3, "need": major_gap_eff, "pool": pool})
     # 4) 기초교양 — 영역 학점이 '부족할 때만' 계획(영역 총량 충족이면 이름 미매칭은 확인 항목일 뿐,
     #    phantom 12학점 추가 금지 — 라운드4 검증). 필수명이 있으면 그것으로, 없으면 슬롯으로.
@@ -610,7 +613,8 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                           "satisfies": "심화전공 권장(+18)", "offered_terms": c.offered_terms,
                           "prerequisites": c.prerequisites, "confidence": "catalog_verified"}
                          for c in cat["courses"]
-                         if c.course_id not in confirmed_full2
+                         if not getattr(c, "discontinued", False)
+                         and c.course_id not in confirmed_full2
                          and normalize_name(c.name_ko) not in confirmed_norm
                          and (c.course_id or c.name_ko) not in taken_keys]
             acc_d = 0.0

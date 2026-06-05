@@ -261,6 +261,7 @@ def _convergence_checks(verified: VerifiedTranscript, program_ids, tracks, prima
             courses_view.append({
                 "name_ko": cc.name_ko, "group": cc.group or "", "credits": cc.credits,
                 "taken": pfx in taken_prefixes, "overlap": pfx in other_prefixes or pfx in overlap_prefixes,
+                "discontinued": getattr(cc, "discontinued", False),  # 폐지(2026 개정) — 추천 제외용
                 "primary_required": pfx in required_prefixes,
                 "course_id": cc.course_id, "offered_terms": list(cc.offered_terms or []),
                 "prerequisites": list(cc.prerequisites or []),

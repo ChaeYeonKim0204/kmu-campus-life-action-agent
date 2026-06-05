@@ -56,6 +56,7 @@ class CatalogCourse(BaseModel):
     prereq_external: list[str] = Field(default_factory=list)      # 미해소 선수(이름) → 확인 필요
     grade_level: int | None = None
     offered_terms: list[str] = Field(default_factory=lambda: ["1", "2"])
+    discontinued: bool = False                       # 폐지 과목 — 기이수 인정은 유지, 로드맵 추천만 제외
     group: str | None = None                         # 연계융합전공 그룹(A그룹/B그룹) — 그룹별 최저 체크용
     source: dict = Field(default_factory=dict)
 

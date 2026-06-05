@@ -527,3 +527,19 @@ def test_api_validation_and_degrade(monkeypatch):
     r = client.post("/graduation/v2/whatif", json={**payload, "question": "휴학하면?"})
     assert r.status_code == 200                                        # 키 없음 → 200 + unsupported
     assert r.json()["status"] == "unsupported"
+
+
+def test_explicit_cap_overrides_gpa_bonus():
+    """'12학점 이내로' 명시 상한 시 성적우수 보너스(+3) 미적용 — 첫 학기 15 배치 버그
+    (2026-06-05 사용자 발견). 보너스는 상한 확대 옵션이지 의무가 아님."""
+    from graduation_center.v2.planner import _ordered_terms
+    from graduation_center.v2.models_v2 import StudentContext
+    ctx = StudentContext(program_id="ai_bigdata", current_term="2026-1", remaining_semesters=2,
+                         prev_term_gpa_ge_375=True, max_credits_per_term=12)
+    terms = _ordered_terms(ctx, reg_cap=12)
+    regs = [cap for lab, cap in terms if not lab.endswith(("S", "W"))]
+    assert regs and all(c == 12 for c in regs)          # 첫 학기 포함 전부 12
+    ctx2 = ctx.model_copy(update={"max_credits_per_term": None})
+    terms2 = _ordered_terms(ctx2, reg_cap=18)
+    regs2 = [cap for lab, cap in terms2 if not lab.endswith(("S", "W"))]
+    assert regs2[0] == 21                               # 명시 상한 없으면 보너스 유지

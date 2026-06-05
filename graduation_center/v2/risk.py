@@ -93,8 +93,8 @@ def compute_risk(
     legal = regular_term_cap(audit.total_required)
     term_cap = min(float(context.max_credits_per_term or legal), legal)
     capacity = context.remaining_semesters * term_cap
-    if context.prev_term_gpa_ge_375:
-        capacity += PREV_GPA_BONUS
+    if context.prev_term_gpa_ge_375 and context.max_credits_per_term is None:
+        capacity += PREV_GPA_BONUS                     # 명시 상한 시 보너스 미적용(플래너와 동일 의미론)
     if context.seasonal_semester_allowed:
         # 플래너(_ordered_terms)와 동일 모델: 정규학기마다 계절학기 1개 — 1회(+6)만 더하면
         # 플래너 feasible인데 risk D가 뜨는 모순(라운드4 검증)

@@ -78,7 +78,8 @@ def project_overflow(audit: AuditResult, profile: RequirementProfile, context: S
     cap = float(context.max_credits_per_term or regular_term_cap(profile.total_credits_min))
     if cap <= 0:
         return None
-    bonus = PREV_GPA_BONUS if context.prev_term_gpa_ge_375 else 0.0
+    bonus = (PREV_GPA_BONUS if (context.prev_term_gpa_ge_375
+                                and context.max_credits_per_term is None) else 0.0)
     remaining = int(context.remaining_semesters)
     if shortfall <= remaining * cap + bonus:
         return None                            # 잔여 학기로 충분 → 시나리오 불필요
@@ -139,7 +140,8 @@ def build_planning_context(
     caps = {
         "regular_term_credits": term_cap,
         "seasonal_term_credits": SEASONAL_TERM_CAP,
-        "first_term_bonus": PREV_GPA_BONUS if context.prev_term_gpa_ge_375 else 0.0,
+        "first_term_bonus": (PREV_GPA_BONUS if (context.prev_term_gpa_ge_375
+                                                 and context.max_credits_per_term is None) else 0.0),
         "prev_term_gpa_ge_375": context.prev_term_gpa_ge_375,
     }
     return {
@@ -372,7 +374,10 @@ def _ordered_terms(context: StudentContext, reg_cap: float) -> list[list]:
             so = 1; y += 1
         lab = f"{y}-{label[so]}"
         if so in (1, 3):
-            cap = reg_cap + (PREV_GPA_BONUS if (first and context.prev_term_gpa_ge_375) else 0.0)
+            # 보너스(+3)는 '신청 가능 상한 확대'이지 의무가 아님 — 사용자가 상한을 명시하면
+            # 그 의사가 우선(예: "12학점 이내로" 했는데 첫 학기 15 배치되던 버그, 2026-06-05)
+            bonus_ok = first and context.prev_term_gpa_ge_375 and context.max_credits_per_term is None
+            cap = reg_cap + (PREV_GPA_BONUS if bonus_ok else 0.0)
             out.append([lab, cap]); reg += 1; first = False
         elif context.seasonal_semester_allowed:
             out.append([lab, SEASONAL_TERM_CAP])

@@ -590,6 +590,32 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
     uf_cr = round(sum(u["shortfall"] for u in unfillable), 1)
     general_need = round(max(0.0, audit.total_gap - sel_cr - uf_cr), 1)
     if general_need > 0:
+        # 졸업인증제(제96조의2): 다·부전공/융합 미신청자는 심화전공(전공 최저+18)이 사실상 필수
+        # (2026-06-05 사용자 지적) — 일반선택 익명 슬롯 대신 **전공선택 실과목**으로 잔여를 우선
+        # 충당해 추천. 목표·feasibility는 불변(인증제는 면제 전형이 많아 hard 요건화하지 않음 —
+        # 기존 철학), 추천 구성만 바뀜. 전공 후보 소진 시 잔여는 일반선택 슬롯 유지.
+        if not audit.convergence_checks:
+            g_major = next((g for g in audit.area_gaps if g.area == "전공"), None)
+            planned_major = round(sum(it["credits"] for it in selected if it.get("area") == "전공"), 1)
+            deep_need = (round((g_major.required + 18.0) - g_major.earned - planned_major, 1)
+                         if g_major is not None else 0.0)
+            taken_keys = {(it.get("course_id") or it["name_ko"]) for it in selected}
+            confirmed_full2 = {c.course_id for c in verified.confirmed_courses if c.course_id}
+            deep_pool = [{"name_ko": c.name_ko, "course_id": c.course_id, "credits": c.credits,
+                          "satisfies": "심화전공 권장(+18)", "offered_terms": c.offered_terms,
+                          "prerequisites": c.prerequisites, "confidence": "catalog_verified"}
+                         for c in cat["courses"]
+                         if c.course_id not in confirmed_full2
+                         and normalize_name(c.name_ko) not in confirmed_norm
+                         and (c.course_id or c.name_ko) not in taken_keys]
+            acc_d = 0.0
+            for it in deep_pool:
+                if acc_d >= min(deep_need, general_need) - 0.01:
+                    break
+                selected.append({**it, "area": "전공", "priority": 5})
+                acc_d = round(acc_d + it["credits"], 1)
+            general_need = round(max(0.0, general_need - acc_d), 1)
+    if general_need > 0:
         gen_req = {"label": "총학점(일반선택)", "area": "일반선택", "priority": 5, "need": general_need,
                    "pool": _slot_chunks("일반선택 과목", general_need, "일반선택")}
         reqs.append(gen_req)
@@ -698,6 +724,9 @@ def plan_greedy(selected: list[dict], terms: list[list],
                                term_risk=("high" if used[lab] >= cap - 0.01
                                           else "medium" if used[lab] > cap - 3 else "low")))
     assumptions = []
+    if any(it.get("satisfies") == "심화전공 권장(+18)" for it in selected):
+        assumptions.append("다·부전공 미신청 → 졸업인증제 충족을 위해 심화전공(전공 최저+18학점) 기준으로 "
+                           "전공 과목을 추천했습니다 — 면제 전형·교직·공학인증 해당 시 학과 확인.")
     if any(it.get("manual") for it in selected):
         assumptions.append("이름기준·교양 슬롯 과목은 개설학기·학점을 수강신청 전 확인하세요.")
     if prereq_warn:

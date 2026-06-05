@@ -438,3 +438,32 @@ def test_risk_grade_ladder():
     # ladder None(현재 학기 미입력) → 구 트리거 폴백(A~D 범위)
     r = compute_risk(audit(20), ctx, ladder=None)
     assert r.grade in ("A", "B", "C", "D")
+
+
+def test_deep_major_recommendation_for_no_convergence(monkeypatch):
+    """다·부전공 미신청자: 일반선택 익명 슬롯 대신 심화전공(+18) 전공 과목 추천
+    (2026-06-05 사용자 지적 — 졸업인증제). 융합 신청자는 미적용·총갭/feasibility 불변."""
+    from graduation_center.v2 import planner as _pl
+    monkeypatch.setattr(_pl, "_get_client", lambda: None)
+    req = [c for c in CATALOG["courses"] if c["is_required"]]
+    ele = [c for c in CATALOG["courses"] if not c["is_required"] and c["requirement_area"] == "전공"]
+    rows = [{"code": c["course_id"], "name": c["name_ko"], "credits": c["credits"]} for c in req + ele[:2]]
+    v = pipeline.run_verify([(_xlsx(rows), "a.xlsx")],
+                            {"program_id": "ai_bigdata", "admission_year": 2022,
+                             "current_term": "2026-1", "remaining_semesters": 4})
+    payload = {"context": v["context"], "verification_table": v["verification_table"],
+               "unresolved": v["unresolved"], "possible_retakes": v["possible_retakes"]}
+    resp = pipeline.run_audit(payload)
+    deep = [c for tm in resp.roadmap.terms for c in tm.courses if "심화전공" in (c.satisfies or "")]
+    assert deep and all(c.course_id for c in deep)          # 실과목(슬롯 아님) 추천
+    assert any("심화전공" in a for a in resp.roadmap.assumptions)
+    # 융합 신청 시 미적용
+    v2 = pipeline.run_verify([(_xlsx(rows), "a.xlsx")],
+                             {"program_id": "ai_bigdata", "admission_year": 2022,
+                              "current_term": "2026-1", "remaining_semesters": 4,
+                              "convergence_program_ids": ["dsci_convergence"],
+                              "convergence_tracks": {"dsci_convergence": "다전공"}})
+    p2 = {"context": v2["context"], "verification_table": v2["verification_table"],
+          "unresolved": v2["unresolved"], "possible_retakes": v2["possible_retakes"]}
+    r2 = pipeline.run_audit(p2)
+    assert not [c for tm in r2.roadmap.terms for c in tm.courses if "심화전공" in (c.satisfies or "")]

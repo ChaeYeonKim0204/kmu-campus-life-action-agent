@@ -37,21 +37,24 @@ flowchart TD
     R1 --> R2["⑪″ 갈림길 시뮬레이션<br/>결정론 재실행 ≤4회"]
     R2 --> R3["⑪‴ 총평 생성 🤖LLM"] --> R4{"⑪⁗ 총평 검증"} --> K
 
-    K --> W1["⑫ 질문 분류 + ⑬ 매개변수 추출 🤖LLM<br/>자연어 → WhatIfDelta"]
-    W1 --> W2{"⑭ 조건 가드 IF/ELSE"}
+    K --> W1["⑫ 질문 분류 🤖LLM"]
+    W1 --> W1b["⑬ 매개변수 추출 🤖LLM<br/>자연어 → WhatIfDelta"]
+    W1b --> W2{"⑭ 조건 가드 IF/ELSE"}
     W2 -->|통과| W3["⑮ 졸업사정 재실행<br/>(before/after)"]
     W2 -->|지원 범위 밖| WU["안내 종료"]
     W3 --> W4["⑯ 시나리오 비교(결정론 diff)"]
     W4 --> W5["⑰ 다음 행동 제안(결정론 룰)"]
 ```
 
-**LLM이 쓰이는 곳은 정확히 네 자리** — 전부 판정 금지:
+> ⑪ 컨설팅 보고서는 trace 이벤트가 아니라 프론트가 합성하는 종착 노드(화면 표기 "리포트")이며, ⑫ 질문 분류·⑬ 매개변수 추출은 그래프상 2노드지만 **LLM 호출은 1회**(strict schema 단일 호출)다.
+
+**LLM 호출 지점은 정확히 네 자리** — 전부 판정 금지:
 
 | 자리 | 역할 | 패턴 |
 | --- | --- | --- |
 | ⑨ 규정 근거 해설 (`explain.py`) | 부족 항목 자동 선정 → 요람 Chroma 검색 → 인용 강제 해설 → validator → 캐시 | 보고서 내장 RAG |
-| ⑫~⑬ 상담 매개변수 추출 (`whatif.py`) | 자연어 질문("다음 학기 휴학하면?") → 시뮬레이션 파라미터(strict JSON schema) | Tool Calling 1회 |
-| ⑪′·⑪‴ 에이전트 총평 (`report_summary.py`) | LLM이 what-if 갈림길 후보·delta 값을 골라 결정론 시뮬레이터로 검증 후 문장별 fact id 총평 | **단일 턴 bounded ReAct** (Thought→Action→Observation→Answer) |
+| ⑫~⑬ 질문 분류·매개변수 추출 (`whatif.py`) | 자연어 질문("다음 학기 휴학하면?") → 시뮬레이션 파라미터(strict JSON schema) | Tool Calling 1회 |
+| ⑪′·⑪‴ 에이전트 총평 (`report_summary.py`) | LLM이 what-if 갈림길 후보·delta 값을 골라 결정론 시뮬레이터로 검증 후 문장별 fact id 총평 | **단일 턴 bounded ReAct** — 1사이클 Thought→Action→Observation→Answer (LLM 호출은 선정·총평 2회, 멀티스텝 루프 없음) |
 
 멀티스텝 ReAct 루프는 출력 일관성을 위해 **의도적으로 도입하지 않았다**. OpenAI 키가 없어도 진단·로드맵·G 근거까지는 완전 동작한다(해설·상담만 degrade).
 
@@ -160,7 +163,7 @@ python scripts/warm_whatif_cache.py     # 상담 칩 질문 캐시 워밍업(오
 | `GET` | `/graduation/status` | 졸업센터 준비 상태 |
 | `POST` | `/graduation/transcript/parse` | PDF 성적증명서 parse |
 | `POST` | `/graduation/audit` | 졸업요건 분석 |
-| `POST` | `/graduation/substitute-courses` 외 | 대체과목·마이크로디그리·조기졸업 등 8개 분석 task |
+| `POST` | `/graduation/substitute-courses` 외 6종 | 대체과목·마이크로디그리·졸업후 체크리스트·직무역량 번역·조기졸업·자기설계전공·학점포기 (audit 포함 총 8개 분석 task) |
 
 ### 공통
 

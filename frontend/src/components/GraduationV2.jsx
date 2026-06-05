@@ -3,6 +3,37 @@ import WorkflowGraph from "./WorkflowGraph.jsx";
 
 // 졸업센터 v2 — 수강내역 엑셀 → 검증(HITL) → 졸업사정 컨설팅 대시보드
 const GRADE_COLOR = { S: "#7C3AED", "A+": "#059669", A: "#10B981", B: "#F59E0B", C: "#EF4444", D: "#B91C1C" };  // 졸업 여유도 사다리
+// 추천 학기별 로드맵 타임라인(공용) — 본 보고서 + 상담 '변경 후 로드맵'이 같은 룩(사용자 제안)
+function RoadmapTimeline({ terms, fmtTerm }) {
+  const label = fmtTerm || ((t) => t);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {terms.map((t, i) => (
+        <div key={i} style={{ display: "flex", gap: 12 }}>
+          <div style={{ minWidth: 64, fontWeight: 700, color: "#0F3D7A", fontSize: 13.5, paddingTop: 2 }}>{label(t.term)}<div style={{ fontSize: 10.5, color: "#6b7280", fontWeight: 400 }}>{t.term_credits}학점{" "}
+            <span title={t.term_risk === "high" ? "학점 상한 만재 — 수강 부담 높음" : t.term_risk === "medium" ? "상한 근접" : "여유"}>
+              {t.term_risk === "high" ? "🔴" : t.term_risk === "medium" ? "🟡" : "🟢"}</span></div></div>
+          <div style={{ flex: 1, borderLeft: "3px solid #1d6fe0", paddingLeft: 12, display: "flex", flexDirection: "column", gap: 5 }}>
+            {t.courses.map((c, ci) => {
+              const offered = (c.offered_terms || []).length ? `${c.offered_terms.map((x) => (x === "1" ? "1학기" : x === "2" ? "2학기" : x)).join("·")} 개설` : null;
+              return (
+                <div key={ci} style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", fontSize: 12.5 }}>
+                  <span style={{ fontWeight: 600 }}>{c.name_ko}</span>
+                  <span style={{ color: "#6b7280" }}>{c.credits}학점</span>
+                  {c.satisfies && <span style={{ fontSize: 10.5, background: "#eef5ff", color: "#1d6fe0", border: "1px solid #cfe1fb", borderRadius: 5, padding: "1px 6px" }}>{c.satisfies}</span>}
+                  {c.assignment && <span style={{ fontSize: 10.5, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd", borderRadius: 5, padding: "1px 6px" }}>{c.assignment}</span>}
+                  {offered && <span style={{ fontSize: 10.5, color: "#047857" }}>· {offered}</span>}
+                  {c.manual_check && <span style={{ fontSize: 10.5, color: "#b45309", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 5, padding: "1px 6px" }}>확인 필요</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const C = {
   navy: "#0F3D7A", accent: "#1d6fe0", bg: "#eef2f7", card: "#ffffff",
   border: "#e3e8ef", text: "#1f2937", muted: "#6b7280", soft: "#f7f9fc",
@@ -922,30 +953,7 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                 ) : null;
               })()}
               {audit.roadmap.terms.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {audit.roadmap.terms.map((t, i) => (
-                    <div key={i} style={{ display: "flex", gap: 12 }}>
-                      <div style={{ minWidth: 64, fontWeight: 700, color: C.navy, fontSize: 13.5, paddingTop: 2 }}>{t.term}<div style={{ fontSize: 10.5, color: C.muted, fontWeight: 400 }}>{t.term_credits}학점{" "}
-                        <span title={t.term_risk === "high" ? "학점 상한 만재 — 수강 부담 높음" : t.term_risk === "medium" ? "상한 근접" : "여유"}>
-                          {t.term_risk === "high" ? "🔴" : t.term_risk === "medium" ? "🟡" : "🟢"}</span></div></div>
-                      <div style={{ flex: 1, borderLeft: `3px solid ${C.accent}`, paddingLeft: 12, display: "flex", flexDirection: "column", gap: 5 }}>
-                        {t.courses.map((c, ci) => {
-                          const offered = (c.offered_terms || []).length ? `${c.offered_terms.map((x) => (x === "1" ? "1학기" : x === "2" ? "2학기" : x)).join("·")} 개설` : null;
-                          return (
-                            <div key={ci} style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", fontSize: 12.5 }}>
-                              <span style={{ fontWeight: 600 }}>{c.name_ko}</span>
-                              <span style={{ color: C.muted }}>{c.credits}학점</span>
-                              {c.satisfies && <span style={{ fontSize: 10.5, background: "#eef5ff", color: C.accent, border: "1px solid #cfe1fb", borderRadius: 5, padding: "1px 6px" }}>{c.satisfies}</span>}
-                              {c.assignment && <span style={{ fontSize: 10.5, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd", borderRadius: 5, padding: "1px 6px" }}>{c.assignment}</span>}
-                              {offered && <span style={{ fontSize: 10.5, color: "#047857" }}>· {offered}</span>}
-                              {c.manual_check && <span style={{ fontSize: 10.5, color: "#b45309", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 5, padding: "1px 6px" }}>확인 필요</span>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <RoadmapTimeline terms={audit.roadmap.terms} />
               )}
               {audit.roadmap.feasible === false && Object.keys(audit.roadmap.unplaced_by_area || {}).length > 0 && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "10px 0 0" }}>
@@ -1165,13 +1173,8 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                               ※ 휴학 반영 — 휴학 중 학기는 건너뛰고 복학 학기부터 배치됩니다.
                             </p>
                           )}
-                          {whatif.after.roadmap.terms.map((t, i) => (
-                            <div key={i} style={{ display: "flex", gap: 10, fontSize: 12.5, marginBottom: 4 }}>
-                              <span style={{ minWidth: 78, fontWeight: 700, color: C.navy }}>{termKo(t.term)}</span>
-                              <span style={{ color: C.text }}>{t.courses.map((c) => `${c.name_ko}(${c.credits})`).join(", ")}
-                                <span style={{ color: C.muted }}> · {t.term_credits}학점</span></span>
-                            </div>
-                          ))}
+                          {/* 본 보고서와 동일한 타임라인 룩(공용 컴포넌트 — 사용자 제안) */}
+                          <RoadmapTimeline terms={whatif.after.roadmap.terms} fmtTerm={termKo} />
                         </div>
                       )}
                     </div>

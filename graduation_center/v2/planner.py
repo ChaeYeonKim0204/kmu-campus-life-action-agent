@@ -434,12 +434,26 @@ def _slot_chunks(name: str, total: float, satisfies: str, size: float = 3.0) -> 
 
 
 def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
-                             verified: VerifiedTranscript) -> tuple[list[dict], list[dict]]:
-    """남은 졸업 의무를 단일 후보 풀로 정규화(전공·필수·융합·교양). 반환 (선택후보, 요건요약)."""
+                             verified: VerifiedTranscript,
+                             allowed_sems: set[str] | None = None) -> tuple[list[dict], list[dict]]:
+    """남은 졸업 의무를 단일 후보 풀로 정규화(전공·필수·융합·교양). 반환 (선택후보, 요건요약).
+
+    allowed_sems: 잔여 정규학기의 학기 집합({"1"},{"2"},{"1","2"}). 선택형 풀(융합·전공·심화·택1)에서
+    **잔여 학기에 개설되는 후보를 우선** 선택한다 — 선택이 배치보다 먼저 일어나는 구조라, 개설학기를
+    안 보면 동일 풀에 배치 가능한 대안이 있는데도 1학기-전용 과목을 집어 거짓 blocked·초과학기가
+    나온다(S1 김융합 실증, 2026-06-05 사용자 발견). 그룹별 최저 보장은 풀 '세그먼트 순서'가 담보하므로
+    정렬은 각 세그먼트 내부에서만(stable) 적용한다. None/양학기 잔여면 기존 순서와 동일."""
     cat = load_catalog(profile.program_id)
     confirmed_norm = {normalize_name(c.name_ko) for c in verified.confirmed_courses}
     confirmed_pref = {c.course_id[:5] for c in verified.confirmed_courses if c.course_id}
     reqs: list[dict] = []
+
+    def _fits_remaining(terms_list) -> bool:
+        """offered_terms가 잔여 정규학기와 교차하는가. 미상(name_only)은 True(배치 필터도 우회함)."""
+        if not allowed_sems:
+            return True
+        regs = [t for t in (terms_list or []) if t in ("1", "2")]
+        return (not regs) or bool(set(regs) & allowed_sems)
 
     # 1) 미이수 필수(이름) — 전부 이수 필요. 학점·개설학기·코드·선수를 요람메타→카탈로그 순으로 보강.
     # 카탈로그 매칭은 alias(명칭 드리프트 동치)까지 시도 — 옛 이름으로만 계획하고 신명을 전공 풀에서
@@ -456,8 +470,12 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
             grp = grp_by_label.get(n)
             if grp:
                 cat_norms = cat.get("by_norm") or {}
-                member = next((it for it in grp["items"] if normalize_name(it["name"]) in cat_norms),
-                              grp["items"][0])
+                # 잔여 학기에 개설되는 멤버 우선(예: 잔여가 2학기인데 1학기-전용 S-TEAM을 고집해
+                # blocked 되는 것 방지) → 없으면 카탈로그 있는 첫 멤버 → 최후 폴백 첫 항목
+                member = (next((it for it in grp["items"] if normalize_name(it["name"]) in cat_norms
+                                and _fits_remaining(it.get("terms"))), None)
+                          or next((it for it in grp["items"] if normalize_name(it["name"]) in cat_norms),
+                                  grp["items"][0]))
                 items.append({"name_ko": member["name"], "course_id": "",
                               "credits": float(member.get("credits", 3.0)),
                               "satisfies": "필수지정(택1)",
@@ -501,13 +519,16 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
             continue
         pool_all = [c for c in cc.get("courses", []) if not c["taken"] and not c.get("discontinued")]
         untaken, used_ids = [], set()
+        # 정렬 1키 = 잔여 학기 배치 가능 여부(세그먼트 내부 stable — 그룹최저 보장 순서는 유지)
         for g, ggap in sorted(group_gaps.items()):
             acc_g = 0.0
-            for c in sorted([x for x in pool_all if x.get("group") == g], key=lambda x: -x.get("credits", 0)):
+            for c in sorted([x for x in pool_all if x.get("group") == g],
+                            key=lambda x: (not _fits_remaining(x.get("offered_terms")), -x.get("credits", 0))):
                 if acc_g >= ggap:
                     break
                 untaken.append(c); used_ids.add(id(c)); acc_g += c.get("credits", 0)
-        untaken += sorted([c for c in pool_all if id(c) not in used_ids], key=lambda c: -c.get("credits", 0))
+        untaken += sorted([c for c in pool_all if id(c) not in used_ids],
+                          key=lambda c: (not _fits_remaining(c.get("offered_terms")), -c.get("credits", 0)))
         reqs.append({"label": f"{cc['name']} 부족", "area": "융합전공", "priority": 2, "need": need,
                      "pool": [{"name_ko": c["name_ko"], "course_id": c.get("course_id", ""),
                                "credits": c["credits"], "assignment": "융합전공",
@@ -536,6 +557,7 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                 if not ((c.course_id and c.course_id in confirmed_full) or normalize_name(c.name_ko) in confirmed_norm
                         or normalize_name(c.name_ko) in group_member_norms
                         or getattr(c, "discontinued", False))]
+        pool.sort(key=lambda c: not _fits_remaining(c["offered_terms"]))  # 잔여 학기 개설 우선(stable)
         reqs.append({"label": "전공 부족", "area": "전공", "priority": 3, "need": major_gap_eff, "pool": pool})
     # 4) 기초교양 — 영역 학점이 '부족할 때만' 계획(영역 총량 충족이면 이름 미매칭은 확인 항목일 뿐,
     #    phantom 12학점 추가 금지 — 라운드4 검증). 필수명이 있으면 그것으로, 없으면 슬롯으로.
@@ -619,6 +641,7 @@ def build_unified_candidates(audit: AuditResult, profile: RequirementProfile,
                          and c.course_id not in confirmed_full2
                          and normalize_name(c.name_ko) not in confirmed_norm
                          and (c.course_id or c.name_ko) not in taken_keys]
+            deep_pool.sort(key=lambda c: not _fits_remaining(c["offered_terms"]))  # 잔여 학기 개설 우선
             acc_d = 0.0
             for it in deep_pool:
                 if acc_d >= min(deep_need, general_need) - 0.01:
@@ -751,15 +774,18 @@ def run_planner(
 ) -> tuple[RoadmapPlan, ValidationReport, dict]:
     """결정론 통합 플래너: 남은 의무 → 단일 후보 풀 → greedy 학기배치 → 검증.
     (LLM 배치 미사용 — codex 권장. plan_roadmap 등 LLM 함수는 보존만.)"""
-    selected, reqs, unfillable = build_unified_candidates(audit, profile, verified)
-    summary = [{"label": r["label"], "area": r["area"],
-                "need": (r.get("need") if r.get("need") is not None else sum(i["credits"] for i in r.get("items", [])))}
-               for r in reqs]
-    ctx = {"sources": [], "requirements_summary": summary}
     # 학기당 상한: 사용자 override는 법정 상한(제32조) 이내로 클램프. 0/음수/None → 법정값.
     legal_cap = regular_term_cap(profile.total_credits_min)
     user_cap = context.max_credits_per_term
     reg_cap = min(float(user_cap), legal_cap) if (user_cap and user_cap > 0) else legal_cap
+    # 잔여 정규학기 학기집합 — 후보 '선택'이 개설학기를 인지하도록 전달(거짓 blocked 방지)
+    terms = _ordered_terms(context, reg_cap)
+    allowed_sems = {_term_sem(lab) for lab, _ in terms} & {"1", "2"} or None
+    selected, reqs, unfillable = build_unified_candidates(audit, profile, verified, allowed_sems=allowed_sems)
+    summary = [{"label": r["label"], "area": r["area"],
+                "need": (r.get("need") if r.get("need") is not None else sum(i["credits"] for i in r.get("items", [])))}
+               for r in reqs]
+    ctx = {"sources": [], "requirements_summary": summary}
 
     if reqs and not selected:
         # 요건은 남았는데 채울 후보가 전혀 없음(풀 고갈) → 거짓 '충족' 금지
@@ -773,7 +799,6 @@ def run_planner(
                 ValidationReport(ok=True), ctx)
 
     sel_credits = round(sum(it["credits"] for it in selected), 1)
-    terms = _ordered_terms(context, reg_cap)
     if not terms:
         names = ", ".join(f"{it['name_ko']}({it['credits']:.0f})" for it in selected[:12])
         if context.current_term and context.remaining_semesters <= 0:

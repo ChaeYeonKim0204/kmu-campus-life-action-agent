@@ -131,7 +131,7 @@ cloudflared tunnel --url http://127.0.0.1:8001
 ### 테스트
 
 ```bash
-pytest                                  # 전체 (139 collected · 130 passed + live-LLM opt-in skip)
+pytest                                  # 전체 (140 collected · 131 passed + live-LLM opt-in skip)
 pytest tests/test_graduation_center.py  # 졸업센터 회귀
 pytest tests/test_v2_pipeline.py        # v2 파이프라인
 ```

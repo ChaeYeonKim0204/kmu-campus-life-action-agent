@@ -396,3 +396,26 @@ def test_gen_ed_gap_planned_as_slot():
     placed = [c for t in plan.terms for c in t.courses]
     assert any("기초교양" in c.satisfies for c in placed)        # 교양 슬롯이 배치됨
     assert all(c.manual_check for c in placed if c.confidence == "generic_slot")
+
+
+def test_risk_feasible_clamps_to_B():
+    """feasible+수용량 내면 절대 갭 트리거(C/D)를 B(주의)로 클램프 — 잔여 수용량 대비 위험
+    (2026-06-05 사용자 제안). blocked·수용량 초과·평점 미달은 미적용."""
+    from graduation_center.v2.risk import compute_risk
+    from graduation_center.v2.models_v2 import AreaGap, AuditResult, StudentContext
+
+    def audit(gap):
+        return AuditResult(total_required=130, total_earned=130 - gap, total_gap=gap,
+                           area_gaps=[AreaGap(area="전공", required=48, earned=48 - min(gap, 20),
+                                              gap=min(gap, 20))])
+
+    ctx = StudentContext(program_id="ai_bigdata", remaining_semesters=2, gpa_min_met="yes")
+    r = compute_risk(audit(22), ctx, roadmap_feasible=True)        # gap 22 <= 36
+    assert r.grade == "B" and any("계획 이행 전제" in x.detail for x in r.reasons)
+    r2 = compute_risk(audit(22), ctx, roadmap_feasible=False)      # blocked → 미적용
+    assert r2.grade != "B"
+    r3 = compute_risk(audit(80), ctx, roadmap_feasible=True)       # 수용량 초과 → D
+    assert r3.grade == "D"
+    ctx_bad = ctx.model_copy(update={"gpa_min_met": "no"})
+    r4 = compute_risk(audit(22), ctx_bad, roadmap_feasible=True)   # 평점 미달 → D
+    assert r4.grade == "D"

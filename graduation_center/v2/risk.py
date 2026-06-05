@@ -131,12 +131,16 @@ def compute_risk(
         else:
             detail = "잔여 학기 내 실현 가능한 계획 없음"
         reasons.append(RiskReason(factor="로드맵", detail=detail, severity=15))
-    elif roadmap_feasible is True and grade == "D" and context.gpa_min_met != "no" \
+    elif roadmap_feasible is True and grade in ("C", "D") and context.gpa_min_met != "no" \
             and gap <= capacity + 0.01:
-        # 절대 학점차(gap>15 등)만으로 D였더라도, 실현 가능한 완성 로드맵이 있고 수용량 내면
-        # '졸업불가 가능성'은 과장 — C로 완화('D 졸업불가 + feasible 로드맵' 동시표시 모순 방지)
-        grade = "C"
-        reasons.append(RiskReason(factor="로드맵", detail="실현 가능한 학기별 계획 존재 — 등급 완화(C)", severity=0))
+        # 절대 갭(>15 등)이 C/D를 트리거했어도, 결정론 로드맵이 잔여 학기 안 전체 배치를
+        # 검증했고 수용량 내면 '위험'은 과장 — B(주의)로 클램프(2026-06-05 사용자 제안:
+        # 등급은 절대 부족량이 아니라 잔여 수용량 대비 진행 위험이어야 함. 2학년 갭 90 ≠ 위험).
+        # blocked(feasible=False)·수용량 초과·평점 미달은 이 게이트를 타지 않음(위 분기·조건).
+        # A는 트리거 0(이미 충족)일 때만 — '계획이 남은' 학생의 상한은 B가 정직.
+        grade = "B"
+        reasons.append(RiskReason(factor="로드맵",
+                       detail="실현 가능한 학기별 계획 존재(잔여 수용량 내) — 계획 이행 전제 B로 완화", severity=0))
     if grade == "D" and context.gpa_min_met != "no" and overflow is not None \
             and overflow.extra_semesters <= 1 and overflow_verified is True:
         # blocked라도 초과학기 1학기로 닫히는 구체적 졸업 경로(overflow 시나리오)가 있으면

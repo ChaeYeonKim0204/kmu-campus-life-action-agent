@@ -28,7 +28,7 @@ from graduation_center.v2.whatif import (
 )
 
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data/graduation/v2/summary_cache.json"
-SUMMARY_SCHEMA_VERSION = 6        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
+SUMMARY_SCHEMA_VERSION = 7        # 프롬프트·schema·필터 규칙 변경 시 +1 — 구 엔트리 자동 미스
 MAX_CANDIDATES = 5                # LLM 제안 상한(Thought의 폭)
 MAX_SIMULATIONS = 4               # pre 통과 후보 시뮬레이션 상한(비용 가드)
 MAX_ACCEPTED = 3                  # 최종 채택 상한
@@ -59,7 +59,8 @@ def _build_facts(audit, risk, plan, ctx: StudentContext) -> list[dict]:
             for g in audit.area_gaps if g.gap > 0]
     add("영역 부족: " + (", ".join(gaps) if gaps else "없음"))
     add("미이수 필수: " + (", ".join(audit.missing_required_names) if audit.missing_required_names else "없음"))
-    add(f"리스크 {risk.grade}({risk.label}) · 점수 {risk.score}")
+    # 점수(score)는 구 트리거 보조 지표 — 여유도 사다리와 따로 놀아 총평에서 제외(사용자 혼란)
+    add(f"졸업 여유도 {risk.grade}({risk.label})")
     o = plan.overflow
     # 사용자 언어로 — blocked/feasible 같은 내부 용어가 총평 문장에 그대로 새던 문제(사용자 피드백)
     if plan.feasible:

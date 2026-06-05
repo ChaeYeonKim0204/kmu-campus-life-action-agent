@@ -795,10 +795,18 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                         {audit.agent_summary.lines.map((ln, i) => (
                           <div key={i} style={{ fontSize: 13, margin: "4px 0" }}>
                             • {ln.text}{" "}
-                            {ln.fact_ids.map((f) => (
-                              <span key={f} style={{ fontSize: 10, background: "#f1f5f9", color: C.muted,
-                                borderRadius: 8, padding: "1px 6px", marginLeft: 3 }}>{f}</span>
-                            ))}
+                            {ln.fact_ids.map((f) => {
+                              // 근거 배지 — 호버 시 결정론 fact 원문 표시(F*=진단값, S*=시뮬레이션 관찰값)
+                              const fact = (audit.agent_summary.facts || []).find((x) => x.id === f);
+                              const sc = (audit.agent_summary.scenarios || []).find((x) => x.id === f);
+                              const tip = fact ? `근거(진단값): ${fact.text}`
+                                : sc ? `근거(시뮬레이션): ${sc.label} — ${sc.effect_label}`
+                                : "결정론 근거 참조";
+                              return (
+                                <span key={f} title={tip} style={{ fontSize: 10, background: "#f1f5f9", color: C.muted,
+                                  borderRadius: 8, padding: "1px 6px", marginLeft: 3, cursor: "help" }}>{f}</span>
+                              );
+                            })}
                           </div>
                         ))}
                         {audit.agent_summary.candidates_review.some((r) => r.verdict === "rejected") && (

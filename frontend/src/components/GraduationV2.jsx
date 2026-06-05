@@ -1016,13 +1016,20 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
                       {sec.lines.map((ln, i) => (
                         <li key={i} style={{ fontSize: 12.5, color: ln.grounded ? C.text : "#b45309", lineHeight: 1.55, marginBottom: 3 }}>
                           {ln.text}
-                          {ln.source_ids.map((s) => (
+                          {ln.source_ids.map((s) => {
                             // G(결정론 근거)=초록 / Y(요람 RAG 인용)=파랑 — 체계 구분(3파트 develop §A)
-                            <span key={s} style={{ fontSize: 10, marginLeft: 4, borderRadius: 4, padding: "0 4px",
+                            // url 있으면 클릭 → 원문(요람 PDF 해당 페이지·규정집·공지 — 사용자 제안)
+                            const src = (audit.sources || []).find((x) => x.id === s);
+                            const st = { fontSize: 10, marginLeft: 4, borderRadius: 4, padding: "0 4px",
                               color: s.startsWith("G") ? "#047857" : "#2563EB",
                               background: s.startsWith("G") ? "#ecfdf5" : "#eff6ff",
-                              border: s.startsWith("G") ? "1px solid #a7f3d0" : "1px solid #bfdbfe" }}>{s}</span>
-                          ))}
+                              border: s.startsWith("G") ? "1px solid #a7f3d0" : "1px solid #bfdbfe",
+                              textDecoration: src?.url ? "underline dotted" : "none" };
+                            return src?.url
+                              ? <a key={s} href={src.url} target="_blank" rel="noreferrer" style={st}
+                                  title={`원문 열기 — ${src.doc}${src.page ? ` p.${src.page}` : ""}`}>{s} ↗</a>
+                              : <span key={s} style={st}>{s}</span>;
+                          })}
                         </li>
                       ))}
                     </ul>
@@ -1193,7 +1200,10 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
               </button>
               {showSources && (
                 <ul style={{ fontSize: 12, color: C.muted, margin: "10px 0 0", paddingLeft: 18 }}>
-                  {audit.sources.map((s) => <li key={s.id} style={{ marginBottom: 3 }}>[{s.id}] {s.doc} {s.page ? `p.${s.page}` : ""} <span style={{ opacity: .7 }}>({s.source_type})</span></li>)}
+                  {audit.sources.map((s) => <li key={s.id} style={{ marginBottom: 3 }}>[{s.id}] {s.url
+                    ? <a href={s.url} target="_blank" rel="noreferrer" title="원문 열기(요람 PDF·규정집·공지)"
+                        style={{ color: "#1d6fe0", textDecoration: "underline dotted" }}>{s.doc} {s.page ? `p.${s.page}` : ""} ↗</a>
+                    : <>{s.doc} {s.page ? `p.${s.page}` : ""}</>} <span style={{ opacity: .7 }}>({s.source_type})</span></li>)}
                 </ul>
               )}
             </div>

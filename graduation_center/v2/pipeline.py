@@ -139,7 +139,8 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
                     from graduation_center.v2.models_v2 import ExplainLine, ExplainSection
                     sid_eg = f"G{len(sources) + 1}"
                     sources.append(Source(id=sid_eg, doc=f"조기졸업 승인 안내 — {eg.get('title', '공식 공지')}",
-                                          page=None, source_type="requirement_rule", ref="조기졸업"))
+                                          page=None, source_type="requirement_rule", ref="조기졸업",
+                                          url=eg.get("url")))
                     first = eg["text"].split(". ")
                     explanations.append(ExplainSection(
                         key="early_graduation", deterministic=True,
@@ -238,31 +239,54 @@ def _summary_markdown(s) -> str:
     return "\n".join(x for x in L if x)
 
 
+def _source_links() -> dict:
+    """원문 링크(요람 PDF·규정집) — 클릭 시 원문 이동(2026-06-05 사용자 제안).
+    PDF 직링크는 재업로드 시 변동 가능 → 미보유 연도·깨짐 대비 index 폴백."""
+    import json as _json
+    from pathlib import Path as _P
+    try:
+        return _json.loads((_P(__file__).resolve().parents[2]
+                            / "data/graduation/v2/source_links.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def yoram_url(year, page=None) -> str | None:
+    L = _source_links()
+    base = (L.get("yoram_pdf") or {}).get(str(year)) or L.get("yoram_index")
+    if base and page and "thumbnail2.do" in base:
+        return f"{base}#page={int(page)}"             # 브라우저 PDF 뷰어 페이지 점프
+    return base
+
+
 def _build_sources(profile, ctx, audit) -> tuple[list[Source], dict]:
     """결정론 근거 목록(G1..) + markdown 마커 매핑. 요람 페이지는 programs.json 기준."""
     progs = load_programs()
     pages = {pid: p.get("yoram_page") for pid, p in progs.items()}
+    links = _source_links()
     sources: list[Source] = []
     marks: dict[str, str] = {}
 
-    def add(key: str, doc: str, page=None, source_type="requirement_rule", ref=None):
+    def add(key: str, doc: str, page=None, source_type="requirement_rule", ref=None, url=None):
         sid = f"G{len(sources) + 1}"
-        sources.append(Source(id=sid, doc=doc, page=page, source_type=source_type, ref=ref))
+        sources.append(Source(id=sid, doc=doc, page=page, source_type=source_type, ref=ref, url=url))
         marks[key] = sid
 
     # yoram_page는 2025 요람 기준 — 다른 연도 요람 적용 시 페이지 비표시(틀린 페이지 인용 방지)
     yp = pages.get(ctx.program_id) if "2025" in (profile.applied_yoram or "") else None
     add("yoram", f"{profile.applied_yoram} — {profile.department_name_ko} 졸업요건(영역별 최저·필수지정)",
-        page=yp, ref="졸업요건")
+        page=yp, ref="졸업요건", url=yoram_url(profile.admission_year or 2025, yp))
     cap = regular_term_cap(profile.total_credits_min)
     add("cap", "학사규정 제32조(학기당 이수학점)", ref=f"정규 {cap:.0f}학점 · 계절 {SEASONAL_TERM_CAP:.0f}학점"
-        f" · 직전학기 3.75 이상 시 +{PREV_GPA_BONUS:.0f}학점")
+        f" · 직전학기 3.75 이상 시 +{PREV_GPA_BONUS:.0f}학점", url=links.get("rules"))
     if audit.convergence_checks:
-        add("dup", "학사규정 제77조(학점 중복인정)", ref="다전공 12학점 / 부전공 6학점 한도")
+        add("dup", "학사규정 제77조(학점 중복인정)", ref="다전공 12학점 / 부전공 6학점 한도", url=links.get("rules"))
         for cc in audit.convergence_checks:
             add(f"conv:{cc['program_id']}", f"2025 요람 — {cc['name']} 교육과정(그룹·요구학점)",
-                page=pages.get(cc["program_id"]), source_type="catalog_course", ref=cc["program_id"])
-    add("gen", "2025 교양교육과정(핵심교양 영역별 최저)", page=4, source_type="gen_ed", ref="핵심교양")
+                page=pages.get(cc["program_id"]), source_type="catalog_course", ref=cc["program_id"],
+                url=yoram_url(2025, pages.get(cc["program_id"])))
+    add("gen", "2025 교양교육과정(핵심교양 영역별 최저)", page=4, source_type="gen_ed", ref="핵심교양",
+        url=yoram_url(2025, 4))
     return sources, marks
 
 

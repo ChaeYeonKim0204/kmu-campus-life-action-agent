@@ -239,7 +239,8 @@ class Source(BaseModel):
     doc: str = ""
     page: int | None = None
     source_type: Literal["requirement_rule", "catalog_course", "gen_ed", "yoram_rag"] = "requirement_rule"
-    ref: str | None = None                           # rule area or course_id
+    ref: str | None = None
+    url: str | None = None                           # 원문 링크(요람 PDF·규정집·공지) — 클릭 시 새 탭                           # rule area or course_id
 
 
 # ---------- 규정 근거 해설 (보고서 내장 RAG — 챗 UI 없음) ----------

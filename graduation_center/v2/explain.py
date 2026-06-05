@@ -30,6 +30,15 @@ TOP_K = 4
 _STUDENT_ID = re.compile(r"\b(20\d{2})\d{4}\b")
 
 
+def _yoram_url_2025(page=None):
+    """Y chunk(2025 요람 기반) 원문 PDF 링크 — 클릭 시 해당 페이지(사용자 제안 2026-06-05)."""
+    try:
+        from graduation_center.v2.pipeline import yoram_url
+        return yoram_url(2025, page)
+    except Exception:
+        return None
+
+
 # ---------- 1) 해설 대상 선정 (결정론) ----------
 def select_explain_items(audit: AuditResult, profile: RequirementProfile,
                          ctx: StudentContext) -> list[dict]:
@@ -290,6 +299,9 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
     if cached:
         sections = [ExplainSection.model_validate(s) for s in cached["sections"]]
         sources = [Source.model_validate(s) for s in cached["sources"]]
+        for s_ in sources:                            # 구 캐시(url 부재) 호환 — 원문 링크 보강
+            if s_.source_type == "yoram_rag" and not s_.url:
+                s_.url = _yoram_url_2025(s_.page)
         # 캐시 경로도 라이브와 동일하게 미확인 줄을 반영 — '통과' 고정 표기는
         # 화면의 '※ 요람 원문에서 직접 확인되지 않음' 줄과 모순(데모 시나리오 검증 라운드)
         ungrounded = sum(1 for sec in sections for ln in sec.lines if not ln.grounded)
@@ -331,7 +343,7 @@ def run_explain(audit: AuditResult, profile: RequirementProfile, ctx: StudentCon
                 if cid in used:
                     sources.append(Source(id=cid, doc="2025 국민대학교 요람",
                                           page=c.get("page"), source_type="yoram_rag",
-                                          ref=c.get("section")))
+                                          ref=c.get("section"), url=_yoram_url_2025(c.get("page"))))
         ungrounded = sum(1 for sec in sections for ln in sec.lines if not ln.grounded)
         trace = [
             NodeTraceEvent(node="요람 RAG 해설", kind="llm",

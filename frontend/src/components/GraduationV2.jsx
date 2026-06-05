@@ -2,6 +2,14 @@ import React from "react";
 import WorkflowGraph from "./WorkflowGraph.jsx";
 
 // 졸업센터 v2 — 수강내역 엑셀 → 검증(HITL) → 졸업사정 컨설팅 대시보드
+// API 에러 detail이 문자열이 아닐 때(객체/검증 배열) '[object Object]' 방지
+function errText(d) {
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) return d.map((x) => x.msg || JSON.stringify(x)).join(" · ");
+  if (d && typeof d === "object") return d.error || d.detail || JSON.stringify(d);
+  return String(d || "알 수 없는 오류");
+}
+
 const GRADE_COLOR = { S: "#7C3AED", "A+": "#059669", A: "#10B981", B: "#F59E0B", C: "#EF4444", D: "#B91C1C" };  // 졸업 여유도 사다리
 // 추천 학기별 로드맵 타임라인(공용) — 본 보고서 + 상담 '변경 후 로드맵'이 같은 룩(사용자 제안)
 function RoadmapTimeline({ terms, fmtTerm }) {
@@ -379,7 +387,7 @@ export default function GraduationV2({ apiBase }) {
       files.forEach((f) => form.append("files", f));
       form.append("context", JSON.stringify(contextPayload()));
       const r = await fetch(`${apiBase}/graduation/v2/verify`, { method: "POST", body: form });
-      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      if (!r.ok) throw new Error(errText((await r.json()).detail) || r.statusText);
       const d = await r.json();
       setVerify(d); setTable(d.verification_table);
     } catch (e) { setError(String(e.message || e)); }
@@ -416,7 +424,7 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
         unresolved: verify.unresolved, possible_retakes: verify.possible_retakes };
       const r = await fetch(`${apiBase}/graduation/v2/audit`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      if (!r.ok) throw new Error(errText((await r.json()).detail) || r.statusText);
       const result = await r.json();
       setAudit(result);
       setSummaryOpen(false);  // 학생 전환 시 총평 기본 접힘 유지(적대②)
@@ -454,7 +462,7 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
       const r = await fetch(`${apiBase}/graduation/v2/whatif`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...auditPayload, question: text }) });
-      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      if (!r.ok) throw new Error(errText((await r.json()).detail) || r.statusText);
       const d = await r.json();
       setWhatif(d); setQuestion(text);
       // (#workflow trace 저장은 useEffect가 단일 책임 — stale closure 방지)

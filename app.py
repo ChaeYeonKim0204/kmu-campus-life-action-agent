@@ -244,9 +244,14 @@ async def graduation_v2_verify(request: Request) -> dict:
         try:
             missing = v2_fail_fast_columns(content, fn)
         except Exception as exc:  # 손상/위장 엑셀(xlrd·openpyxl 파싱 실패) → 422
-            raise HTTPException(status_code=422, detail={"file": fn, "error": "엑셀 파일을 읽을 수 없습니다(손상 또는 지원하지 않는 형식)."}) from exc
+            raise HTTPException(status_code=422,
+                detail=f"'{fn}' 파일을 읽을 수 없습니다(손상 또는 지원하지 않는 형식) — "
+                       "ON국민 '수강신청확인서' 엑셀인지 확인하세요.") from exc
         if missing:
-            raise HTTPException(status_code=422, detail={"file": fn, "missing_columns": missing})
+            # 객체 detail은 프론트에서 [object Object]로 떴음(실사용 보고) — 사람 문장으로
+            raise HTTPException(status_code=422,
+                detail=f"'{fn}'에서 필수 컬럼을 찾지 못했습니다: {', '.join(missing)} — "
+                       "ON국민 '수강신청확인서'(교과목코드·교과목명·이수구분·학점 컬럼 포함) 엑셀을 올려주세요.")
         files.append((content, fn))
     if not files:
         raise HTTPException(status_code=400, detail="files 필드에 수강내역 엑셀을 1개 이상 업로드해 주세요.")

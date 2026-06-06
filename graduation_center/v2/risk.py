@@ -201,6 +201,17 @@ def compute_risk(
                            detail=("초과학기 다수 또는 경로 미확정 — 학과 상담 권장"
                                    if overflow is not None else "잔여 학기 내 경로 불성립 — 학과 상담 권장"),
                            severity=20))
+        # 졸업인증제 미충족(심화전공 gap)이면 사다리를 수용량 기반으로 캡 —
+        # feasible_15가 area_gap만 보고 심화전공 +18을 미반영해 A+로 뛰는 것 방지
+        if any(r.factor == "졸업인증제" for r in reasons) and major is not None:
+            deep_gap = major.required + _extra - major.earned
+            if deep_gap > 0:
+                free_15 = max(0, context.remaining_semesters * 15 - gap)
+                free_legal = max(0, context.remaining_semesters * term_cap - gap)
+                if deep_gap > free_legal:
+                    grade = _worse(grade, "B")
+                elif deep_gap > free_15:
+                    grade = _worse(grade, "A")
     if grade == "D" and context.gpa_min_met != "no" and overflow is not None \
             and overflow.extra_semesters <= 1 and overflow_verified is True:
         # blocked라도 초과학기 1학기로 닫히는 구체적 졸업 경로(overflow 시나리오)가 있으면

@@ -25,7 +25,7 @@ class StudentContext(BaseModel):
     remaining_semesters: int = Field(default=2, ge=0, le=12)
     seasonal_semester_allowed: bool = False
     # 학기당 제약은 '학점 상한'만 사용(과목 수 상한은 설계 전환으로 폐기 — 2026-06 결정)
-    max_credits_per_term: float | None = None        # 사용자 override; None이면 학사규정 제32조로 산출
+    max_credits_per_term: float | None = None        # 사용자 override; None이면 학칙 제32조로 산출
     prev_term_gpa_ge_375: bool = False               # 직전학기 평점 3.75↑ → 첫 학기 +3학점(제32조)
     preferences: list[str] = Field(default_factory=list)
     gpa_min_met: GpaMinStatus = "unknown"            # 엑셀에 성적 없음 → 사용자 선언

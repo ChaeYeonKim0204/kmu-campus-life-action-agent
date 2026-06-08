@@ -63,7 +63,7 @@ def load_programs() -> dict:
     return json.loads(p.read_text(encoding="utf-8"))["programs"] if p.exists() else {}
 
 
-# 학사규정 제32조(학기당 이수학점): 졸업 최저이수학점 → 정규학기 상한.
+# 학칙 제32조(학기당 이수학점): 졸업 최저이수학점 → 정규학기 상한.
 SEASONAL_TERM_CAP = 6.0          # 제32조 ④ 계절학기 6학점
 PREV_GPA_BONUS = 3.0             # 제32조 ①-4 직전학기 평점평균 3.75 이상 → +3학점
 

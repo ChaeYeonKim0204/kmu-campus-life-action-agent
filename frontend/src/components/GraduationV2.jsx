@@ -347,7 +347,7 @@ export default function GraduationV2({ apiBase }) {
     };
   };
 
-  // 주전공 변경 시 학사규정 제32조 학기당 상한을 기본값으로 자동 채움
+  // 주전공 변경 시 학칙 제32조 학기당 상한을 기본값으로 자동 채움
   const onProgramChange = (id) => {
     const cap = programs[id]?.max_credits_per_term;
     setCtx((c) => ({ ...c, program_id: id, ...(cap ? { max_credits_per_term: cap } : {}) }));
@@ -567,7 +567,7 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
             </div>
             {ctx.convergence_program_ids.length === 0 && otherMajors.length === 0 && (
               <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 8, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "7px 10px" }}>
-                ※ 다전공·부전공을 모두 이수하지 않는 경우 <strong>심화전공(심화과정)</strong>을 이수해야 합니다 (학사규정 제33조).
+                ※ 다전공·부전공을 모두 이수하지 않는 경우 <strong>심화전공(심화과정)</strong>을 이수해야 합니다 (학칙 제33조).
               </div>
             )}
           </div>
@@ -587,7 +587,7 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
           {/* ③ 수강 제약 */}
           <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>③ 수강 제약</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="한 학기 최대 수강 학점" hint="학사규정 제32조: 졸업학점 따라 17/18/19 자동 (수정 가능)">
+            <Field label="한 학기 최대 수강 학점" hint="학칙 제32조: 졸업학점 따라 17/18/19 자동 (수정 가능)">
               <input style={inputStyle} type="number" value={ctx.max_credits_per_term} onChange={(e) => setCtx({ ...ctx, max_credits_per_term: e.target.value })} /></Field>
             <Field label="졸업 최소 평점 충족" hint="졸업 요건: 전학년 평점평균 2.0/4.5 이상 (학사규정 제95조)">
               <select style={inputStyle} value={ctx.gpa_min_met} onChange={(e) => setCtx({ ...ctx, gpa_min_met: e.target.value })}>
@@ -596,7 +596,7 @@ const EXCLUDE_REASONS = ["재수강(이전 이수)", "F·재이수", "NP(Non-Pas
             </Field>
             <label style={{ gridColumn: "1 / 3", display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
               <input type="checkbox" checked={ctx.prev_term_gpa_ge_375} onChange={(e) => setCtx({ ...ctx, prev_term_gpa_ge_375: e.target.checked })} />
-              직전학기 성적우수 (평점평균 3.75↑) — 다음 학기 +3학점 추가 수강 (학사규정 제32조)
+              직전학기 성적우수 (평점평균 3.75↑) — 다음 학기 +3학점 추가 수강 (학칙 제32조)
             </label>
           </div>
           <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>※ 계절학기(6학점)는 기본 포함해 시나리오를 짭니다. 리포트 후 계절학기 불가 시 알려주시면 다시 계산합니다.</div>

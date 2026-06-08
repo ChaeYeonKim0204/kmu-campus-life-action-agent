@@ -198,7 +198,7 @@ def graduation_v2_status() -> dict:
     import os
     from graduation_center.v2.catalog import program_total_min, regular_term_cap
     progs = load_programs()
-    # 학사규정 제32조 학기당 이수학점 상한을 프로그램별로 미리 계산해 노출(프론트 기본값).
+    # 학칙 제32조 학기당 이수학점 상한을 프로그램별로 미리 계산해 노출(프론트 기본값).
     for pid, p in progs.items():
         total = program_total_min(pid)
         p["total_credits_min"] = total

@@ -92,7 +92,7 @@ def run_audit(payload: dict, client=None, *, skip_explain: bool = False,
                     ladder["feasible_seasonal"] = ps_.feasible is True
     risk = compute_risk(audit, ctx, roadmap_feasible=feasible, overflow=plan.overflow,
                         overflow_verified=overflow_verified, ladder=ladder)
-    # 근거(G1..) — 결정론 구성: 적용 요람·학사규정 제32/77조·융합 요람·교양과정.
+    # 근거(G1..) — 결정론 구성: 적용 요람·학칙 제32조·학사규정 제77조·융합 요람·교양과정.
     # (과거 LLM 플래너의 pctx["sources"]는 빈 배열이라 citation contract가 죽어 있었음)
     sources, marks = _build_sources(profile, ctx, audit)
     # 규정 근거 해설(보고서 내장 RAG) — LLM은 요람 chunk 해설만, 실패해도 본체 무영향.
@@ -277,7 +277,7 @@ def _build_sources(profile, ctx, audit) -> tuple[list[Source], dict]:
     add("yoram", f"{profile.applied_yoram} — {profile.department_name_ko} 졸업요건(영역별 최저·필수지정)",
         page=yp, ref="졸업요건", url=yoram_url(profile.admission_year or 2025, yp))
     cap = regular_term_cap(profile.total_credits_min)
-    add("cap", "학사규정 제32조(학기당 이수학점)", ref=f"정규 {cap:.0f}학점 · 계절 {SEASONAL_TERM_CAP:.0f}학점"
+    add("cap", "학칙 제32조(학기당 이수학점)", ref=f"정규 {cap:.0f}학점 · 계절 {SEASONAL_TERM_CAP:.0f}학점"
         f" · 직전학기 3.75 이상 시 +{PREV_GPA_BONUS:.0f}학점", url=links.get("rules"))
     if audit.convergence_checks:
         add("dup", "학사규정 제77조(학점 중복인정)", ref="다전공 12학점 / 부전공 6학점 한도", url=links.get("rules"))

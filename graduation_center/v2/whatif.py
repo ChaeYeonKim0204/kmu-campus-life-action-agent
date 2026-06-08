@@ -212,7 +212,7 @@ def apply_delta(ctx: StudentContext, delta: WhatIfDelta, profile,
         legal = regular_term_cap(profile.total_credits_min)
         if v > legal:
             return None, [], [], (f"학기당 {v:g}학점은 설정할 수 없습니다 — "
-                                  f"학사규정 제32조 상한 {legal:.0f}학점"
+                                  f"학칙 제32조 상한 {legal:.0f}학점"
                                   f"(직전학기 3.75 이상 시 +{PREV_GPA_BONUS:.0f}학점까지) 초과.")
         if v < 9:
             # 비현실적 저상한(0.5학점 등) → '변화 없음' headline과 blocked 로드맵이 모순되는 카드 방지

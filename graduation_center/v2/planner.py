@@ -137,7 +137,7 @@ def build_planning_context(
             })
     # 비-major(교양) 갭은 후보 카탈로그가 없어 자동계획 불가 → 별도 표기
     non_major_gap_areas = sorted(gap_areas - MAJOR_AREAS)
-    # 학사규정 제32조: 정규학기 상한(사용자 override 우선), 계절 6학점, 직전 3.75↑ → 첫 학기 +3
+    # 학칙 제32조: 정규학기 상한(사용자 override 우선), 계절 6학점, 직전 3.75↑ → 첫 학기 +3
     term_cap = float(context.max_credits_per_term or regular_term_cap(profile.total_credits_min))
     caps = {
         "regular_term_credits": term_cap,
@@ -305,7 +305,7 @@ def validate_roadmap(plan: RoadmapPlan, ctx: dict, context: StudentContext) -> V
         if allowed is not None and t.term not in allowed:
             errors.append(ValidationError(code="term_out_of_range",
                           detail=f"{t.term}은 허용 학기({sorted(allowed)}) 밖"))
-        # 학사규정 제32조 학기당 이수학점 상한(정규/계절 + 첫 정규학기 보너스)
+        # 학칙 제32조 학기당 이수학점 상한(정규/계절 + 첫 정규학기 보너스)
         is_seasonal = sem in ("S", "W")
         term_cap = seasonal_cap if is_seasonal else (reg_cap + (first_bonus if t.term == first_regular else 0.0))
         term_credit_total = sum(float(c.credits) for c in t.courses)
